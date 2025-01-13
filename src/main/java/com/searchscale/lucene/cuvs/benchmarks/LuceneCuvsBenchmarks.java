@@ -120,7 +120,7 @@ public class LuceneCuvsBenchmarks {
 //    IndexWriter hnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), hnswWriterConfig);
 //    IndexWriter cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
 
-    for (IndexWriter writer : new IndexWriter[] { hnswIndexWriter }) {
+    for (IndexWriter writer : new IndexWriter[] { cuvsIndexWriter, hnswIndexWriter }) {
       Codec codec = writer.getConfig().getCodec();
       String codecName = codec.getClass().getSimpleName().isEmpty() ? codec.getClass().getSuperclass().getSimpleName()
           : codec.getClass().getSimpleName();
