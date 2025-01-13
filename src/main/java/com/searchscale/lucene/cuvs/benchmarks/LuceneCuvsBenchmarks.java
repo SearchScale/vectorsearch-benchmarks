@@ -179,10 +179,13 @@ public class LuceneCuvsBenchmarks {
       results.mkdir();
     }
     
-    writeCSV(queryResults, results.toString() + "/neighbors_"+ timeStamp +".csv");
     String resultsJson = new ObjectMapper().writerWithDefaultPrettyPrinter()
         .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
-    FileUtils.write(new File(results.toString() + "/benchmark_results_"+ timeStamp +".json"), resultsJson, Charset.forName("UTF-8"));
+
+    if (config.saveResultsOnDisk) {
+      writeCSV(queryResults, results.toString() + "/neighbors_"+ timeStamp +".csv");
+      FileUtils.write(new File(results.toString() + "/benchmark_results_"+ timeStamp +".json"), resultsJson, Charset.forName("UTF-8"));
+    }
 
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
   }
