@@ -10,8 +10,10 @@ import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -114,11 +116,23 @@ public class LuceneCuvsBenchmarks {
       hnswWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
     }
+    
+    IndexWriter hnswIndexWriter;
+    IndexWriter cuvsIndexWriter;
 
-     IndexWriter hnswIndexWriter = new IndexWriter(new NIOFSDirectory(Path.of("hnswIndex")), hnswWriterConfig);
-     IndexWriter cuvsIndexWriter = new IndexWriter(new NIOFSDirectory(Path.of("cuvsIndex")), cuvsIndexWriterConfig);
-//    IndexWriter hnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), hnswWriterConfig);
-//    IndexWriter cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
+    if (!config.createIndexInMemory) {
+      Path hnswIndex = Path.of("hnswIndex");
+      Path cuvsIndex = Path.of("cuvsIndex");
+      if (config.cleanIndexDirectory) {
+        FileUtils.deleteDirectory(hnswIndex.toFile());
+        FileUtils.deleteDirectory(cuvsIndex.toFile());
+      }
+     hnswIndexWriter = new IndexWriter(new NIOFSDirectory(hnswIndex), hnswWriterConfig);
+     cuvsIndexWriter = new IndexWriter(new NIOFSDirectory(cuvsIndex), cuvsIndexWriterConfig);
+    } else {
+     hnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), hnswWriterConfig);
+     cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
+    }
 
     for (IndexWriter writer : new IndexWriter[] { cuvsIndexWriter, hnswIndexWriter }) {
       Codec codec = writer.getConfig().getCodec();
@@ -157,14 +171,20 @@ public class LuceneCuvsBenchmarks {
       log.info("Querying documents using {}...", codecName); // error for different coloring
       query(writer.getDirectory(), config, codec instanceof CuVSCodec, metrics, queryResults);
     }
-
-    writeCSV(queryResults, "neighbors.csv");
+    
+    String timeStamp = new SimpleDateFormat("yyyy-MM-dd_HHmmss").format(Calendar.getInstance().getTime());
+    System.out.println(timeStamp);
+    File results = new File("results");    
+    if (!results.exists()) {
+      results.mkdir();
+    }
+    
+    writeCSV(queryResults, results.toString() + "/neighbors_"+ timeStamp +".csv");
     String resultsJson = new ObjectMapper().writerWithDefaultPrettyPrinter()
         .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
-    FileUtils.write(new File("benchmark_results.json"), resultsJson, Charset.forName("UTF-8"));
+    FileUtils.write(new File(results.toString() + "/benchmark_results_"+ timeStamp +".json"), resultsJson, Charset.forName("UTF-8"));
 
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
-
   }
 
   private static void parseCSVFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn)
@@ -219,6 +239,9 @@ public class LuceneCuvsBenchmarks {
     public int cuvsWriterThreads;
     public MergeStrategy mergeStrategy;
     public int queryThreads;
+    public boolean createIndexInMemory;
+    public boolean cleanIndexDirectory;
+    public boolean saveResultsOnDisk;
 
     // HNSW parameters
     public int hnswMaxConn; // 16 default (max 512)
@@ -244,15 +267,18 @@ public class LuceneCuvsBenchmarks {
       this.cuvsWriterThreads = Integer.valueOf(args[9]);
       this.mergeStrategy = MergeStrategy.valueOf(args[10]);
       this.queryThreads = Integer.valueOf(args[11]);
+      this.createIndexInMemory = Boolean.parseBoolean(args[12]);
+      this.cleanIndexDirectory = Boolean.parseBoolean(args[13]);
+      this.saveResultsOnDisk = Boolean.parseBoolean(args[14]);
 
       // Parameter tuning
-      this.hnswMaxConn = Integer.valueOf(args[12]);
-      this.hnswBeamWidth = Integer.valueOf(args[13]);
-      this.hnswVisitedLimit = Integer.valueOf(args[14]);
-      this.cagraIntermediateGraphDegree = Integer.valueOf(args[15]);
-      this.cagraGraphDegree = Integer.valueOf(args[16]);
-      this.cagraITopK = Integer.valueOf(args[17]);
-      this.cagraSearchWidth = Integer.valueOf(args[18]);
+      this.hnswMaxConn = Integer.valueOf(args[15]);
+      this.hnswBeamWidth = Integer.valueOf(args[16]);
+      this.hnswVisitedLimit = Integer.valueOf(args[17]);
+      this.cagraIntermediateGraphDegree = Integer.valueOf(args[18]);
+      this.cagraGraphDegree = Integer.valueOf(args[19]);
+      this.cagraITopK = Integer.valueOf(args[20]);
+      this.cagraSearchWidth = Integer.valueOf(args[21]);
     }
 
     private void debugPrintArguments() {
@@ -267,6 +293,9 @@ public class LuceneCuvsBenchmarks {
       System.out.println("Lucene HNSW threads: " + hnswThreads);
       System.out.println("cuVS Merge strategy: " + mergeStrategy);
       System.out.println("Query threads: " + queryThreads);
+      System.out.println("Create index in memory: " + createIndexInMemory);
+      System.out.println("Clean index directory: " + cleanIndexDirectory);
+      System.out.println("Save results on disk: " + saveResultsOnDisk);
 
       System.out.println("------- algo parameters ------");
       System.out.println("hnswMaxConn: " + hnswMaxConn);
