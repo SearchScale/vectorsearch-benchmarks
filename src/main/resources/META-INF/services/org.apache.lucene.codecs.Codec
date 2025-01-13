@@ -1,0 +1,2 @@
+org.apache.lucene.sandbox.vectorsearch.CuVSCodec
+org.apache.lucene.codecs.lucene101.Lucene101Codec
