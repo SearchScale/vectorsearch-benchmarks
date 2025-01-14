@@ -183,8 +183,8 @@ public class LuceneCuvsBenchmarks {
         .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
 
     if (config.saveResultsOnDisk) {
-      writeCSV(queryResults, results.toString() + "/neighbors_"+ timeStamp +".csv");
-      FileUtils.write(new File(results.toString() + "/benchmark_results_"+ timeStamp +".json"), resultsJson, Charset.forName("UTF-8"));
+      writeCSV(queryResults, results.toString() + "/" + config.benchmarkID + "_neighbors_"+ timeStamp +".csv");
+      FileUtils.write(new File(results.toString() + "/"+ config.benchmarkID +"_benchmark_results_"+ timeStamp +".json"), resultsJson, Charset.forName("UTF-8"));
     }
 
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
@@ -230,6 +230,8 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static class BenchmarkConfiguration {
+    
+    public String benchmarkID;
     public String datasetFile;
     public int indexOfVector;
     public String vectorColName;
@@ -258,33 +260,35 @@ public class LuceneCuvsBenchmarks {
     public int cagraSearchWidth;
 
     public BenchmarkConfiguration(String[] args) {
-      this.datasetFile = args[0];
-      this.indexOfVector = Integer.valueOf(args[1]);
-      this.vectorColName = args[2];
-      this.numDocs = Integer.valueOf(args[3]);
-      this.vectorDimension = Integer.valueOf(args[4]);
-      this.queryFile = args[5];
-      this.commitFreq = Integer.valueOf(args[6]);
-      this.topK = Integer.valueOf(args[7]);
-      this.hnswThreads = Integer.valueOf(args[8]);
-      this.cuvsWriterThreads = Integer.valueOf(args[9]);
-      this.mergeStrategy = MergeStrategy.valueOf(args[10]);
-      this.queryThreads = Integer.valueOf(args[11]);
-      this.createIndexInMemory = Boolean.parseBoolean(args[12]);
-      this.cleanIndexDirectory = Boolean.parseBoolean(args[13]);
-      this.saveResultsOnDisk = Boolean.parseBoolean(args[14]);
+      this.benchmarkID = args[0];
+      this.datasetFile = args[1];
+      this.indexOfVector = Integer.valueOf(args[2]);
+      this.vectorColName = args[3];
+      this.numDocs = Integer.valueOf(args[4]);
+      this.vectorDimension = Integer.valueOf(args[5]);
+      this.queryFile = args[6];
+      this.commitFreq = Integer.valueOf(args[7]);
+      this.topK = Integer.valueOf(args[8]);
+      this.hnswThreads = Integer.valueOf(args[9]);
+      this.cuvsWriterThreads = Integer.valueOf(args[10]);
+      this.mergeStrategy = MergeStrategy.valueOf(args[11]);
+      this.queryThreads = Integer.valueOf(args[12]);
+      this.createIndexInMemory = Boolean.parseBoolean(args[13]);
+      this.cleanIndexDirectory = Boolean.parseBoolean(args[14]);
+      this.saveResultsOnDisk = Boolean.parseBoolean(args[15]);
 
       // Parameter tuning
-      this.hnswMaxConn = Integer.valueOf(args[15]);
-      this.hnswBeamWidth = Integer.valueOf(args[16]);
-      this.hnswVisitedLimit = Integer.valueOf(args[17]);
-      this.cagraIntermediateGraphDegree = Integer.valueOf(args[18]);
-      this.cagraGraphDegree = Integer.valueOf(args[19]);
-      this.cagraITopK = Integer.valueOf(args[20]);
-      this.cagraSearchWidth = Integer.valueOf(args[21]);
+      this.hnswMaxConn = Integer.valueOf(args[16]);
+      this.hnswBeamWidth = Integer.valueOf(args[17]);
+      this.hnswVisitedLimit = Integer.valueOf(args[18]);
+      this.cagraIntermediateGraphDegree = Integer.valueOf(args[19]);
+      this.cagraGraphDegree = Integer.valueOf(args[20]);
+      this.cagraITopK = Integer.valueOf(args[21]);
+      this.cagraSearchWidth = Integer.valueOf(args[22]);
     }
 
     private void debugPrintArguments() {
+      System.out.println("Benchmark ID: " + benchmarkID);
       System.out.println("Dataset file used is: " + datasetFile);
       System.out.println("Index of vector field is: " + indexOfVector);
       System.out.println("Name of the vector field is: " + vectorColName);

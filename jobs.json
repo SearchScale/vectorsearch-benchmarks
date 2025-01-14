@@ -1,0 +1,27 @@
+[
+    {
+        "benchmarkID" : "wiki_1000x768D",
+        "datasetFile" : "/data/wikipedia_vector_dump.csv",
+        "indexOfVector" : 3,
+        "vectorColName" : "article_vector",
+        "numDocs" : 1000,
+        "vectorDimension" : 768,
+        "queryFile" : "/data/query.txt",
+        "commitFreq" : 1000,
+        "topK" : 5,
+        "hnswThreads" : 32,
+        "cuvsWriterThreads" : 32,
+        "mergeStrategy" : "NON_TRIVIAL_MERGE",
+        "queryThreads" : 1,
+        "createIndexInMemory" : true,
+        "cleanIndexDirectory" : true,
+        "saveResultsOnDisk" : true,
+        "hnswMaxConn" : 16,
+        "hnswBeamWidth" : 100,
+        "hnswVisitedLimit" : 10,
+        "cagraIntermediateGraphDegree" : 18,
+        "cagraGraphDegree" : 64,
+        "cagraITopK" : 5,
+        "cagraSearchWidth" : 1
+    }
+]
