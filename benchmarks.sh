@@ -26,6 +26,6 @@ jq -c '.[]' jobs.json | while read i; do
     cagraITopK=$(echo $i | jq .cagraITopK | tr -d '"');
     cagraSearchWidth=$(echo $i | jq .cagraSearchWidth | tr -d '"');
 
-    java -jar target/lucene-cuvs-benchmarks-1.0-jar-with-dependencies.jar ${benchmarkID} ${datasetFile} ${indexOfVector} ${vectorColName} ${numDocs} ${vectorDimension} ${queryFile} ${commitFreq} ${topK} ${hnswThreads} ${cuvsWriterThreads} ${mergeStrategy} ${queryThreads} ${createIndexInMemory} ${cleanIndexDirectory} ${saveResultsOnDisk} ${hnswMaxConn} ${hnswBeamWidth} ${hnswVisitedLimit} ${cagraIntermediateGraphDegree} ${cagraGraphDegree} ${cagraITopK} ${cagraSearchWidth}
+    java -jar target/vectorsearch-benchmarks-1.0-jar-with-dependencies.jar ${benchmarkID} ${datasetFile} ${indexOfVector} ${vectorColName} ${numDocs} ${vectorDimension} ${queryFile} ${commitFreq} ${topK} ${hnswThreads} ${cuvsWriterThreads} ${mergeStrategy} ${queryThreads} ${createIndexInMemory} ${cleanIndexDirectory} ${saveResultsOnDisk} ${hnswMaxConn} ${hnswBeamWidth} ${hnswVisitedLimit} ${cagraIntermediateGraphDegree} ${cagraGraphDegree} ${cagraITopK} ${cagraSearchWidth}
 
 done

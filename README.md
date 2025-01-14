@@ -14,10 +14,10 @@ cd [repo root]
 
 mvn clean package
 
-java -jar target/lucene-cuvs-benchmarks-1.0-jar-with-dependencies.jar <benchmark_id> <dump_file> <vector_column_number> <vector_column_name> <number_of_documents_to_index> <vector_dimension> <query_file> <commit_at_number_of_documents> <topK> <no. of HNSW indexing threads> <no. of cuvs indexing threads> <merge_strategy options: NO_MERGE | TRIVIAL_MERGE | NON_TRIVIAL_MERGE> <queryThreads> <createIndexInMemory> <cleanIndexDirectory> <saveResultsOnDisk> <hnswMaxConn> <hnswBeamWidth> <hnswVisitedLimit> <cagraIntermediateGraphDegree> <cagraGraphDegree> <cagraITopK> <cagraSearchWidth>
+java -jar target/vectorsearch-benchmarks-1.0-jar-with-dependencies.jar <benchmark_id> <dump_file> <vector_column_number> <vector_column_name> <number_of_documents_to_index> <vector_dimension> <query_file> <commit_at_number_of_documents> <topK> <no. of HNSW indexing threads> <no. of cuvs indexing threads> <merge_strategy options: NO_MERGE | TRIVIAL_MERGE | NON_TRIVIAL_MERGE> <queryThreads> <createIndexInMemory> <cleanIndexDirectory> <saveResultsOnDisk> <hnswMaxConn> <hnswBeamWidth> <hnswVisitedLimit> <cagraIntermediateGraphDegree> <cagraGraphDegree> <cagraITopK> <cagraSearchWidth>
 
 Example:
-java -jar target/lucene-cuvs-benchmarks-1.0-jar-with-dependencies.jar wiki_1000dx768 /data/wikipedia_vector_dump.csv 3 article_vector 1000 768 /data/query.txt 1000 5 32 32 NON_TRIVIAL_MERGE 1 true true true 16 100 10 18 64 5 1
+java -jar target/vectorsearch-benchmarks-1.0-jar-with-dependencies.jar wiki_1000dx768 /data/wikipedia_vector_dump.csv 3 article_vector 1000 768 /data/query.txt 1000 5 32 32 NON_TRIVIAL_MERGE 1 true true true 16 100 10 18 64 5 1
 ```
 
 ## Configuring and running benchmark batches

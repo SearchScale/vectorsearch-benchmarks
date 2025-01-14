@@ -4,10 +4,10 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.searchscale.lucene.cuvs.benchmarks</groupId>
-  <artifactId>lucene-cuvs-benchmarks</artifactId>
+  <artifactId>vectorsearch-benchmarks</artifactId>
   <version>1.0</version>
 
-  <name>lucene-cuvs-benchmarks</name>
+  <name>vectorsearch-benchmarks</name>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
