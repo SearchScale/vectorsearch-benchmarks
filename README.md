@@ -8,13 +8,7 @@
 - [miniforge](https://github.com/conda-forge/miniforge?tab=readme-ov-file#unix-like-platforms-macos--linux)
 
 
-## Before Running
-```sh
-
-```
-
-
-## Running
+## Running Manually
 ```
 cd [repo root]
 
@@ -25,3 +19,10 @@ java -jar target/lucene-cuvs-benchmarks-1.0-jar-with-dependencies.jar <benchmark
 Example:
 java -jar target/lucene-cuvs-benchmarks-1.0-jar-with-dependencies.jar wiki_1000dx768 /data/wikipedia_vector_dump.csv 3 article_vector 1000 768 /data/query.txt 1000 5 32 32 NON_TRIVIAL_MERGE 1 true true true 16 100 10 18 64 5 1
 ```
+
+## Configuring and running benchmark batches
+
+Steps:
+- Add your benchmark job(s) configuration in the `jobs.json` file
+- do `./benchmarks.sh`
+- If `saveResultsOnDisk` arg is passed as `true` then you can find your benchmark results in the `results` folder. For each successful benchmark run, two files are created `${benchmark_id}__benchmark_results_${timestamp}.json` and `${benchmark_id}__neighbors_${timestamp}.csv`
