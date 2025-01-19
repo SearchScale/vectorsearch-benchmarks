@@ -6,7 +6,6 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
-import java.util.Arrays;
 
 public class FBIvecsReader {
 
@@ -16,7 +15,6 @@ public class FBIvecsReader {
     fc.read(bb);
     bb.flip();
     int dimension = bb.getInt();
-    System.out.println("Dimension: " + dimension);
     return dimension;
   }
 
@@ -52,7 +50,6 @@ public class FBIvecsReader {
         row[rc++] = f;
 
         if (rc == dimension) {
-          System.out.println(Arrays.toString(row));
           vectors.add(row);
           count += 1;
           rc = 0;
@@ -100,7 +97,6 @@ public class FBIvecsReader {
         row[rc++] = f;
 
         if (rc == dimension) {
-          System.out.println(Arrays.toString(row));
           vectors.add(row);
           count += 1;
           rc = 0;
@@ -149,7 +145,6 @@ public class FBIvecsReader {
         row[rc++] = f;
 
         if (rc == dimension) {
-          System.out.println(Arrays.toString(row));
           vectors.add(row);
           count += 1;
           rc = 0;

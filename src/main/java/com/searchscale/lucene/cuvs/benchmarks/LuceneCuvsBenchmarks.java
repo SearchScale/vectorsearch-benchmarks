@@ -93,7 +93,13 @@ public class LuceneCuvsBenchmarks {
     List<String> titles = new ArrayList<String>();
     List<float[]> vectorColumn = new ArrayList<float[]>();
     long parseStartTime = System.currentTimeMillis();
-    parseCSVFile(config, titles, vectorColumn);
+    
+    if (config.datasetFile.endsWith(".csv")) {
+      parseCSVFile(config, titles, vectorColumn);
+    } else if (config.datasetFile.endsWith(".fvecs")) {
+      parseFvecsFile(config, titles, vectorColumn);
+    }
+    
     System.out.println("Time taken for parsing dataset: " + (System.currentTimeMillis() - parseStartTime + " ms"));
 
     // [2] Benchmarking setup
@@ -209,7 +215,7 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static void parseFvecsFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn) {
-    vectorColumn = FBIvecsReader.readFvecs(config.datasetFile, config.numDocs);
+    vectorColumn.addAll(FBIvecsReader.readFvecs(config.datasetFile, config.numDocs));
     titles.add(config.vectorColName);
   }
 
