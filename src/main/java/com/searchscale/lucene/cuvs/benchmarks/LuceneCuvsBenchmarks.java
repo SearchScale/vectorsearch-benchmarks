@@ -79,6 +79,7 @@ public class LuceneCuvsBenchmarks {
 
   private static boolean RESULTS_DEBUGGING = false; // when enabled, titles are indexed and printed after search
 
+  @SuppressWarnings("resource")
   public static void main(String[] args) throws Throwable {
 
     // [0] Parse Arguments
@@ -107,7 +108,9 @@ public class LuceneCuvsBenchmarks {
     // StandardAnalyzer()).setCodec(new CuVSCodec(
     // config.cuvsWriterThreads, config.cagraIntermediateGraphDegree,
     // config.cagraGraphDegree, config.mergeStrategy));
-    IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer()).setCodec(new CuVSCodec("CuVSCodec", new Lucene101Codec(), config.cuvsWriterThreads, config.cagraIntermediateGraphDegree, config.cagraGraphDegree, config.mergeStrategy));
+    IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer())
+        .setCodec(new CuVSCodec("CuVSCodec", new Lucene101Codec(), config.cuvsWriterThreads,
+            config.cagraIntermediateGraphDegree, config.cagraGraphDegree, config.mergeStrategy));
 
     cuvsIndexWriterConfig.setMaxBufferedDocs(config.commitFreq);
     cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
@@ -116,7 +119,7 @@ public class LuceneCuvsBenchmarks {
       hnswWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
     }
-    
+
     IndexWriter hnswIndexWriter;
     IndexWriter cuvsIndexWriter;
 
@@ -127,14 +130,27 @@ public class LuceneCuvsBenchmarks {
         FileUtils.deleteDirectory(hnswIndex.toFile());
         FileUtils.deleteDirectory(cuvsIndex.toFile());
       }
-     hnswIndexWriter = new IndexWriter(new NIOFSDirectory(hnswIndex), hnswWriterConfig);
-     cuvsIndexWriter = new IndexWriter(new NIOFSDirectory(cuvsIndex), cuvsIndexWriterConfig);
+      hnswIndexWriter = new IndexWriter(new NIOFSDirectory(hnswIndex), hnswWriterConfig);
+      cuvsIndexWriter = new IndexWriter(new NIOFSDirectory(cuvsIndex), cuvsIndexWriterConfig);
     } else {
-     hnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), hnswWriterConfig);
-     cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
+      hnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), hnswWriterConfig);
+      cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
     }
 
-    for (IndexWriter writer : new IndexWriter[] { cuvsIndexWriter, hnswIndexWriter }) {
+    ArrayList<IndexWriter> writers = new ArrayList<IndexWriter>();
+
+    if ("ALL".equalsIgnoreCase(config.algoToRun)) {
+      writers.add(cuvsIndexWriter);
+      writers.add(hnswIndexWriter);
+    } else if ("HNSW".equalsIgnoreCase(config.algoToRun)) {
+      writers.add(hnswIndexWriter);
+    } else if ("CAGRA".equalsIgnoreCase(config.algoToRun)) {
+      writers.add(cuvsIndexWriter);
+    } else {
+      throw new IllegalArgumentException("Please pass an acceptable option for `algoToRun`. Choices: ALL, HNSW, CAGRA");
+    }
+
+    for (IndexWriter writer : writers) {
       Codec codec = writer.getConfig().getCodec();
       String codecName = codec.getClass().getSimpleName().isEmpty() ? codec.getClass().getSuperclass().getSimpleName()
           : codec.getClass().getSimpleName();
@@ -171,23 +187,30 @@ public class LuceneCuvsBenchmarks {
       log.info("Querying documents using {}...", codecName); // error for different coloring
       query(writer.getDirectory(), config, codec instanceof CuVSCodec, metrics, queryResults);
     }
-    
+
     String timeStamp = new SimpleDateFormat("yyyy-MM-dd_HHmmss").format(Calendar.getInstance().getTime());
     System.out.println(timeStamp);
-    File results = new File("results");    
+    File results = new File("results");
     if (!results.exists()) {
       results.mkdir();
     }
-    
+
     String resultsJson = new ObjectMapper().writerWithDefaultPrettyPrinter()
         .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
 
     if (config.saveResultsOnDisk) {
-      writeCSV(queryResults, results.toString() + "/" + config.benchmarkID + "_neighbors_"+ timeStamp +".csv");
-      FileUtils.write(new File(results.toString() + "/"+ config.benchmarkID +"_benchmark_results_"+ timeStamp +".json"), resultsJson, Charset.forName("UTF-8"));
+      writeCSV(queryResults, results.toString() + "/" + config.benchmarkID + "_neighbors_" + timeStamp + ".csv");
+      FileUtils.write(
+          new File(results.toString() + "/" + config.benchmarkID + "_benchmark_results_" + timeStamp + ".json"),
+          resultsJson, Charset.forName("UTF-8"));
     }
 
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
+  }
+
+  private static void parseFvecsFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn) {
+    vectorColumn = FBIvecsReader.readFvecs(config.datasetFile, config.numDocs);
+    titles.add(config.vectorColName);
   }
 
   private static void parseCSVFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn)
@@ -207,8 +230,8 @@ public class LuceneCuvsBenchmarks {
       String[] csvLine;
       int countOfDocuments = 0;
       while ((csvLine = csvReader.readNext()) != null) {
-        if ((countOfDocuments++) == 0)
-          continue; // skip the first line of the file, it is a header
+        if ((countOfDocuments++) == 0) // skip the first line of the file, it is a header
+          continue;
         try {
           titles.add(csvLine[1]);
           vectorColumn.add(reduceDimensionVector(parseFloatArrayFromStringArray(csvLine[config.indexOfVector]),
@@ -230,7 +253,7 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static class BenchmarkConfiguration {
-    
+
     public String benchmarkID;
     public String datasetFile;
     public int indexOfVector;
@@ -247,12 +270,14 @@ public class LuceneCuvsBenchmarks {
     public boolean createIndexInMemory;
     public boolean cleanIndexDirectory;
     public boolean saveResultsOnDisk;
+    public boolean hasColNames;
+    public String algoToRun;
 
     // HNSW parameters
     public int hnswMaxConn; // 16 default (max 512)
     public int hnswBeamWidth; // 100 default (max 3200)
     public int hnswVisitedLimit;
-
+    
     // Cagra parameters
     public int cagraIntermediateGraphDegree; // 128 default
     public int cagraGraphDegree; // 64 default
@@ -276,15 +301,17 @@ public class LuceneCuvsBenchmarks {
       this.createIndexInMemory = Boolean.parseBoolean(args[13]);
       this.cleanIndexDirectory = Boolean.parseBoolean(args[14]);
       this.saveResultsOnDisk = Boolean.parseBoolean(args[15]);
+      this.hasColNames = Boolean.parseBoolean(args[16]);
+      this.algoToRun = args[17];
 
       // Parameter tuning
-      this.hnswMaxConn = Integer.valueOf(args[16]);
-      this.hnswBeamWidth = Integer.valueOf(args[17]);
-      this.hnswVisitedLimit = Integer.valueOf(args[18]);
-      this.cagraIntermediateGraphDegree = Integer.valueOf(args[19]);
-      this.cagraGraphDegree = Integer.valueOf(args[20]);
-      this.cagraITopK = Integer.valueOf(args[21]);
-      this.cagraSearchWidth = Integer.valueOf(args[22]);
+      this.hnswMaxConn = Integer.valueOf(args[18]);
+      this.hnswBeamWidth = Integer.valueOf(args[19]);
+      this.hnswVisitedLimit = Integer.valueOf(args[20]);
+      this.cagraIntermediateGraphDegree = Integer.valueOf(args[21]);
+      this.cagraGraphDegree = Integer.valueOf(args[22]);
+      this.cagraITopK = Integer.valueOf(args[23]);
+      this.cagraSearchWidth = Integer.valueOf(args[24]);
     }
 
     private void debugPrintArguments() {
@@ -303,6 +330,8 @@ public class LuceneCuvsBenchmarks {
       System.out.println("Create index in memory: " + createIndexInMemory);
       System.out.println("Clean index directory: " + cleanIndexDirectory);
       System.out.println("Save results on disk: " + saveResultsOnDisk);
+      System.out.println("Has column names in the dataset file: " + hasColNames);
+      System.out.println("algoToRun {Choices: HNSW | CAGRA | ALL}: " + algoToRun);
 
       System.out.println("------- algo parameters ------");
       System.out.println("hnswMaxConn: " + hnswMaxConn);
@@ -406,10 +435,18 @@ public class LuceneCuvsBenchmarks {
       List<Pair<Integer, float[]>> queries = new ArrayList<Pair<Integer, float[]>>();
 
       int i = 0;
-      for (String line : FileUtils.readFileToString(new File(config.queryFile), "UTF-8").split("\n")) {
-        float queryVector[] = reduceDimensionVector(parseFloatArrayFromStringArray(line), config.vectorDimension);
-        queries.add(Pair.of(i++, queryVector));
+      if (config.queryFile.endsWith(".txt")) {
+        for (String line : FileUtils.readFileToString(new File(config.queryFile), "UTF-8").split("\n")) {
+          float queryVector[] = reduceDimensionVector(parseFloatArrayFromStringArray(line), config.vectorDimension);
+          queries.add(Pair.of(i++, queryVector));
+        }
+      } else if (config.queryFile.endsWith(".fvecs")) {
+        ArrayList<float[]> qries = FBIvecsReader.readFvecs(config.queryFile, -1);
+        for (i = 0; i < qries.size(); i++) {
+          queries.add(Pair.of(i++, qries.get(i)));
+        }
       }
+
       int qThreads = config.queryThreads;
       if (useCuVS)
         qThreads = 1;

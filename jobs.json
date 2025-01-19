@@ -16,6 +16,8 @@
         "createIndexInMemory" : true,
         "cleanIndexDirectory" : true,
         "saveResultsOnDisk" : true,
+		"hasColNames": true,
+		"algoToRun": "HNSW",
         "hnswMaxConn" : 16,
         "hnswBeamWidth" : 100,
         "hnswVisitedLimit" : 10,

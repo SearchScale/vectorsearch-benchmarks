@@ -18,6 +18,8 @@ jq -c '.[]' jobs.json | while read i; do
     createIndexInMemory=$(echo $i | jq .createIndexInMemory | tr -d '"');
     cleanIndexDirectory=$(echo $i | jq .cleanIndexDirectory | tr -d '"');
     saveResultsOnDisk=$(echo $i | jq .saveResultsOnDisk | tr -d '"');
+    hasColNames=$(echo $i | jq .hasColNames | tr -d '"');
+    algoToRun=$(echo $i | jq .algoToRun | tr -d '"');
     hnswMaxConn=$(echo $i | jq .hnswMaxConn | tr -d '"');
     hnswBeamWidth=$(echo $i | jq .hnswBeamWidth | tr -d '"');
     hnswVisitedLimit=$(echo $i | jq .hnswVisitedLimit | tr -d '"');
@@ -26,6 +28,6 @@ jq -c '.[]' jobs.json | while read i; do
     cagraITopK=$(echo $i | jq .cagraITopK | tr -d '"');
     cagraSearchWidth=$(echo $i | jq .cagraSearchWidth | tr -d '"');
 
-    java -jar target/vectorsearch-benchmarks-1.0-jar-with-dependencies.jar ${benchmarkID} ${datasetFile} ${indexOfVector} ${vectorColName} ${numDocs} ${vectorDimension} ${queryFile} ${commitFreq} ${topK} ${hnswThreads} ${cuvsWriterThreads} ${mergeStrategy} ${queryThreads} ${createIndexInMemory} ${cleanIndexDirectory} ${saveResultsOnDisk} ${hnswMaxConn} ${hnswBeamWidth} ${hnswVisitedLimit} ${cagraIntermediateGraphDegree} ${cagraGraphDegree} ${cagraITopK} ${cagraSearchWidth}
+    java -jar target/vectorsearch-benchmarks-1.0-jar-with-dependencies.jar ${benchmarkID} ${datasetFile} ${indexOfVector} ${vectorColName} ${numDocs} ${vectorDimension} ${queryFile} ${commitFreq} ${topK} ${hnswThreads} ${cuvsWriterThreads} ${mergeStrategy} ${queryThreads} ${createIndexInMemory} ${cleanIndexDirectory} ${saveResultsOnDisk} ${hasColNames} ${algoToRun} ${hnswMaxConn} ${hnswBeamWidth} ${hnswVisitedLimit} ${cagraIntermediateGraphDegree} ${cagraGraphDegree} ${cagraITopK} ${cagraSearchWidth}
 
 done
