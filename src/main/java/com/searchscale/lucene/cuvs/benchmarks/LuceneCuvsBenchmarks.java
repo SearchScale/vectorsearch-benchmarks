@@ -424,7 +424,10 @@ public class LuceneCuvsBenchmarks {
     final List<Float> scores;
     @JsonProperty("latency")
     final double latencyMs;
+    @JsonProperty("precision")
+    double precision;
 
+    
     public QueryResult(String codec, int id, List<Integer> docs, int[] groundTruth, List<Float> scores, double latencyMs) {
       this.codec = codec;
       this.queryId = id;
@@ -432,6 +435,17 @@ public class LuceneCuvsBenchmarks {
       this.groundTruth = groundTruth;
       this.scores = scores;
       this.latencyMs = latencyMs;
+      calculatePrecision();
+    }
+    
+    private void calculatePrecision() {
+      int matches = 0;
+      for(int g : groundTruth) {
+        if (docs.contains(g)) {
+          matches += 1;
+        }
+      }
+      this.precision = ((float)matches/(float)docs.size()) * 100.0; 
     }
 
     @Override
@@ -507,7 +521,7 @@ public class LuceneCuvsBenchmarks {
           }
 
           QueryResult result = new QueryResult(useCuVS ? "lucene_cuvs" : "lucene_hnsw", queryId,
-              useCuVS ? neighbors.reversed() : neighbors, groundTruth.get(qid.get()) , useCuVS ? scores.reversed() : scores, searchTimeTakenMs);
+              useCuVS ? neighbors.reversed() : neighbors, groundTruth.get(queryId) , useCuVS ? scores.reversed() : scores, searchTimeTakenMs);
           queryResults.add(result);
           qid.incrementAndGet();
           log.info("Result: " + result);
