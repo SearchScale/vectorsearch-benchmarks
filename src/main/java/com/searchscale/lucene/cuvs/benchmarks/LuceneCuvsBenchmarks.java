@@ -97,7 +97,7 @@ public class LuceneCuvsBenchmarks {
     if (config.datasetFile.endsWith(".csv")) {
       parseCSVFile(config, titles, vectorColumn);
     } else if (config.datasetFile.endsWith(".fvecs")) {
-      parseFvecsFile(config, titles, vectorColumn);
+      readFvecsBaseFile(config, titles, vectorColumn);
     }
     
     System.out.println("Time taken for parsing dataset: " + (System.currentTimeMillis() - parseStartTime + " ms"));
@@ -191,7 +191,7 @@ public class LuceneCuvsBenchmarks {
             e);
       }
       log.info("Querying documents using {}...", codecName); // error for different coloring
-      query(writer.getDirectory(), config, codec instanceof CuVSCodec, metrics, queryResults);
+      query(writer.getDirectory(), config, codec instanceof CuVSCodec, metrics, queryResults, readGroundTruthFile(config.groundTruthFile, config.numDocs));
     }
 
     String timeStamp = new SimpleDateFormat("yyyy-MM-dd_HHmmss").format(Calendar.getInstance().getTime());
@@ -213,8 +213,12 @@ public class LuceneCuvsBenchmarks {
 
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
   }
+  
+  private static List<int[]> readGroundTruthFile(String groundTruthFile, int numRows) {
+    return FBIvecsReader.readIvecs(groundTruthFile, numRows);
+  }
 
-  private static void parseFvecsFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn) {
+  private static void readFvecsBaseFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn) {
     vectorColumn.addAll(FBIvecsReader.readFvecs(config.datasetFile, config.numDocs));
     titles.add(config.vectorColName);
   }
@@ -278,6 +282,7 @@ public class LuceneCuvsBenchmarks {
     public boolean saveResultsOnDisk;
     public boolean hasColNames;
     public String algoToRun;
+    public String groundTruthFile;
 
     // HNSW parameters
     public int hnswMaxConn; // 16 default (max 512)
@@ -309,15 +314,16 @@ public class LuceneCuvsBenchmarks {
       this.saveResultsOnDisk = Boolean.parseBoolean(args[15]);
       this.hasColNames = Boolean.parseBoolean(args[16]);
       this.algoToRun = args[17];
+      this.groundTruthFile = args[18];
 
       // Parameter tuning
-      this.hnswMaxConn = Integer.valueOf(args[18]);
-      this.hnswBeamWidth = Integer.valueOf(args[19]);
-      this.hnswVisitedLimit = Integer.valueOf(args[20]);
-      this.cagraIntermediateGraphDegree = Integer.valueOf(args[21]);
-      this.cagraGraphDegree = Integer.valueOf(args[22]);
-      this.cagraITopK = Integer.valueOf(args[23]);
-      this.cagraSearchWidth = Integer.valueOf(args[24]);
+      this.hnswMaxConn = Integer.valueOf(args[19]);
+      this.hnswBeamWidth = Integer.valueOf(args[20]);
+      this.hnswVisitedLimit = Integer.valueOf(args[21]);
+      this.cagraIntermediateGraphDegree = Integer.valueOf(args[22]);
+      this.cagraGraphDegree = Integer.valueOf(args[23]);
+      this.cagraITopK = Integer.valueOf(args[24]);
+      this.cagraSearchWidth = Integer.valueOf(args[25]);
     }
 
     private void debugPrintArguments() {
@@ -338,6 +344,7 @@ public class LuceneCuvsBenchmarks {
       System.out.println("Save results on disk: " + saveResultsOnDisk);
       System.out.println("Has column names in the dataset file: " + hasColNames);
       System.out.println("algoToRun {Choices: HNSW | CAGRA | ALL}: " + algoToRun);
+      System.out.println("Ground Truth file used is: " + groundTruthFile);
 
       System.out.println("------- algo parameters ------");
       System.out.println("hnswMaxConn: " + hnswMaxConn);
@@ -411,15 +418,18 @@ public class LuceneCuvsBenchmarks {
     final public int queryId;
     @JsonProperty("docs")
     final List<Integer> docs;
+    @JsonProperty("ground-truth")
+    final int[] groundTruth;
     @JsonProperty("scores")
     final List<Float> scores;
     @JsonProperty("latency")
     final double latencyMs;
 
-    public QueryResult(String codec, int id, List<Integer> docs, List<Float> scores, double latencyMs) {
+    public QueryResult(String codec, int id, List<Integer> docs, int[] groundTruth, List<Float> scores, double latencyMs) {
       this.codec = codec;
       this.queryId = id;
       this.docs = docs;
+      this.groundTruth = groundTruth;
       this.scores = scores;
       this.latencyMs = latencyMs;
     }
@@ -435,7 +445,7 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static void query(Directory directory, BenchmarkConfiguration config, boolean useCuVS,
-      Map<String, Object> metrics, List<QueryResult> queryResults) {
+      Map<String, Object> metrics, List<QueryResult> queryResults, List<int[]> groundTruth) {
     try (IndexReader indexReader = DirectoryReader.open(directory)) {
       IndexSearcher indexSearcher = new IndexSearcher(indexReader);
       List<Pair<Integer, float[]>> queries = new ArrayList<Pair<Integer, float[]>>();
@@ -448,8 +458,8 @@ public class LuceneCuvsBenchmarks {
         }
       } else if (config.queryFile.endsWith(".fvecs")) {
         ArrayList<float[]> qries = FBIvecsReader.readFvecs(config.queryFile, -1);
-        for (i = 0; i < qries.size(); i++) {
-          queries.add(Pair.of(i++, qries.get(i)));
+        for (int j = 0; j < qries.size(); j++) {
+          queries.add(Pair.of(i++, qries.get(j)));
         }
       }
 
@@ -461,6 +471,7 @@ public class LuceneCuvsBenchmarks {
       ConcurrentHashMap<Integer, Double> queryLatencies = new ConcurrentHashMap<Integer, Double>();
 
       long startTime = System.currentTimeMillis();
+      AtomicInteger qid = new AtomicInteger(0);
       for (Pair<Integer, float[]> queryPair : queries) {
         final Pair<Integer, float[]> pair = queryPair;
         pool.submit(() -> {
@@ -496,8 +507,9 @@ public class LuceneCuvsBenchmarks {
           }
 
           QueryResult result = new QueryResult(useCuVS ? "lucene_cuvs" : "lucene_hnsw", queryId,
-              useCuVS ? neighbors.reversed() : neighbors, useCuVS ? scores.reversed() : scores, searchTimeTakenMs);
+              useCuVS ? neighbors.reversed() : neighbors, groundTruth.get(qid.get()) , useCuVS ? scores.reversed() : scores, searchTimeTakenMs);
           queryResults.add(result);
+          qid.incrementAndGet();
           log.info("Result: " + result);
         });
       }
