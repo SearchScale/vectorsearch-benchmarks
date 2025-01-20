@@ -93,13 +93,13 @@ public class LuceneCuvsBenchmarks {
     List<String> titles = new ArrayList<String>();
     List<float[]> vectorColumn = new ArrayList<float[]>();
     long parseStartTime = System.currentTimeMillis();
-    
+
     if (config.datasetFile.endsWith(".csv")) {
       parseCSVFile(config, titles, vectorColumn);
     } else if (config.datasetFile.endsWith(".fvecs")) {
       readFvecsBaseFile(config, titles, vectorColumn);
     }
-    
+
     System.out.println("Time taken for parsing dataset: " + (System.currentTimeMillis() - parseStartTime + " ms"));
 
     // [2] Benchmarking setup
@@ -191,7 +191,8 @@ public class LuceneCuvsBenchmarks {
             e);
       }
       log.info("Querying documents using {}...", codecName); // error for different coloring
-      query(writer.getDirectory(), config, codec instanceof CuVSCodec, metrics, queryResults, readGroundTruthFile(config.groundTruthFile, config.numDocs));
+      query(writer.getDirectory(), config, codec instanceof CuVSCodec, metrics, queryResults,
+          readGroundTruthFile(config.groundTruthFile, config.numDocs));
     }
 
     String timeStamp = new SimpleDateFormat("yyyy-MM-dd_HHmmss").format(Calendar.getInstance().getTime());
@@ -200,7 +201,22 @@ public class LuceneCuvsBenchmarks {
     if (!results.exists()) {
       results.mkdir();
     }
-
+    
+    double minPrecision = 100;
+    double maxPrecision = 0;
+    double avgPrecision = 0;
+    
+    for (QueryResult result : queryResults) {
+      minPrecision = Math.min(minPrecision, result.precision);
+      maxPrecision = Math.max(maxPrecision, result.precision);
+      avgPrecision += result.precision;
+    }
+    avgPrecision = avgPrecision/queryResults.size();
+    
+    metrics.put("min-precision", minPrecision);
+    metrics.put("max-precision", maxPrecision);
+    metrics.put("avg-precision", avgPrecision);
+    
     String resultsJson = new ObjectMapper().writerWithDefaultPrettyPrinter()
         .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
 
@@ -213,12 +229,13 @@ public class LuceneCuvsBenchmarks {
 
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
   }
-  
+
   private static List<int[]> readGroundTruthFile(String groundTruthFile, int numRows) {
     return FBIvecsReader.readIvecs(groundTruthFile, numRows);
   }
 
-  private static void readFvecsBaseFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn) {
+  private static void readFvecsBaseFile(BenchmarkConfiguration config, List<String> titles,
+      List<float[]> vectorColumn) {
     vectorColumn.addAll(FBIvecsReader.readFvecs(config.datasetFile, config.numDocs));
     titles.add(config.vectorColName);
   }
@@ -288,7 +305,7 @@ public class LuceneCuvsBenchmarks {
     public int hnswMaxConn; // 16 default (max 512)
     public int hnswBeamWidth; // 100 default (max 3200)
     public int hnswVisitedLimit;
-    
+
     // Cagra parameters
     public int cagraIntermediateGraphDegree; // 128 default
     public int cagraGraphDegree; // 64 default
@@ -427,8 +444,8 @@ public class LuceneCuvsBenchmarks {
     @JsonProperty("precision")
     double precision;
 
-    
-    public QueryResult(String codec, int id, List<Integer> docs, int[] groundTruth, List<Float> scores, double latencyMs) {
+    public QueryResult(String codec, int id, List<Integer> docs, int[] groundTruth, List<Float> scores,
+        double latencyMs) {
       this.codec = codec;
       this.queryId = id;
       this.docs = docs;
@@ -437,15 +454,15 @@ public class LuceneCuvsBenchmarks {
       this.latencyMs = latencyMs;
       calculatePrecision();
     }
-    
+
     private void calculatePrecision() {
       int matches = 0;
-      for(int g : groundTruth) {
+      for (int g : groundTruth) {
         if (docs.contains(g)) {
           matches += 1;
         }
       }
-      this.precision = ((float)matches/(float)docs.size()) * 100.0; 
+      this.precision = ((float) matches / (float) docs.size()) * 100.0;
     }
 
     @Override
@@ -516,12 +533,18 @@ public class LuceneCuvsBenchmarks {
           List<Integer> neighbors = new ArrayList<>();
           List<Float> scores = new ArrayList<>();
           for (ScoreDoc hit : hits) {
-            neighbors.add(hit.doc);
+            try {
+              Document d = indexReader.storedFields().document(hit.doc);
+              neighbors.add(Integer.parseInt(d.get("id")));
+            } catch (IOException e) {
+              e.printStackTrace();
+            }
             scores.add(hit.score);
           }
 
           QueryResult result = new QueryResult(useCuVS ? "lucene_cuvs" : "lucene_hnsw", queryId,
-              useCuVS ? neighbors.reversed() : neighbors, groundTruth.get(queryId) , useCuVS ? scores.reversed() : scores, searchTimeTakenMs);
+              useCuVS ? neighbors.reversed() : neighbors, groundTruth.get(queryId),
+              useCuVS ? scores.reversed() : scores, searchTimeTakenMs);
           queryResults.add(result);
           qid.incrementAndGet();
           log.info("Result: " + result);
