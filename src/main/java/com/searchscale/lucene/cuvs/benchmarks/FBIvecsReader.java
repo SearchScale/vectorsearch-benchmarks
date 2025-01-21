@@ -132,7 +132,7 @@ public class FBIvecsReader {
       int rc = 0;
 
       while (true) {
-        ByteBuffer bbf = ByteBuffer.allocate(4);
+        ByteBuffer bbf = ByteBuffer.allocate(1);
         bbf.order(ByteOrder.LITTLE_ENDIAN);
 
         int x = fc.read(bbf);
@@ -141,8 +141,7 @@ public class FBIvecsReader {
         }
 
         bbf.flip();
-        int f = bbf.get() & 0xff; // TODO: This is not returning the correct numbers, needs a fix.
-        row[rc++] = f;
+        row[rc++] = bbf.get() & 0xff;
 
         if (rc == dimension) {
           vectors.add(row);
