@@ -231,6 +231,7 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static List<int[]> readGroundTruthFile(String groundTruthFile, int numRows) {
+    // TODO: modify this to parse a csv ground truth file for csv datasets.
     return FBIvecsReader.readIvecs(groundTruthFile, numRows);
   }
 
