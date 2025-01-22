@@ -18,12 +18,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipFile;
 
@@ -204,17 +206,28 @@ public class LuceneCuvsBenchmarks {
     double minPrecision = 100;
     double maxPrecision = 0;
     double avgPrecision = 0;
+    double minRecall = 100;
+    double maxRecall = 0;
+    double avgRecall = 0;
 
     for (QueryResult result : queryResults) {
       minPrecision = Math.min(minPrecision, result.precision);
       maxPrecision = Math.max(maxPrecision, result.precision);
       avgPrecision += result.precision;
+      minRecall = Math.min(minRecall, result.recall);
+      maxRecall = Math.max(maxRecall, result.recall);
+      avgRecall += result.recall;
     }
     avgPrecision = avgPrecision / queryResults.size();
+    avgRecall = avgRecall / queryResults.size();
 
     metrics.put("min-precision", minPrecision);
     metrics.put("max-precision", maxPrecision);
     metrics.put("avg-precision", avgPrecision);
+
+    metrics.put("min-recall", minRecall);
+    metrics.put("max-recall", maxRecall);
+    metrics.put("avg-recall", avgRecall);
 
     String resultsJson = new ObjectMapper().writerWithDefaultPrettyPrinter()
         .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
@@ -446,6 +459,8 @@ public class LuceneCuvsBenchmarks {
     final double latencyMs;
     @JsonProperty("precision")
     double precision;
+    @JsonProperty("recall")
+    double recall;
 
     public QueryResult(String codec, int id, List<Integer> docs, int[] groundTruth, List<Float> scores,
         double latencyMs) {
@@ -455,17 +470,28 @@ public class LuceneCuvsBenchmarks {
       this.groundTruth = groundTruth;
       this.scores = scores;
       this.latencyMs = latencyMs;
-      calculatePrecision();
+      calculatePrecisionAndRecall();
     }
 
-    private void calculatePrecision() {
-      int matches = 0;
+    private void calculatePrecisionAndRecall() {
+
+      ArrayList<Integer> topKGroundtruthValues = new ArrayList<Integer>();
+      for (int i = 0; i < docs.size(); i++) { // docs.size() is the topK value
+        topKGroundtruthValues.add(groundTruth[i]);
+      }
+
+      int precisionMatches = 0;
       for (int g : groundTruth) {
         if (docs.contains(g)) {
-          matches += 1;
+          precisionMatches += 1;
         }
       }
-      this.precision = ((float) matches / (float) docs.size()) * 100.0;
+      this.precision = ((float) precisionMatches / (float) docs.size()) * 100.0;
+
+      Set<Integer> matchingRecallValues = docs.stream().distinct().filter(topKGroundtruthValues::contains)
+          .collect(Collectors.toSet());
+
+      this.recall = ((float) matchingRecallValues.size() / (float) topKGroundtruthValues.size()) * 100.0;
     }
 
     @Override
