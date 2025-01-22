@@ -20,7 +20,7 @@ public class FBIvecsReader {
   }
 
   public static ArrayList<float[]> readFvecs(String filePath, int numRows) {
-
+    System.out.println("Reading " + numRows + " from file: " + filePath);
     ArrayList<float[]> vectors = new ArrayList<float[]>();
 
     try {
@@ -57,15 +57,15 @@ public class FBIvecsReader {
         }
       }
       is.close();
+      System.out.println("Reading complete. Read " + count + " vectors");
     } catch (Exception e) {
       e.printStackTrace();
     }
-
     return vectors;
   }
 
   public static ArrayList<int[]> readIvecs(String filePath, int numRows) {
-
+    System.out.println("Reading " + numRows + " from file: " + filePath);
     ArrayList<int[]> vectors = new ArrayList<int[]>();
 
     try {
@@ -103,16 +103,16 @@ public class FBIvecsReader {
         }
       }
       is.close();
+      System.out.println("Reading complete. Read " + count + " vectors");
     } catch (Exception e) {
       e.printStackTrace();
     }
-
     return vectors;
   }
 
-  public static ArrayList<int[]> readBvecs(String filePath, int numRows) {
-
-    ArrayList<int[]> vectors = new ArrayList<int[]>();
+  public static ArrayList<float[]> readBvecs(String filePath, int numRows) {
+    System.out.println("Reading " + numRows + " from file: " + filePath);
+    ArrayList<float[]> vectors = new ArrayList<float[]>();
 
     try {
       InputStream is = null;
@@ -124,9 +124,8 @@ public class FBIvecsReader {
       }
 
       int dimension = getDimension(is);
-      System.out.println(dimension);
 
-      int[] row = new int[dimension];
+      float[] row = new float[dimension];
       int count = 0;
       int rc = 0;
 
@@ -140,7 +139,7 @@ public class FBIvecsReader {
           vectors.add(row);
           count += 1;
           rc = 0;
-          row = new int[dimension];
+          row = new float[dimension];
 
           // Skip last 4 bytes.
           is.readNBytes(4);
@@ -151,6 +150,7 @@ public class FBIvecsReader {
         }
       }
       is.close();
+      System.out.println("Reading complete. Read " + count + " vectors");
     } catch (Exception e) {
       e.printStackTrace();
     }

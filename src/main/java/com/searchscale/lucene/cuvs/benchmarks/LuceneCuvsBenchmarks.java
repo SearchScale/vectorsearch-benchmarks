@@ -96,8 +96,8 @@ public class LuceneCuvsBenchmarks {
 
     if (config.datasetFile.endsWith(".csv")) {
       parseCSVFile(config, titles, vectorColumn);
-    } else if (config.datasetFile.endsWith(".fvecs")) {
-      readFvecsBaseFile(config, titles, vectorColumn);
+    } else if (config.datasetFile.contains("fvecs") || config.datasetFile.contains("bvecs")) {
+      readBaseFile(config, titles, vectorColumn);
     }
 
     System.out.println("Time taken for parsing dataset: " + (System.currentTimeMillis() - parseStartTime + " ms"));
@@ -196,27 +196,26 @@ public class LuceneCuvsBenchmarks {
     }
 
     String timeStamp = new SimpleDateFormat("yyyy-MM-dd_HHmmss").format(Calendar.getInstance().getTime());
-    System.out.println(timeStamp);
     File results = new File("results");
     if (!results.exists()) {
       results.mkdir();
     }
-    
+
     double minPrecision = 100;
     double maxPrecision = 0;
     double avgPrecision = 0;
-    
+
     for (QueryResult result : queryResults) {
       minPrecision = Math.min(minPrecision, result.precision);
       maxPrecision = Math.max(maxPrecision, result.precision);
       avgPrecision += result.precision;
     }
-    avgPrecision = avgPrecision/queryResults.size();
-    
+    avgPrecision = avgPrecision / queryResults.size();
+
     metrics.put("min-precision", minPrecision);
     metrics.put("max-precision", maxPrecision);
     metrics.put("avg-precision", avgPrecision);
-    
+
     String resultsJson = new ObjectMapper().writerWithDefaultPrettyPrinter()
         .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
 
@@ -235,9 +234,12 @@ public class LuceneCuvsBenchmarks {
     return FBIvecsReader.readIvecs(groundTruthFile, numRows);
   }
 
-  private static void readFvecsBaseFile(BenchmarkConfiguration config, List<String> titles,
-      List<float[]> vectorColumn) {
-    vectorColumn.addAll(FBIvecsReader.readFvecs(config.datasetFile, config.numDocs));
+  private static void readBaseFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn) {
+    if (config.datasetFile.contains("fvecs")) {
+      vectorColumn.addAll(FBIvecsReader.readFvecs(config.datasetFile, config.numDocs));
+    } else if (config.datasetFile.contains("bvecs")) {
+      vectorColumn.addAll(FBIvecsReader.readBvecs(config.datasetFile, config.numDocs));
+    }
     titles.add(config.vectorColName);
   }
 
@@ -488,8 +490,13 @@ public class LuceneCuvsBenchmarks {
           float queryVector[] = reduceDimensionVector(parseFloatArrayFromStringArray(line), config.vectorDimension);
           queries.add(Pair.of(i++, queryVector));
         }
-      } else if (config.queryFile.endsWith(".fvecs")) {
+      } else if (config.queryFile.contains("fvecs")) {
         ArrayList<float[]> qries = FBIvecsReader.readFvecs(config.queryFile, -1);
+        for (int j = 0; j < qries.size(); j++) {
+          queries.add(Pair.of(i++, qries.get(j)));
+        }
+      } else if (config.queryFile.contains("bvecs")) {
+        ArrayList<float[]> qries = FBIvecsReader.readBvecs(config.queryFile, -1);
         for (int j = 0; j < qries.size(); j++) {
           queries.add(Pair.of(i++, qries.get(j)));
         }
@@ -503,7 +510,6 @@ public class LuceneCuvsBenchmarks {
       ConcurrentHashMap<Integer, Double> queryLatencies = new ConcurrentHashMap<Integer, Double>();
 
       long startTime = System.currentTimeMillis();
-      AtomicInteger qid = new AtomicInteger(0);
       for (Pair<Integer, float[]> queryPair : queries) {
         final Pair<Integer, float[]> pair = queryPair;
         pool.submit(() -> {
@@ -547,8 +553,6 @@ public class LuceneCuvsBenchmarks {
               useCuVS ? neighbors.reversed() : neighbors, groundTruth.get(queryId),
               useCuVS ? scores.reversed() : scores, searchTimeTakenMs);
           queryResults.add(result);
-          qid.incrementAndGet();
-          log.info("Result: " + result);
         });
       }
 
