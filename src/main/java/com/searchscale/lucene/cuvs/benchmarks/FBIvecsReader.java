@@ -2,52 +2,45 @@ package com.searchscale.lucene.cuvs.benchmarks;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.channels.FileChannel;
 import java.util.ArrayList;
+import java.util.zip.GZIPInputStream;
 
+//TODO: The three static methods have a lot of common logic, ideally should be combined as just one.
 public class FBIvecsReader {
 
-  public static int getDimension(FileChannel fc) throws IOException {
-    ByteBuffer bb = ByteBuffer.allocate(4);
+  public static int getDimension(InputStream fc) throws IOException {
+    byte[] b = fc.readNBytes(4);
+    ByteBuffer bb = ByteBuffer.wrap(b);
     bb.order(ByteOrder.LITTLE_ENDIAN);
-    fc.read(bb);
-    bb.flip();
     int dimension = bb.getInt();
     return dimension;
   }
 
-  public static void skipBytes(FileChannel fc) throws IOException {
-    ByteBuffer bbfS = ByteBuffer.allocate(4);
-    bbfS.order(ByteOrder.LITTLE_ENDIAN);
-    fc.read(bbfS);
-  }
-
-  @SuppressWarnings("resource")
   public static ArrayList<float[]> readFvecs(String filePath, int numRows) {
 
     ArrayList<float[]> vectors = new ArrayList<float[]>();
 
-    try (FileChannel fc = new FileInputStream(filePath).getChannel()) {
+    try {
+      InputStream is = null;
 
-      int dimension = getDimension(fc);
+      if (filePath.endsWith("fvecs.gz")) {
+        is = new GZIPInputStream(new FileInputStream(filePath));
+      } else if (filePath.endsWith(".fvecs")) {
+        is = new FileInputStream(filePath);
+      }
+
+      int dimension = getDimension(is);
       float[] row = new float[dimension];
       int count = 0;
       int rc = 0;
 
-      while (true) {
-        ByteBuffer bbf = ByteBuffer.allocate(4);
+      while (is.available() != 0) {
+        ByteBuffer bbf = ByteBuffer.wrap(is.readNBytes(4));
         bbf.order(ByteOrder.LITTLE_ENDIAN);
-
-        int x = fc.read(bbf);
-        if (x == -1) {
-          break;
-        }
-
-        bbf.flip();
-        float f = bbf.getFloat();
-        row[rc++] = f;
+        row[rc++] = bbf.getFloat();
 
         if (rc == dimension) {
           vectors.add(row);
@@ -56,14 +49,14 @@ public class FBIvecsReader {
           row = new float[dimension];
 
           // Skip last 4 bytes.
-          skipBytes(fc);
+          is.readNBytes(4);
 
           if (numRows != -1 && count == numRows) {
             break;
           }
         }
       }
-      fc.close();
+      is.close();
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -71,30 +64,29 @@ public class FBIvecsReader {
     return vectors;
   }
 
-  @SuppressWarnings("resource")
   public static ArrayList<int[]> readIvecs(String filePath, int numRows) {
 
     ArrayList<int[]> vectors = new ArrayList<int[]>();
 
-    try (FileChannel fc = new FileInputStream(filePath).getChannel()) {
+    try {
+      InputStream is = null;
 
-      int dimension = getDimension(fc);
+      if (filePath.endsWith("ivecs.gz")) {
+        is = new GZIPInputStream(new FileInputStream(filePath));
+      } else if (filePath.endsWith(".ivecs")) {
+        is = new FileInputStream(filePath);
+      }
+
+      int dimension = getDimension(is);
       int[] row = new int[dimension];
       int count = 0;
       int rc = 0;
 
-      while (true) {
-        ByteBuffer bbf = ByteBuffer.allocate(4);
+      while (is.available() != 0) {
+
+        ByteBuffer bbf = ByteBuffer.wrap(is.readNBytes(4));
         bbf.order(ByteOrder.LITTLE_ENDIAN);
-
-        int x = fc.read(bbf);
-        if (x == -1) {
-          break;
-        }
-
-        bbf.flip();
-        int f = bbf.getInt();
-        row[rc++] = f;
+        row[rc++] = bbf.getInt();
 
         if (rc == dimension) {
           vectors.add(row);
@@ -103,14 +95,14 @@ public class FBIvecsReader {
           row = new int[dimension];
 
           // Skip last 4 bytes.
-          skipBytes(fc);
+          is.readNBytes(4);
 
           if (numRows != -1 && count == numRows) {
             break;
           }
         }
       }
-      fc.close();
+      is.close();
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -118,29 +110,30 @@ public class FBIvecsReader {
     return vectors;
   }
 
-  @SuppressWarnings("resource")
   public static ArrayList<int[]> readBvecs(String filePath, int numRows) {
 
     ArrayList<int[]> vectors = new ArrayList<int[]>();
 
-    try (FileChannel fc = new FileInputStream(filePath).getChannel()) {
+    try {
+      InputStream is = null;
 
-      int dimension = getDimension(fc);
+      if (filePath.endsWith("bvecs.gz")) {
+        is = new GZIPInputStream(new FileInputStream(filePath));
+      } else if (filePath.endsWith(".bvecs")) {
+        is = new FileInputStream(filePath);
+      }
+
+      int dimension = getDimension(is);
+      System.out.println(dimension);
 
       int[] row = new int[dimension];
       int count = 0;
       int rc = 0;
 
-      while (true) {
-        ByteBuffer bbf = ByteBuffer.allocate(1);
+      while (is.available() != 0) {
+
+        ByteBuffer bbf = ByteBuffer.wrap(is.readNBytes(1));
         bbf.order(ByteOrder.LITTLE_ENDIAN);
-
-        int x = fc.read(bbf);
-        if (x == -1) {
-          break;
-        }
-
-        bbf.flip();
         row[rc++] = bbf.get() & 0xff;
 
         if (rc == dimension) {
@@ -150,14 +143,14 @@ public class FBIvecsReader {
           row = new int[dimension];
 
           // Skip last 4 bytes.
-          skipBytes(fc);
+          is.readNBytes(4);
 
           if (numRows != -1 && count == numRows) {
             break;
           }
         }
       }
-      fc.close();
+      is.close();
     } catch (Exception e) {
       e.printStackTrace();
     }
