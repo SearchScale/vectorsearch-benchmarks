@@ -48,13 +48,11 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
-import org.apache.lucene.index.NoMergePolicy;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.sandbox.vectorsearch.CuVSCodec;
 import org.apache.lucene.sandbox.vectorsearch.CuVSKnnFloatVectorQuery;
-import org.apache.lucene.sandbox.vectorsearch.CuVSVectorsWriter.MergeStrategy;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.KnnFloatVectorQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -117,16 +115,15 @@ public class LuceneCuvsBenchmarks {
     // config.cuvsWriterThreads, config.cagraIntermediateGraphDegree,
     // config.cagraGraphDegree, config.mergeStrategy));
     IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer())
-        .setCodec(new CuVSCodec("CuVSCodec", new Lucene101Codec(), config.cuvsWriterThreads,
-            config.cagraIntermediateGraphDegree, config.cagraGraphDegree, config.mergeStrategy));
+        .setCodec(new CuVSCodec());
 
     cuvsIndexWriterConfig.setMaxBufferedDocs(config.commitFreq);
     cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
 
-    if (config.mergeStrategy.equals(MergeStrategy.NON_TRIVIAL_MERGE)) {
-      hnswWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
-      cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
-    }
+//    if (config.mergeStrategy.equals(MergeStrategy.NON_TRIVIAL_MERGE)) {
+//      hnswWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
+//      cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
+//    }
 
     IndexWriter hnswIndexWriter;
     IndexWriter cuvsIndexWriter;
@@ -286,7 +283,7 @@ public class LuceneCuvsBenchmarks {
         if (countOfDocuments % 1000 == 0)
           System.out.print(".");
 
-        if (countOfDocuments == config.numDocs + 1)
+        if (countOfDocuments == config.numDocs + 10)
           break;
       }
       System.out.println();
@@ -308,7 +305,7 @@ public class LuceneCuvsBenchmarks {
     public int topK;
     public int hnswThreads;
     public int cuvsWriterThreads;
-    public MergeStrategy mergeStrategy;
+//    public MergeStrategy mergeStrategy;
     public int queryThreads;
     public boolean createIndexInMemory;
     public boolean cleanIndexDirectory;
@@ -340,23 +337,23 @@ public class LuceneCuvsBenchmarks {
       this.topK = Integer.valueOf(args[8]);
       this.hnswThreads = Integer.valueOf(args[9]);
       this.cuvsWriterThreads = Integer.valueOf(args[10]);
-      this.mergeStrategy = MergeStrategy.valueOf(args[11]);
-      this.queryThreads = Integer.valueOf(args[12]);
-      this.createIndexInMemory = Boolean.parseBoolean(args[13]);
-      this.cleanIndexDirectory = Boolean.parseBoolean(args[14]);
-      this.saveResultsOnDisk = Boolean.parseBoolean(args[15]);
-      this.hasColNames = Boolean.parseBoolean(args[16]);
-      this.algoToRun = args[17];
-      this.groundTruthFile = args[18];
+//      this.mergeStrategy = MergeStrategy.valueOf(args[11]);
+      this.queryThreads = Integer.valueOf(args[11]);
+      this.createIndexInMemory = Boolean.parseBoolean(args[12]);
+      this.cleanIndexDirectory = Boolean.parseBoolean(args[13]);
+      this.saveResultsOnDisk = Boolean.parseBoolean(args[14]);
+      this.hasColNames = Boolean.parseBoolean(args[15]);
+      this.algoToRun = args[16];
+      this.groundTruthFile = args[17];
 
       // Parameter tuning
-      this.hnswMaxConn = Integer.valueOf(args[19]);
-      this.hnswBeamWidth = Integer.valueOf(args[20]);
-      this.hnswVisitedLimit = Integer.valueOf(args[21]);
-      this.cagraIntermediateGraphDegree = Integer.valueOf(args[22]);
-      this.cagraGraphDegree = Integer.valueOf(args[23]);
-      this.cagraITopK = Integer.valueOf(args[24]);
-      this.cagraSearchWidth = Integer.valueOf(args[25]);
+      this.hnswMaxConn = Integer.valueOf(args[18]);
+      this.hnswBeamWidth = Integer.valueOf(args[19]);
+      this.hnswVisitedLimit = Integer.valueOf(args[20]);
+      this.cagraIntermediateGraphDegree = Integer.valueOf(args[21]);
+      this.cagraGraphDegree = Integer.valueOf(args[22]);
+      this.cagraITopK = Integer.valueOf(args[23]);
+      this.cagraSearchWidth = Integer.valueOf(args[24]);
     }
 
     private void debugPrintArguments() {
@@ -370,7 +367,7 @@ public class LuceneCuvsBenchmarks {
       System.out.println("Commit frequency (every n documents): " + commitFreq);
       System.out.println("TopK value is: " + topK);
       System.out.println("Lucene HNSW threads: " + hnswThreads);
-      System.out.println("cuVS Merge strategy: " + mergeStrategy);
+//      System.out.println("cuVS Merge strategy: " + mergeStrategy);
       System.out.println("Query threads: " + queryThreads);
       System.out.println("Create index in memory: " + createIndexInMemory);
       System.out.println("Clean index directory: " + cleanIndexDirectory);
@@ -396,9 +393,10 @@ public class LuceneCuvsBenchmarks {
     int threads = writer.getConfig().getCodec() instanceof CuVSCodec ? 1 : config.hnswThreads;
     ExecutorService pool = Executors.newFixedThreadPool(threads);
     AtomicInteger docsIndexed = new AtomicInteger(0);
+    AtomicInteger remainingDocs = new AtomicInteger(0);
     AtomicBoolean commitBeingCalled = new AtomicBoolean(false);
 
-    for (int i = 0; i < config.numDocs - 1; i++) {
+    for (int i = 1; i <= config.numDocs; i++) {
       final int index = i;
       pool.submit(() -> {
         Document document = new Document();
@@ -412,16 +410,18 @@ public class LuceneCuvsBenchmarks {
             ; // block until commit is over
           writer.addDocument(document);
           int docs = docsIndexed.incrementAndGet();
+          remainingDocs.incrementAndGet();
           // if (docs % 100 == 0) log.info("Docs added: " + docs);
 
           synchronized (pool) {
 
             if (docs % commitFrequency == 0 && !commitBeingCalled.get()) {
-              log.info(docs + " Docs indexed. Commit called...");
+              log.info(docs + " Docs indexed. Commit called..." + index);
               if (commitBeingCalled.get() == false) {
                 try {
                   commitBeingCalled.set(true);
                   writer.commit();
+                  remainingDocs.set(0);
                   commitBeingCalled.set(false);
                 } catch (IOException ex) {
                   ex.printStackTrace();
@@ -440,7 +440,11 @@ public class LuceneCuvsBenchmarks {
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
-    writer.commit();
+    if (remainingDocs.get() != 0) {
+      log.info("{} Docs remaining. Calling commit.", remainingDocs.get());
+      writer.commit();
+    }
+
     writer.close();
   }
 

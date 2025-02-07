@@ -13,7 +13,6 @@ jq -c '.[]' jobs.json | while read i; do
     topK=$(echo $i | jq .topK | tr -d '"');
     hnswThreads=$(echo $i | jq .hnswThreads | tr -d '"');
     cuvsWriterThreads=$(echo $i | jq .cuvsWriterThreads | tr -d '"');
-    mergeStrategy=$(echo $i | jq .mergeStrategy | tr -d '"');
     queryThreads=$(echo $i | jq .queryThreads | tr -d '"');
     createIndexInMemory=$(echo $i | jq .createIndexInMemory | tr -d '"');
     cleanIndexDirectory=$(echo $i | jq .cleanIndexDirectory | tr -d '"');
@@ -29,6 +28,7 @@ jq -c '.[]' jobs.json | while read i; do
     cagraITopK=$(echo $i | jq .cagraITopK | tr -d '"');
     cagraSearchWidth=$(echo $i | jq .cagraSearchWidth | tr -d '"');
 
-    java -jar target/vectorsearch-benchmarks-1.0-jar-with-dependencies.jar ${benchmarkID} ${datasetFile} ${indexOfVector} ${vectorColName} ${numDocs} ${vectorDimension} ${queryFile} ${commitFreq} ${topK} ${hnswThreads} ${cuvsWriterThreads} ${mergeStrategy} ${queryThreads} ${createIndexInMemory} ${cleanIndexDirectory} ${saveResultsOnDisk} ${hasColNames} ${algoToRun} ${groundTruthFile} ${hnswMaxConn} ${hnswBeamWidth} ${hnswVisitedLimit} ${cagraIntermediateGraphDegree} ${cagraGraphDegree} ${cagraITopK} ${cagraSearchWidth}
+    #java -jar target/vectorsearch-benchmarks-1.0-jar-with-dependencies.jar ${benchmarkID} ${datasetFile} ${indexOfVector} ${vectorColName} ${numDocs} ${vectorDimension} ${queryFile} ${commitFreq} ${topK} ${hnswThreads} ${cuvsWriterThreads} ${queryThreads} ${createIndexInMemory} ${cleanIndexDirectory} ${saveResultsOnDisk} ${hasColNames} ${algoToRun} ${groundTruthFile} ${hnswMaxConn} ${hnswBeamWidth} ${hnswVisitedLimit} ${cagraIntermediateGraphDegree} ${cagraGraphDegree} ${cagraITopK} ${cagraSearchWidth}
+    java -cp target/cuvs-java-examples-25.02.0.jar:~/.m2/repository/com/nvidia/cuvs/cuvs-java/25.02.0/cuvs-java-25.02.0.jar:target/vectorsearch-benchmarks-1.0-jar-with-dependencies.jar com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks ${benchmarkID} ${datasetFile} ${indexOfVector} ${vectorColName} ${numDocs} ${vectorDimension} ${queryFile} ${commitFreq} ${topK} ${hnswThreads} ${cuvsWriterThreads} ${queryThreads} ${createIndexInMemory} ${cleanIndexDirectory} ${saveResultsOnDisk} ${hasColNames} ${algoToRun} ${groundTruthFile} ${hnswMaxConn} ${hnswBeamWidth} ${hnswVisitedLimit} ${cagraIntermediateGraphDegree} ${cagraGraphDegree} ${cagraITopK} ${cagraSearchWidth}
 
 done
