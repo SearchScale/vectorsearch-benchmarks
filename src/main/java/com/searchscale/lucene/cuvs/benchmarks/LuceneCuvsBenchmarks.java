@@ -281,8 +281,6 @@ public class LuceneCuvsBenchmarks {
         if (countOfDocuments % 1000 == 0)
           System.out.print(".");
 
-        if (countOfDocuments == config.numDocs + 10)
-          break;
       }
       System.out.println();
     }
@@ -300,7 +298,7 @@ public class LuceneCuvsBenchmarks {
     AtomicInteger remainingDocs = new AtomicInteger(0);
     AtomicBoolean commitBeingCalled = new AtomicBoolean(false);
 
-    for (int i = 1; i <= config.numDocs; i++) {
+    for (int i = 0; i <= config.numDocs; i++) {
       final int index = i;
       pool.submit(() -> {
         Document document = new Document();
@@ -319,7 +317,7 @@ public class LuceneCuvsBenchmarks {
 
           synchronized (pool) {
 
-            if (docs % commitFrequency == 0 && !commitBeingCalled.get()) {
+            if ((docs % commitFrequency == 0 || index == config.numDocs - 1) && !commitBeingCalled.get()) {
               log.info(docs + " Docs indexed. Commit called..." + index);
               if (commitBeingCalled.get() == false) {
                 try {
@@ -344,6 +342,7 @@ public class LuceneCuvsBenchmarks {
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
+    // HERE IS THE PROBLEM!
     if (remainingDocs.get() != 0) {
       log.info("{} Docs remaining. Calling commit.", remainingDocs.get());
       writer.commit();
