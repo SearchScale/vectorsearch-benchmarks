@@ -81,9 +81,7 @@ public class LuceneCuvsBenchmarks {
 
   @SuppressWarnings("resource")
   public static void main(String[] args) throws Throwable {
-
-    // [0] Parse Arguments
-    BenchmarkConfiguration config = new BenchmarkConfiguration(args);
+    BenchmarkConfiguration config = new ObjectMapper().readValue(new File(args[0]), BenchmarkConfiguration.class);
     Map<String, Object> metrics = new HashMap<String, Object>();
     List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
     config.debugPrintArguments();
@@ -292,100 +290,6 @@ public class LuceneCuvsBenchmarks {
       zipFile.close();
   }
 
-  private static class BenchmarkConfiguration {
-
-    public String benchmarkID;
-    public String datasetFile;
-    public int indexOfVector;
-    public String vectorColName;
-    public int numDocs;
-    public int vectorDimension;
-    public String queryFile;
-    public int commitFreq;
-    public int topK;
-    public int hnswThreads;
-    public int cuvsWriterThreads;
-//    public MergeStrategy mergeStrategy;
-    public int queryThreads;
-    public boolean createIndexInMemory;
-    public boolean cleanIndexDirectory;
-    public boolean saveResultsOnDisk;
-    public boolean hasColNames;
-    public String algoToRun;
-    public String groundTruthFile;
-
-    // HNSW parameters
-    public int hnswMaxConn; // 16 default (max 512)
-    public int hnswBeamWidth; // 100 default (max 3200)
-    public int hnswVisitedLimit;
-
-    // Cagra parameters
-    public int cagraIntermediateGraphDegree; // 128 default
-    public int cagraGraphDegree; // 64 default
-    public int cagraITopK;
-    public int cagraSearchWidth;
-
-    public BenchmarkConfiguration(String[] args) {
-      this.benchmarkID = args[0];
-      this.datasetFile = args[1];
-      this.indexOfVector = Integer.valueOf(args[2]);
-      this.vectorColName = args[3];
-      this.numDocs = Integer.valueOf(args[4]);
-      this.vectorDimension = Integer.valueOf(args[5]);
-      this.queryFile = args[6];
-      this.commitFreq = Integer.valueOf(args[7]);
-      this.topK = Integer.valueOf(args[8]);
-      this.hnswThreads = Integer.valueOf(args[9]);
-      this.cuvsWriterThreads = Integer.valueOf(args[10]);
-//      this.mergeStrategy = MergeStrategy.valueOf(args[11]);
-      this.queryThreads = Integer.valueOf(args[11]);
-      this.createIndexInMemory = Boolean.parseBoolean(args[12]);
-      this.cleanIndexDirectory = Boolean.parseBoolean(args[13]);
-      this.saveResultsOnDisk = Boolean.parseBoolean(args[14]);
-      this.hasColNames = Boolean.parseBoolean(args[15]);
-      this.algoToRun = args[16];
-      this.groundTruthFile = args[17];
-
-      // Parameter tuning
-      this.hnswMaxConn = Integer.valueOf(args[18]);
-      this.hnswBeamWidth = Integer.valueOf(args[19]);
-      this.hnswVisitedLimit = Integer.valueOf(args[20]);
-      this.cagraIntermediateGraphDegree = Integer.valueOf(args[21]);
-      this.cagraGraphDegree = Integer.valueOf(args[22]);
-      this.cagraITopK = Integer.valueOf(args[23]);
-      this.cagraSearchWidth = Integer.valueOf(args[24]);
-    }
-
-    private void debugPrintArguments() {
-      System.out.println("Benchmark ID: " + benchmarkID);
-      System.out.println("Dataset file used is: " + datasetFile);
-      System.out.println("Index of vector field is: " + indexOfVector);
-      System.out.println("Name of the vector field is: " + vectorColName);
-      System.out.println("Number of documents to be indexed are: " + numDocs);
-      System.out.println("Number of dimensions are: " + vectorDimension);
-      System.out.println("Query file used is: " + queryFile);
-      System.out.println("Commit frequency (every n documents): " + commitFreq);
-      System.out.println("TopK value is: " + topK);
-      System.out.println("Lucene HNSW threads: " + hnswThreads);
-//      System.out.println("cuVS Merge strategy: " + mergeStrategy);
-      System.out.println("Query threads: " + queryThreads);
-      System.out.println("Create index in memory: " + createIndexInMemory);
-      System.out.println("Clean index directory: " + cleanIndexDirectory);
-      System.out.println("Save results on disk: " + saveResultsOnDisk);
-      System.out.println("Has column names in the dataset file: " + hasColNames);
-      System.out.println("algoToRun {Choices: HNSW | CAGRA | ALL}: " + algoToRun);
-      System.out.println("Ground Truth file used is: " + groundTruthFile);
-
-      System.out.println("------- algo parameters ------");
-      System.out.println("hnswMaxConn: " + hnswMaxConn);
-      System.out.println("hnswBeamWidth: " + hnswBeamWidth);
-      System.out.println("hnswVisitedLimit: " + hnswVisitedLimit);
-      System.out.println("cagraIntermediateGraphDegree: " + cagraIntermediateGraphDegree);
-      System.out.println("cagraGraphDegree: " + cagraGraphDegree);
-      System.out.println("cagraITopK: " + cagraITopK);
-      System.out.println("cagraSearchWidth: " + cagraSearchWidth);
-    }
-  }
 
   private static void indexDocuments(IndexWriter writer, BenchmarkConfiguration config, List<String> titles,
       List<float[]> vecCol, int commitFrequency) throws IOException, InterruptedException {
