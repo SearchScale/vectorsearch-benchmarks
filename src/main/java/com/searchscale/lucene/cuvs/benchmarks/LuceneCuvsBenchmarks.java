@@ -92,7 +92,7 @@ public class LuceneCuvsBenchmarks {
     List<float[]> vectorColumn = new ArrayList<float[]>();
     long parseStartTime = System.currentTimeMillis();
 
-    if (config.datasetFile.endsWith(".csv")) {
+    if (config.datasetFile.endsWith(".csv") || config.datasetFile.endsWith(".csv.gz")) {
       parseCSVFile(config, titles, vectorColumn);
     } else if (config.datasetFile.contains("fvecs") || config.datasetFile.contains("bvecs")) {
       readBaseFile(config, titles, vectorColumn);
@@ -281,6 +281,8 @@ public class LuceneCuvsBenchmarks {
         if (countOfDocuments % 1000 == 0)
           System.out.print(".");
 
+        if (countOfDocuments == config.numDocs)
+          break;
       }
       System.out.println();
     }
