@@ -281,7 +281,7 @@ public class LuceneCuvsBenchmarks {
         if (countOfDocuments % 1000 == 0)
           System.out.print(".");
 
-        if (countOfDocuments == config.numDocs)
+        if (countOfDocuments == config.numDocs + 1)
           break;
       }
       System.out.println();
