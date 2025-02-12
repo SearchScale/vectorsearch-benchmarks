@@ -50,12 +50,17 @@ public class FBIvecsReader {
 
           // Skip last 4 bytes.
           is.readNBytes(4);
+          
+          if (count % 1000 == 0) {
+            System.out.print(".");
+          }
 
           if (numRows != -1 && count == numRows) {
             break;
           }
         }
       }
+      System.out.println();
       is.close();
       System.out.println("Reading complete. Read " + count + " vectors");
     } catch (Exception e) {
@@ -96,12 +101,17 @@ public class FBIvecsReader {
 
           // Skip last 4 bytes.
           is.readNBytes(4);
-
+          
+          if (count % 1000 == 0) {
+            System.out.print(".");
+          }
+          
           if (numRows != -1 && count == numRows) {
             break;
           }
         }
       }
+      System.out.println();
       is.close();
       System.out.println("Reading complete. Read " + count + " vectors");
     } catch (Exception e) {
@@ -144,11 +154,16 @@ public class FBIvecsReader {
           // Skip last 4 bytes.
           is.readNBytes(4);
 
+          if (count % 1000 == 0) {
+            System.out.print(".");
+          }          
+          
           if (numRows != -1 && count == numRows) {
             break;
           }
         }
       }
+      System.out.println();
       is.close();
       System.out.println("Reading complete. Read " + count + " vectors");
     } catch (Exception e) {

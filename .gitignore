@@ -4,3 +4,5 @@ bin
 .project
 org.eclipse*
 .classpath
+cuvsIndex
+hnswIndex
