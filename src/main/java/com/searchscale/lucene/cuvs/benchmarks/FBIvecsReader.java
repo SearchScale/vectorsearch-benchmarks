@@ -50,7 +50,7 @@ public class FBIvecsReader {
 
           // Skip last 4 bytes.
           is.readNBytes(4);
-          
+
           if (count % 1000 == 0) {
             System.out.print(".");
           }
@@ -101,11 +101,11 @@ public class FBIvecsReader {
 
           // Skip last 4 bytes.
           is.readNBytes(4);
-          
+
           if (count % 1000 == 0) {
             System.out.print(".");
           }
-          
+
           if (numRows != -1 && count == numRows) {
             break;
           }
@@ -156,8 +156,8 @@ public class FBIvecsReader {
 
           if (count % 1000 == 0) {
             System.out.print(".");
-          }          
-          
+          }
+
           if (numRows != -1 && count == numRows) {
             break;
           }

@@ -85,6 +85,22 @@ public class LuceneCuvsBenchmarks {
     Map<String, Object> metrics = new HashMap<String, Object>();
     List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
     config.debugPrintArguments();
+    
+    // [0] Pre-check
+    if (!new File(config.datasetFile).exists()) {
+      log.warn(config.datasetFile + " is not found. Not proceeding.");
+      System.exit(1);
+    }
+    
+    if (!new File(config.queryFile).exists()) {
+      log.warn(config.queryFile + " is not found. Not proceeding.");
+      System.exit(1);
+    }
+    
+    if (!new File(config.groundTruthFile).exists()) {
+      log.warn(config.groundTruthFile + " is not found. Not proceeding.");
+      System.exit(1);
+    }
 
     // [1] Read CSV file and parse data set
     log.info("Parsing CSV file ...");
@@ -237,9 +253,19 @@ public class LuceneCuvsBenchmarks {
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
   }
 
-  private static List<int[]> readGroundTruthFile(String groundTruthFile, int numRows) {
-    // TODO: modify this to parse a csv ground truth file for csv datasets.
-    return FBIvecsReader.readIvecs(groundTruthFile, numRows);
+  private static List<int[]> readGroundTruthFile(String groundTruthFile, int numRows) throws IOException {
+    List<int[]> rst = new ArrayList<int[]>();
+    if (groundTruthFile.endsWith("csv")) {
+      for (String line : FileUtils.readFileToString(new File(groundTruthFile), "UTF-8").split("\n")) {
+        rst.add(parseIntArrayFromStringArray(line));
+      }
+    } else if (groundTruthFile.endsWith("ivecs")) {
+      rst = FBIvecsReader.readIvecs(groundTruthFile, numRows);
+    } else {
+      log.warn("Not parsing groundtruth file. Are you passing the correct file path?");
+      System.exit(1);
+    }
+    return rst;
   }
 
   private static void readBaseFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn) {
@@ -280,7 +306,7 @@ public class LuceneCuvsBenchmarks {
         }
         if (countOfDocuments % 1000 == 0)
           System.out.print(".");
-
+        
         if (countOfDocuments == config.numDocs + 1)
           break;
       }
@@ -319,7 +345,7 @@ public class LuceneCuvsBenchmarks {
 
           synchronized (pool) {
 
-            if ((docs % commitFrequency == 0 || index == config.numDocs - 1) && !commitBeingCalled.get()) {
+            if ((docs % commitFrequency == 0) && !commitBeingCalled.get()) {
               log.info(docs + " Docs indexed. Commit called..." + index);
               if (commitBeingCalled.get() == false) {
                 try {
@@ -420,22 +446,38 @@ public class LuceneCuvsBenchmarks {
       List<Pair<Integer, float[]>> queries = new ArrayList<Pair<Integer, float[]>>();
 
       int i = 0;
-      if (config.queryFile.endsWith(".txt")) {
+      if (config.queryFile.endsWith(".csv")) {
         for (String line : FileUtils.readFileToString(new File(config.queryFile), "UTF-8").split("\n")) {
           float queryVector[] = reduceDimensionVector(parseFloatArrayFromStringArray(line), config.vectorDimension);
           queries.add(Pair.of(i++, queryVector));
+          if (config.numQueriesToRun == i) {
+            break;           
+          }
         }
       } else if (config.queryFile.contains("fvecs")) {
         ArrayList<float[]> qries = FBIvecsReader.readFvecs(config.queryFile, -1);
         for (int j = 0; j < qries.size(); j++) {
           queries.add(Pair.of(i++, qries.get(j)));
+          if (config.numQueriesToRun == i) {
+            break;           
+          }
         }
       } else if (config.queryFile.contains("bvecs")) {
         ArrayList<float[]> qries = FBIvecsReader.readBvecs(config.queryFile, -1);
         for (int j = 0; j < qries.size(); j++) {
           queries.add(Pair.of(i++, qries.get(j)));
+          if (config.numQueriesToRun == i) {
+            break;           
+          }
         }
+      } else {
+        log.warn("Not parsing any query file. Have you passed the correct query file path?");
       }
+      
+      if(queries.size() < config.numQueriesToRun) {
+        log.warn("Number of queries less then the instructed queries to run.");
+      }
+      log.info("Queries to run: " + queries.size());
 
       int qThreads = config.queryThreads;
       if (useCuVS)
@@ -483,7 +525,7 @@ public class LuceneCuvsBenchmarks {
             }
             scores.add(hit.score);
           }
-
+          
           QueryResult result = new QueryResult(useCuVS ? "lucene_cuvs" : "lucene_hnsw", queryId,
               useCuVS ? neighbors.reversed() : neighbors, groundTruth.get(queryId),
               useCuVS ? scores.reversed() : scores, searchTimeTakenMs);
@@ -525,6 +567,15 @@ public class LuceneCuvsBenchmarks {
     return titleVector;
   }
 
+  private static int[] parseIntArrayFromStringArray(String str) {
+    String[] s = str.split(", ");
+    int[] titleVector = new int[s.length];
+    for (int i = 0; i < s.length; i++) {
+      titleVector[i] = Integer.parseInt(s[i].trim());
+    }
+    return titleVector;
+  }
+  
   public static float[] reduceDimensionVector(float[] vector, int dim) {
     float out[] = new float[dim];
     for (int i = 0; i < dim && i < vector.length; i++)

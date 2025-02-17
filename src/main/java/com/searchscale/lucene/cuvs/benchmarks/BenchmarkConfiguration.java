@@ -10,6 +10,7 @@ public class BenchmarkConfiguration {
   public int numDocs;
   public int vectorDimension;
   public String queryFile;
+  public int numQueriesToRun;
   public int commitFreq;
   public int topK;
   public int hnswThreads;
@@ -43,6 +44,7 @@ public class BenchmarkConfiguration {
     System.out.println("Number of documents to be indexed are: " + numDocs);
     System.out.println("Number of dimensions are: " + vectorDimension);
     System.out.println("Query file used is: " + queryFile);
+    System.out.println("Number of queries to run: " + numQueriesToRun);
     System.out.println("Commit frequency (every n documents): " + commitFreq);
     System.out.println("TopK value is: " + topK);
     System.out.println("Lucene HNSW threads: " + hnswThreads);
