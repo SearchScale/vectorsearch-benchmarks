@@ -22,6 +22,8 @@ public class BenchmarkConfiguration {
   public boolean hasColNames;
   public String algoToRun;
   public String groundTruthFile;
+  public String cuvsIndexDirPath;
+  public String hnswIndexDirPath;
 
   // HNSW parameters
   public int hnswMaxConn; // 16 default (max 512)
@@ -56,7 +58,9 @@ public class BenchmarkConfiguration {
     System.out.println("Has column names in the dataset file: " + hasColNames);
     System.out.println("algoToRun {Choices: HNSW | CAGRA | ALL}: " + algoToRun);
     System.out.println("Ground Truth file used is: " + groundTruthFile);
-
+    System.out.println("CuVS index directory path is: " + cuvsIndexDirPath);
+    System.out.println("HNSW index directory path is: " + hnswIndexDirPath);
+    
     System.out.println("------- algo parameters ------");
     System.out.println("hnswMaxConn: " + hnswMaxConn);
     System.out.println("hnswBeamWidth: " + hnswBeamWidth);

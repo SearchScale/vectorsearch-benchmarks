@@ -143,8 +143,8 @@ public class LuceneCuvsBenchmarks {
     IndexWriter cuvsIndexWriter;
 
     if (!config.createIndexInMemory) {
-      Path hnswIndex = Path.of("hnswIndex");
-      Path cuvsIndex = Path.of("cuvsIndex");
+      Path hnswIndex = Path.of(config.hnswIndexDirPath);
+      Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
       if (config.cleanIndexDirectory) {
         FileUtils.deleteDirectory(hnswIndex.toFile());
         FileUtils.deleteDirectory(cuvsIndex.toFile());
