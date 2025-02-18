@@ -188,7 +188,7 @@ public class LuceneCuvsBenchmarks {
       try {
         if (hnswIndexWriter.getDirectory() instanceof NIOFSDirectory
             && cuvsIndexWriter.getDirectory() instanceof NIOFSDirectory) {
-          Path indexPath = writer == cuvsIndexWriter ? Paths.get("cuvsIndex") : Paths.get("hnswIndex");
+          Path indexPath = writer == cuvsIndexWriter ? Paths.get(config.cuvsIndexDirPath) : Paths.get(config.hnswIndexDirPath);
           long directorySize = Files.walk(indexPath, FileVisitOption.FOLLOW_LINKS).filter(p -> p.toFile().isFile())
               .mapToLong(p -> p.toFile().length()).sum();
           double directorySizeGB = directorySize / 1_073_741_824.0;
@@ -200,7 +200,7 @@ public class LuceneCuvsBenchmarks {
           log.info("Size of {}: {} GB", indexPath.toString(), directorySizeGB);
         }
       } catch (IOException e) {
-        log.error("Failed to calculate directory size for {}", writer == cuvsIndexWriter ? "cuvsIndex" : "hnswIndex",
+        log.error("Failed to calculate directory size for {}", writer == cuvsIndexWriter ? config.cuvsIndexDirPath : config.hnswIndexDirPath,
             e);
       }
       log.info("Querying documents using {}...", codecName); // error for different coloring
