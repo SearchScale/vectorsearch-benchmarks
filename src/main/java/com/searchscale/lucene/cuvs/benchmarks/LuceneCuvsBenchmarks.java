@@ -53,6 +53,7 @@ import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.sandbox.vectorsearch.CuVSCodec;
 import org.apache.lucene.sandbox.vectorsearch.CuVSKnnFloatVectorQuery;
+import org.apache.lucene.sandbox.vectorsearch.CuVSVectorsWriter;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.KnnFloatVectorQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -183,7 +184,7 @@ public class LuceneCuvsBenchmarks {
         metrics.put("hnsw-indexing-time", indexTimeTaken);
       }
 
-      log.info("Time taken for index building (end to end): " + indexTimeTaken + " ms");
+      System.out.println("Time taken for index building (end to end): <J_BM_ITT>" + indexTimeTaken + "</J_BM_ITT> ms");
 
       try {
         if (hnswIndexWriter.getDirectory() instanceof NIOFSDirectory
@@ -251,6 +252,7 @@ public class LuceneCuvsBenchmarks {
     }
 
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
+    System.out.println("Total addField took: <J_BM_AF>" + (int)(Math.floor(CuVSVectorsWriter.addFieldTime.longValue() * 0.000001)) + "</J_BM_AF>");
   }
 
   private static List<int[]> readGroundTruthFile(String groundTruthFile, int numRows) throws IOException {
