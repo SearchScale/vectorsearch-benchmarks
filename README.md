@@ -1,4 +1,4 @@
-# Vectorsearch Benchmarks
+# Lucene-CuVS Benchmarks
 
 ## Prerequisites
 - [CuVS libraries](https://docs.rapids.ai/api/cuvs/stable/build/#build-from-source)
