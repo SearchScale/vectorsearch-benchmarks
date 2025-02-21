@@ -10,21 +10,23 @@
 ### Build libcuvs libraries and CuVS Java API
 ```
 git clone git@github.com:rapidsai/cuvs.git \
+&& cd cuvs \
 && git checkout branch-25.02 \
 && ./build.sh libcuvs java
 ```
 ### Build Lucene-CuVS
 ```
 git clone git@github.com:SearchScale/lucene.git \
+&& cd lucene \
 && git checkout cuvs-integration-main \
 && ./gradlew compileJava mavenToLocal
 ```
 
 ### Download the Wikipedia Dataset (5M vectors x 2048 dimensions), queries (100 x 2048 dimensions), and groundtruth (100 x 64 topk)
 ```
-wget https://accounts.searchscale.com/datasets/wikipedia/wiki_dump_5Mx2048D.csv.gz
-wget https://accounts.searchscale.com/datasets/wikipedia/queries_100.csv
-wget https://accounts.searchscale.com/datasets/wikipedia/ground_truth_100x64.csv
+wget https://accounts.searchscale.com/datasets/wikipedia/queries_100.csv \
+&& wget https://accounts.searchscale.com/datasets/wikipedia/ground_truth_100x64.csv \
+&& wget https://accounts.searchscale.com/datasets/wikipedia/wiki_dump_5Mx2048D.csv.gz
 ```
 
 ## Running Manually
