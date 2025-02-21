@@ -8,6 +8,7 @@
 ## Before running
 
 ### Build libcuvs libraries and CuVS Java API
+(For now, please comment out `cuvsRMMPoolMemoryResourceEnable` in both CAGRA and Bruteforce build index methods in the C wrapper), then do:
 ```
 git clone git@github.com:rapidsai/cuvs.git \
 && cd cuvs \
@@ -15,6 +16,7 @@ git clone git@github.com:rapidsai/cuvs.git \
 && ./build.sh libcuvs java
 ```
 ### Build Lucene-CuVS
+(For now please make `CuVSKnnFloatVectorQuery` visibility to public), then do:
 ```
 git clone git@github.com:SearchScale/lucene.git \
 && cd lucene \
