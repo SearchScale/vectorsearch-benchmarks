@@ -8,7 +8,7 @@
 ## Before running
 
 ### Build libcuvs libraries and CuVS Java API
-(For now, please comment out `cuvsRMMPoolMemoryResourceEnable` in both CAGRA and Bruteforce build index methods in the C wrapper)
+(For now, please comment out `cuvsRMMPoolMemoryResourceEnable` in both CAGRA and Bruteforce build index methods [in the C wrapper](https://github.com/rapidsai/cuvs/blob/branch-25.02/java/internal/src/cuvs_java.c))
 ```
 git clone git@github.com:rapidsai/cuvs.git \
 && cd cuvs \
