@@ -1,6 +1,6 @@
 {
    "benchmarkID" : "WIKI_5Mx2048D",
-   "datasetFile" : "/var/wiki_dump_5Mx2048D.csv.gz",
+   "datasetFile" : "/data/wiki_dump_5Mx2048D.csv.gz",
    "indexOfVector" : 3,
    "vectorColName" : "article_vector",
    "numDocs" : 10000,

@@ -16,7 +16,6 @@ git clone git@github.com:rapidsai/cuvs.git \
 && ./build.sh libcuvs java
 ```
 ### Build Lucene-CuVS
-(For now, please make `CuVSKnnFloatVectorQuery` visibility to public)
 ```
 git clone git@github.com:SearchScale/lucene.git \
 && cd lucene \
