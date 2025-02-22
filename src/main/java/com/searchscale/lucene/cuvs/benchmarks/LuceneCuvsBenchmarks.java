@@ -60,7 +60,8 @@ import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopScoreDocCollectorManager;
 import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
-import org.apache.lucene.store.NIOFSDirectory;
+import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.util.PrintStreamInfoStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,6 +79,7 @@ public class LuceneCuvsBenchmarks {
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
   private static boolean RESULTS_DEBUGGING = false; // when enabled, titles are indexed and printed after search
+  private static boolean INDEX_WRITER_INFO_STREAM = false; // when enabled, prints information about merges, deletes, etc
 
   @SuppressWarnings("resource")
   public static void main(String[] args) throws Throwable {
@@ -119,7 +121,9 @@ public class LuceneCuvsBenchmarks {
     // [2] Benchmarking setup
 
     // HNSW Writer:
-    IndexWriterConfig hnswWriterConfig = new IndexWriterConfig(new StandardAnalyzer()).setCodec(getHnswCodec(config));
+    IndexWriterConfig hnswWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
+    hnswWriterConfig.setCodec(getHnswCodec(config));
+    hnswWriterConfig.setUseCompoundFile(false);
     hnswWriterConfig.setMaxBufferedDocs(config.commitFreq);
     hnswWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
 
@@ -128,11 +132,16 @@ public class LuceneCuvsBenchmarks {
     // StandardAnalyzer()).setCodec(new CuVSCodec(
     // config.cuvsWriterThreads, config.cagraIntermediateGraphDegree,
     // config.cagraGraphDegree, config.mergeStrategy));
-    IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer())
-        .setCodec(new CuVSCodec());
-
+    IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
+    cuvsIndexWriterConfig.setCodec(new CuVSCodec());
+    cuvsIndexWriterConfig.setUseCompoundFile(false);
     cuvsIndexWriterConfig.setMaxBufferedDocs(config.commitFreq);
     cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+
+    if (INDEX_WRITER_INFO_STREAM) {
+      hnswWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
+      cuvsIndexWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
+    }
 
 //    if (config.mergeStrategy.equals(MergeStrategy.NON_TRIVIAL_MERGE)) {
 //      hnswWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
@@ -149,8 +158,8 @@ public class LuceneCuvsBenchmarks {
         FileUtils.deleteDirectory(hnswIndex.toFile());
         FileUtils.deleteDirectory(cuvsIndex.toFile());
       }
-      hnswIndexWriter = new IndexWriter(new NIOFSDirectory(hnswIndex), hnswWriterConfig);
-      cuvsIndexWriter = new IndexWriter(new NIOFSDirectory(cuvsIndex), cuvsIndexWriterConfig);
+      hnswIndexWriter = new IndexWriter(FSDirectory.open(hnswIndex), hnswWriterConfig);
+      cuvsIndexWriter = new IndexWriter(FSDirectory.open(cuvsIndex), cuvsIndexWriterConfig);
     } else {
       hnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), hnswWriterConfig);
       cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
@@ -186,11 +195,15 @@ public class LuceneCuvsBenchmarks {
       log.info("Time taken for index building (end to end): " + indexTimeTaken + " ms");
 
       try {
-        if (hnswIndexWriter.getDirectory() instanceof NIOFSDirectory
-            && cuvsIndexWriter.getDirectory() instanceof NIOFSDirectory) {
+        if (hnswIndexWriter.getDirectory() instanceof FSDirectory
+            && cuvsIndexWriter.getDirectory() instanceof FSDirectory) {
           Path indexPath = writer == cuvsIndexWriter ? Paths.get(config.cuvsIndexDirPath) : Paths.get(config.hnswIndexDirPath);
-          long directorySize = Files.walk(indexPath, FileVisitOption.FOLLOW_LINKS).filter(p -> p.toFile().isFile())
-              .mapToLong(p -> p.toFile().length()).sum();
+          long directorySize;
+          try (var stream = Files.walk(indexPath, FileVisitOption.FOLLOW_LINKS)) {
+            directorySize = stream.filter(p -> p.toFile().isFile())
+                .mapToLong(p -> p.toFile().length())
+                .sum();
+          }
           double directorySizeGB = directorySize / 1_073_741_824.0;
           if (writer == cuvsIndexWriter) {
             metrics.put("cuvs-index-size", directorySizeGB);
@@ -551,14 +564,13 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static Lucene101Codec getHnswCodec(BenchmarkConfiguration config) {
-    Lucene101Codec knnVectorsCodec = new Lucene101Codec(Mode.BEST_SPEED) {
+    return new Lucene101Codec(Mode.BEST_SPEED) {
       @Override
       public KnnVectorsFormat getKnnVectorsFormatForField(String field) {
         KnnVectorsFormat knnFormat = new Lucene99HnswVectorsFormat(config.hnswMaxConn, config.hnswBeamWidth);
         return new HighDimensionKnnVectorsFormat(knnFormat, config.vectorDimension);
       }
     };
-    return knnVectorsCodec;
   }
 
   private static float[] parseFloatArrayFromStringArray(String str) {
