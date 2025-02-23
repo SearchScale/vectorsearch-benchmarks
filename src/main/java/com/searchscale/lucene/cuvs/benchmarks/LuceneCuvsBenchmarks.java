@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipFile;
@@ -73,10 +75,16 @@ import com.fasterxml.jackson.dataformat.csv.CsvMapper;
 import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
+import org.apache.commons.math3.stat.descriptive.SynchronizedDescriptiveStatistics;
+
 
 public class LuceneCuvsBenchmarks {
 
   private static final Logger log = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+  
+  public static String getCurrentTimeStamp() {
+    return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date());
+  }
 
   private static boolean RESULTS_DEBUGGING = false; // when enabled, titles are indexed and printed after search
 
@@ -321,26 +329,53 @@ public class LuceneCuvsBenchmarks {
 
   private static void indexDocuments(IndexWriter writer, BenchmarkConfiguration config, List<String> titles,
       List<float[]> vecCol, int commitFrequency) throws IOException, InterruptedException {
+    System.out.println("IndexDocuments started at: " + getCurrentTimeStamp());
 
-    int threads = writer.getConfig().getCodec() instanceof CuVSCodec ? 1 : config.hnswThreads;
+    int threads = 1; //writer.getConfig().getCodec() instanceof CuVSCodec ? 1 : config.hnswThreads;
     ExecutorService pool = Executors.newFixedThreadPool(threads);
     AtomicInteger docsIndexed = new AtomicInteger(0);
     AtomicInteger remainingDocs = new AtomicInteger(0);
     AtomicBoolean commitBeingCalled = new AtomicBoolean(false);
+    
+    AtomicLong totalCommitTime = new AtomicLong(0);
+    AtomicLong totalAddDocuments = new AtomicLong(0);
+    SynchronizedDescriptiveStatistics addStats = new SynchronizedDescriptiveStatistics();
+    AtomicLong totalDocCreationTime = new AtomicLong(0);
 
     for (int i = 0; i <= config.numDocs; i++) {
       final int index = i;
       pool.submit(() -> {
+        long st = System.nanoTime();
         Document document = new Document();
         document.add(new StringField("id", String.valueOf(index), Field.Store.YES));
         if (RESULTS_DEBUGGING)
           document.add(new StringField("title", titles.get(index), Field.Store.YES));
         document
             .add(new KnnFloatVectorField(config.vectorColName, vecCol.get(index), VectorSimilarityFunction.EUCLIDEAN));
+        totalDocCreationTime.addAndGet(System.nanoTime() - st);
         try {
           while (commitBeingCalled.get())
             ; // block until commit is over
+          st = System.nanoTime();
+          if (index == 199999) {
+            System.out.println("Offending doc add started: " + getCurrentTimeStamp());
+            System.out.println(writer);
+          }
+
+          long tempStart = System.currentTimeMillis();
           writer.addDocument(document);
+
+          if (index == 199999) {
+            System.out.println("Offending doc add finished: " + getCurrentTimeStamp());
+            System.out.println(writer);
+          }
+          
+          totalAddDocuments.addAndGet(System.nanoTime() - st);
+          addStats.addValue(System.nanoTime() - st);
+          if (System.currentTimeMillis() - tempStart > 10000) {
+            System.out.println("Document " + index + " took " + (System.currentTimeMillis() - tempStart));
+          }
+          
           int docs = docsIndexed.incrementAndGet();
           remainingDocs.incrementAndGet();
           // if (docs % 100 == 0) log.info("Docs added: " + docs);
@@ -352,7 +387,11 @@ public class LuceneCuvsBenchmarks {
               if (commitBeingCalled.get() == false) {
                 try {
                   commitBeingCalled.set(true);
+                  st = System.nanoTime();
+                  System.out.println("About to commit at: " + getCurrentTimeStamp());
                   writer.commit();
+                  System.out.println("Finished commit at: " + getCurrentTimeStamp());
+                  totalCommitTime.addAndGet(System.nanoTime()- st);
                   remainingDocs.set(0);
                   commitBeingCalled.set(false);
                 } catch (IOException ex) {
@@ -375,10 +414,27 @@ public class LuceneCuvsBenchmarks {
     // HERE IS THE PROBLEM!
     if (remainingDocs.get() != 0) {
       log.info("{} Docs remaining. Calling commit.", remainingDocs.get());
+      long st = System.nanoTime();
+      System.out.println("About to ( outside ) commit at: " + getCurrentTimeStamp());
       writer.commit();
+      System.out.println("Finished ( outside ) commit at: " + getCurrentTimeStamp());
+      totalCommitTime.addAndGet(System.nanoTime()- st);
     }
-
+    long start = System.currentTimeMillis();
     writer.close();
+    System.out.println(">>>>>>>>>>>>>> Time to close writer: " + (System.currentTimeMillis() - start));
+    System.out.println("IndexDocuments ended at: " + getCurrentTimeStamp());
+    System.out.println("Total time on commits: " + (totalCommitTime.get() / 1000000.0));
+    System.out.println("Total time on adding docs: " + (totalAddDocuments.get() / 1000000.0));
+    System.out.println("Total time on doc creation: " + (totalDocCreationTime.get() / 1000000.0));
+    System.out.println("Add stats median: " + addStats.getPercentile(50.0));
+    System.out.println("Add stats 99th: " + addStats.getPercentile(99.0));
+    System.out.println("Add stats mean: " + addStats.getMean());
+    System.out.println("Add stats max: " + addStats.getMax());
+    double[] values = addStats.getSortedValues();
+    for (int i = values.length - 10 ; i < values.length; i++) {
+      System.out.println("\t" + values[i]);
+    }
   }
 
   static class QueryResult {
