@@ -19,6 +19,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -34,6 +35,7 @@ import java.util.zip.ZipFile;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.commons.math3.stat.descriptive.SynchronizedDescriptiveStatistics;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.KnnVectorsFormat;
@@ -64,6 +66,9 @@ import org.apache.lucene.search.TopScoreDocCollectorManager;
 import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.NIOFSDirectory;
+import org.mapdb.DB;
+import org.mapdb.DBMaker;
+import org.mapdb.QueueLong.Node.SERIALIZER;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,7 +80,6 @@ import com.fasterxml.jackson.dataformat.csv.CsvMapper;
 import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
-import org.apache.commons.math3.stat.descriptive.SynchronizedDescriptiveStatistics;
 
 
 public class LuceneCuvsBenchmarks {
@@ -115,10 +119,13 @@ public class LuceneCuvsBenchmarks {
     log.info("Parsing CSV file ...");
     List<String> titles = new ArrayList<String>();
     List<float[]> vectorColumn = new ArrayList<float[]>();
+
+    DB db = DBMaker.fileDB("vectors.db").make();
+    NavigableSet<float[]> vectors = db.treeSet("vectors").serializer(SERIALIZER.FLOAT_ARRAY).createOrOpen();
     long parseStartTime = System.currentTimeMillis();
 
     if (config.datasetFile.endsWith(".csv") || config.datasetFile.endsWith(".csv.gz")) {
-      parseCSVFile(config, titles, vectorColumn);
+      parseCSVFile(config, titles, vectors);
     } else if (config.datasetFile.contains("fvecs") || config.datasetFile.contains("bvecs")) {
       readBaseFile(config, titles, vectorColumn);
     }
@@ -184,7 +191,7 @@ public class LuceneCuvsBenchmarks {
           : codec.getClass().getSimpleName();
       log.info("----------\nIndexing documents using {} ...", codecName); // error for different coloring
       long indexStartTime = System.currentTimeMillis();
-      indexDocuments(writer, config, titles, vectorColumn, config.commitFreq);
+      indexDocuments(writer, config, titles, vectors, config.commitFreq);
       long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
       if (codec instanceof CuVSCodec) {
         metrics.put("cuvs-indexing-time", indexTimeTaken);
@@ -261,6 +268,8 @@ public class LuceneCuvsBenchmarks {
 
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
     System.out.println("Total addField took: <J_BM_AF>" + (int)(Math.floor(CuVSVectorsWriter.addFieldTime.longValue() * 0.000001)) + "</J_BM_AF>");
+    Files.deleteIfExists(Path.of("vectors.db"));
+    db.close();
   }
 
   private static List<int[]> readGroundTruthFile(String groundTruthFile, int numRows) throws IOException {
@@ -287,7 +296,7 @@ public class LuceneCuvsBenchmarks {
     titles.add(config.vectorColName);
   }
 
-  private static void parseCSVFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectorColumn)
+  private static void parseCSVFile(BenchmarkConfiguration config, List<String> titles, NavigableSet<float[]> vectors)
       throws IOException, CsvValidationException {
     InputStreamReader isr = null;
     ZipFile zipFile = null;
@@ -308,8 +317,12 @@ public class LuceneCuvsBenchmarks {
           continue;
         try {
           titles.add(csvLine[1]);
-          vectorColumn.add(reduceDimensionVector(parseFloatArrayFromStringArray(csvLine[config.indexOfVector]),
-              config.vectorDimension));
+          //vectorColumn.add(reduceDimensionVector(parseFloatArrayFromStringArray(csvLine[config.indexOfVector]),
+          //  config.vectorDimension));
+          float[] arr = reduceDimensionVector(parseFloatArrayFromStringArray(csvLine[config.indexOfVector]),
+             config.vectorDimension);
+          vectors.add(arr);
+          
         } catch (Exception e) {
           System.out.print("#");
           countOfDocuments -= 1;
@@ -322,13 +335,14 @@ public class LuceneCuvsBenchmarks {
       }
       System.out.println();
     }
+    System.out.println("Number of vectors to be indexed are: " + vectors.size());
     if (zipFile != null)
       zipFile.close();
   }
 
 
   private static void indexDocuments(IndexWriter writer, BenchmarkConfiguration config, List<String> titles,
-      List<float[]> vecCol, int commitFrequency) throws IOException, InterruptedException {
+      NavigableSet<float[]> vectors, int commitFrequency) throws IOException, InterruptedException {
     System.out.println("IndexDocuments started at: " + getCurrentTimeStamp());
 
     int threads = 1; //writer.getConfig().getCodec() instanceof CuVSCodec ? 1 : config.hnswThreads;
@@ -342,22 +356,22 @@ public class LuceneCuvsBenchmarks {
     SynchronizedDescriptiveStatistics addStats = new SynchronizedDescriptiveStatistics();
     AtomicLong totalDocCreationTime = new AtomicLong(0);
 
-    for (int i = 0; i <= config.numDocs; i++) {
-      final int index = i;
+    final AtomicInteger index = new AtomicInteger(0);
+    vectors.forEach((vector) -> {
       pool.submit(() -> {
         long st = System.nanoTime();
         Document document = new Document();
-        document.add(new StringField("id", String.valueOf(index), Field.Store.YES));
+        document.add(new StringField("id", String.valueOf(index.get()), Field.Store.YES));
         if (RESULTS_DEBUGGING)
-          document.add(new StringField("title", titles.get(index), Field.Store.YES));
+          document.add(new StringField("title", titles.get(index.get()), Field.Store.YES));
         document
-            .add(new KnnFloatVectorField(config.vectorColName, vecCol.get(index), VectorSimilarityFunction.EUCLIDEAN));
+            .add(new KnnFloatVectorField(config.vectorColName, vector, VectorSimilarityFunction.EUCLIDEAN));
         totalDocCreationTime.addAndGet(System.nanoTime() - st);
         try {
           while (commitBeingCalled.get())
             ; // block until commit is over
           st = System.nanoTime();
-          if (index == 199999) {
+          if (index.get() == 199999) {
             System.out.println("Offending doc add started: " + getCurrentTimeStamp());
             System.out.println(writer);
           }
@@ -365,7 +379,7 @@ public class LuceneCuvsBenchmarks {
           long tempStart = System.currentTimeMillis();
           writer.addDocument(document);
 
-          if (index == 199999) {
+          if (index.get() == 199999) {
             System.out.println("Offending doc add finished: " + getCurrentTimeStamp());
             System.out.println(writer);
           }
@@ -406,8 +420,9 @@ public class LuceneCuvsBenchmarks {
           ex.printStackTrace();
         }
       });
+      index.incrementAndGet();
+    });
 
-    }
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
@@ -432,8 +447,8 @@ public class LuceneCuvsBenchmarks {
     System.out.println("Add stats mean: " + addStats.getMean());
     System.out.println("Add stats max: " + addStats.getMax());
     double[] values = addStats.getSortedValues();
-    for (int i = values.length - 10 ; i < values.length; i++) {
-      System.out.println("\t" + values[i]);
+    for (int j = values.length - 10 ; j < values.length; j++) {
+      System.out.println("\t" + values[j]);
     }
   }
 
