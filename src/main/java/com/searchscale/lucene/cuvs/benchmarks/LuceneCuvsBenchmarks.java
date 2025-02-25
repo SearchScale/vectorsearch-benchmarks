@@ -104,7 +104,9 @@ public class LuceneCuvsBenchmarks {
       log.warn(config.datasetFile + " is not found. Not proceeding.");
       System.exit(1);
     }
-    
+
+    String mapdbFile = config.datasetFile + ".mapdb";
+
     if (!new File(config.queryFile).exists()) {
       log.warn(config.queryFile + " is not found. Not proceeding.");
       System.exit(1);
@@ -120,23 +122,32 @@ public class LuceneCuvsBenchmarks {
     List<String> titles = new ArrayList<String>();
     List<float[]> vectorColumn = new ArrayList<float[]>();
 
-    DB db = DBMaker.fileDB("vectors.db").make();
-    NavigableSet<float[]> vectors = db.treeSet("vectors").serializer(SERIALIZER.FLOAT_ARRAY).createOrOpen();
+    DB db;
     long parseStartTime = System.currentTimeMillis();
+    NavigableSet<float[]> vectors;
 
-    if (config.datasetFile.endsWith(".csv") || config.datasetFile.endsWith(".csv.gz")) {
-      parseCSVFile(config, titles, vectors);
-    } else if (config.datasetFile.contains("fvecs") || config.datasetFile.contains("bvecs")) {
-      readBaseFile(config, titles, vectorColumn);
+    if (new File(mapdbFile).exists() == false) {
+      db = DBMaker.fileDB(mapdbFile).make();
+      vectors = db.treeSet("vectors").serializer(SERIALIZER.FLOAT_ARRAY).createOrOpen();
+
+      if (config.datasetFile.endsWith(".csv") || config.datasetFile.endsWith(".csv.gz")) {
+        parseCSVFile(config, titles, vectors);
+      } else if (config.datasetFile.contains("fvecs") || config.datasetFile.contains("bvecs")) {
+        readBaseFile(config, titles, vectorColumn);
+      }
+    } else {
+      db = DBMaker.fileDB(mapdbFile).make();
+      vectors = db.treeSet("vectors").serializer(SERIALIZER.FLOAT_ARRAY).createOrOpen();
+      log.info("Loaded vectors: " + vectors.size());
     }
 
     System.out.println("Time taken for parsing dataset: " + (System.currentTimeMillis() - parseStartTime + " ms"));
 
     // [2] Benchmarking setup
-
+try  {
     // HNSW Writer:
     IndexWriterConfig hnswWriterConfig = new IndexWriterConfig(new StandardAnalyzer()).setCodec(getHnswCodec(config));
-    hnswWriterConfig.setMaxBufferedDocs(config.commitFreq);
+    hnswWriterConfig.setMaxBufferedDocs(config.commitFreq*2);
     hnswWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
 
     // CuVS Writer:
@@ -147,7 +158,7 @@ public class LuceneCuvsBenchmarks {
     IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer())
         .setCodec(new CuVSCodec());
 
-    cuvsIndexWriterConfig.setMaxBufferedDocs(config.commitFreq);
+    cuvsIndexWriterConfig.setMaxBufferedDocs(config.commitFreq*2);
     cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
 
 //    if (config.mergeStrategy.equals(MergeStrategy.NON_TRIVIAL_MERGE)) {
@@ -191,7 +202,7 @@ public class LuceneCuvsBenchmarks {
           : codec.getClass().getSimpleName();
       log.info("----------\nIndexing documents using {} ...", codecName); // error for different coloring
       long indexStartTime = System.currentTimeMillis();
-      indexDocuments(writer, config, titles, vectors, config.commitFreq);
+      indexDocuments(writer, config, titles, vectors, config.numDocs, config.commitFreq);
       long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
       if (codec instanceof CuVSCodec) {
         metrics.put("cuvs-indexing-time", indexTimeTaken);
@@ -268,8 +279,9 @@ public class LuceneCuvsBenchmarks {
 
     log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
     System.out.println("Total addField took: <J_BM_AF>" + (int)(Math.floor(CuVSVectorsWriter.addFieldTime.longValue() * 0.000001)) + "</J_BM_AF>");
-    Files.deleteIfExists(Path.of("vectors.db"));
+} finally {
     db.close();
+}
   }
 
   private static List<int[]> readGroundTruthFile(String groundTruthFile, int numRows) throws IOException {
@@ -317,8 +329,6 @@ public class LuceneCuvsBenchmarks {
           continue;
         try {
           titles.add(csvLine[1]);
-          //vectorColumn.add(reduceDimensionVector(parseFloatArrayFromStringArray(csvLine[config.indexOfVector]),
-          //  config.vectorDimension));
           float[] arr = reduceDimensionVector(parseFloatArrayFromStringArray(csvLine[config.indexOfVector]),
              config.vectorDimension);
           vectors.add(arr);
@@ -342,7 +352,7 @@ public class LuceneCuvsBenchmarks {
 
 
   private static void indexDocuments(IndexWriter writer, BenchmarkConfiguration config, List<String> titles,
-      NavigableSet<float[]> vectors, int commitFrequency) throws IOException, InterruptedException {
+      NavigableSet<float[]> vectors, int numDocs, int commitFrequency) throws IOException, InterruptedException {
     System.out.println("IndexDocuments started at: " + getCurrentTimeStamp());
 
     int threads = 1; //writer.getConfig().getCodec() instanceof CuVSCodec ? 1 : config.hnswThreads;
@@ -358,6 +368,9 @@ public class LuceneCuvsBenchmarks {
 
     final AtomicInteger index = new AtomicInteger(0);
     vectors.forEach((vector) -> {
+      if (index.get() > numDocs) {
+	 //log.info("We are past the numDocs of " + numDocs);
+      } else {
       pool.submit(() -> {
         long st = System.nanoTime();
         Document document = new Document();
@@ -382,8 +395,7 @@ public class LuceneCuvsBenchmarks {
           if (index.get() == 199999) {
             System.out.println("Offending doc add finished: " + getCurrentTimeStamp());
             System.out.println(writer);
-          }
-          
+          } 
           totalAddDocuments.addAndGet(System.nanoTime() - st);
           addStats.addValue(System.nanoTime() - st);
           if (System.currentTimeMillis() - tempStart > 10000) {
@@ -420,6 +432,8 @@ public class LuceneCuvsBenchmarks {
           ex.printStackTrace();
         }
       });
+
+      } // end of else
       index.incrementAndGet();
     });
 
