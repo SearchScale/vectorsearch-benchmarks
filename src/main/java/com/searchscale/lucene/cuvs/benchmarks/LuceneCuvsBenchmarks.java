@@ -355,7 +355,7 @@ try  {
       NavigableSet<float[]> vectors, int numDocs, int commitFrequency) throws IOException, InterruptedException {
     System.out.println("IndexDocuments started at: " + getCurrentTimeStamp());
 
-    int threads = 1; //writer.getConfig().getCodec() instanceof CuVSCodec ? 1 : config.hnswThreads;
+    int threads = writer.getConfig().getCodec() instanceof CuVSCodec ? 1 : config.hnswThreads;
     ExecutorService pool = Executors.newFixedThreadPool(threads);
     AtomicInteger docsIndexed = new AtomicInteger(0);
     AtomicInteger remainingDocs = new AtomicInteger(0);
