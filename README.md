@@ -25,9 +25,9 @@ git clone git@github.com:SearchScale/lucene.git \
 
 ### Download the Wikipedia Dataset (5M vectors x 2048 dimensions), queries (100 x 2048 dimensions), and groundtruth (100 x 64 topk)
 ```
-wget https://accounts.searchscale.com/datasets/wikipedia/queries_100.csv \
-&& wget https://accounts.searchscale.com/datasets/wikipedia/ground_truth_100x64.csv \
-&& wget https://accounts.searchscale.com/datasets/wikipedia/wiki_dump_5Mx2048D.csv.gz
+wget https://accounts.searchscale.com/datasets/wikipedia/ground_truth_100x64.csv \
+&& wget https://accounts.searchscale.com/datasets/wikipedia/queries_100.csv.mapdb \
+&& wget https://accounts.searchscale.com/datasets/wikipedia/wiki_dump_5Mx2048D.csv.gz.mapdb
 ```
 
 ## Running Manually
