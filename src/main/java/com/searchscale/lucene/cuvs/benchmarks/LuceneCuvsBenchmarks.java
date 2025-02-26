@@ -98,8 +98,9 @@ public class LuceneCuvsBenchmarks {
       System.err.println("Usage: ./benchmarks.sh <jobs-file>");
       return;
     }
-
     BenchmarkConfiguration config = newObjectMapper().readValue(new File(args[0]), BenchmarkConfiguration.class);
+    Map<String, Object> metrics = new LinkedHashMap<String, Object>();
+    List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
     config.debugPrintArguments();
 
     // [0] Pre-check
@@ -119,24 +120,17 @@ public class LuceneCuvsBenchmarks {
     }
 
     String datasetMapdbFile = config.datasetFile + ".mapdb";
-    try (DB db = DBMaker.fileDB(datasetMapdbFile).make()){
-      runBench(db, datasetMapdbFile, config);
-    }
-  }
-
-  static void runBench(DB db, String datasetMapdbFile, BenchmarkConfiguration config) throws Throwable {
-
-    Map<String, Object> metrics = new LinkedHashMap<String, Object>();
-    List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
 
     // [1] Parse/load data set
-    List<String> titles = new ArrayList<>();
+    List<String> titles = new ArrayList<String>();
+    DB db;
     IndexTreeList<float[]> vectors;
 
     long parseStartTime = System.currentTimeMillis();
 
     if (new File(datasetMapdbFile).exists() == false) {
       log.info("Mapdb file not found for dataset. Preparing one ...");
+      db = DBMaker.fileDB(datasetMapdbFile).make();
       vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
       if (config.datasetFile.endsWith(".csv") || config.datasetFile.endsWith(".csv.gz")) {
         parseCSVFile(config, titles, vectors);
@@ -146,6 +140,7 @@ public class LuceneCuvsBenchmarks {
       log.info("Created a mapdb file with {} number of vectors.", vectors.size());
     } else {
       log.info("Mapdb file found for vectors. Loading ...");
+      db = DBMaker.fileDB(datasetMapdbFile).make();
       vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
       log.info("Loaded {} vectors", vectors.size());
     }
