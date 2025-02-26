@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -97,7 +98,7 @@ public class LuceneCuvsBenchmarks {
       System.err.println("Usage: ./benchmarks.sh <jobs-file>");
       return;
     }
-    BenchmarkConfiguration config = new ObjectMapper().readValue(new File(args[0]), BenchmarkConfiguration.class);
+    BenchmarkConfiguration config = newObjectMapper().readValue(new File(args[0]), BenchmarkConfiguration.class);
     Map<String, Object> metrics = new LinkedHashMap<String, Object>();
     List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
     config.debugPrintArguments();
@@ -279,7 +280,7 @@ public class LuceneCuvsBenchmarks {
     metrics.put("max-recall", maxRecall);
     metrics.put("avg-recall", avgRecall);
 
-    String resultsJson = new ObjectMapper().writerWithDefaultPrettyPrinter()
+    String resultsJson = newObjectMapper().writerWithDefaultPrettyPrinter()
         .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
 
     if (config.saveResultsOnDisk) {
@@ -378,12 +379,12 @@ public class LuceneCuvsBenchmarks {
           if (id >= numDocsToIndex) {
             break; // done
           }
-
+          float[] vector = Objects.requireNonNull(vectors.get(id));
           Document doc = new Document();
           doc.add(new StringField("id", String.valueOf(id), Field.Store.YES));
+          doc.add(new KnnFloatVectorField(config.vectorColName, vector, EUCLIDEAN));
           if (RESULTS_DEBUGGING)
             doc.add(new StringField("title", titles.get(id), Field.Store.YES));
-          doc.add(new KnnFloatVectorField(config.vectorColName, vectors.get(numDocsIndexed.get()), EUCLIDEAN));
           try {
             writer.addDocument(doc);
             if ((id + 1) % 25000 == 0) {
@@ -459,14 +460,18 @@ public class LuceneCuvsBenchmarks {
     @Override
     public String toString() {
       try {
-        var objectMapper = new ObjectMapper();
-        objectMapper.configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
-        objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
-        return objectMapper.writeValueAsString(this);
+        return newObjectMapper().writeValueAsString(this);
       } catch (JsonProcessingException e) {
         throw new RuntimeException("Problem with converting the result to a string", e);
       }
     }
+  }
+
+  static ObjectMapper newObjectMapper() {
+    var objectMapper = new ObjectMapper();
+    objectMapper.configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
+    objectMapper.configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true);
+    return objectMapper;
   }
 
   private static void query(Directory directory, BenchmarkConfiguration config, boolean useCuVS,
@@ -661,7 +666,7 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static void writeCSV(List<QueryResult> list, String filename) throws Exception {
-    JsonNode jsonTree = new ObjectMapper().readTree(new ObjectMapper().writeValueAsString(list));
+    JsonNode jsonTree = newObjectMapper().readTree(newObjectMapper().writeValueAsString(list));
     CsvSchema.Builder csvSchemaBuilder = CsvSchema.builder();
     JsonNode firstObject = jsonTree.elements().next();
     firstObject.fieldNames().forEachRemaining(fieldName -> {
