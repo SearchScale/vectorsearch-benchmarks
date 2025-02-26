@@ -33,5 +33,5 @@ wget https://accounts.searchscale.com/datasets/wikipedia/queries_100.csv \
 ## Running Manually
 Steps:
 - Add your benchmark job configuration in the `jobs.json` file
-- do `./benchmarks.sh`
+- do `./benchmarks.sh jobs.json`
 - If `saveResultsOnDisk` is set as `true` (in `jobs.json`) then you can find your benchmark results in the `results` folder. For each successful benchmark run, two files are created `${benchmark_id}__benchmark_results_${timestamp}.json` and `${benchmark_id}__neighbors_${timestamp}.csv`

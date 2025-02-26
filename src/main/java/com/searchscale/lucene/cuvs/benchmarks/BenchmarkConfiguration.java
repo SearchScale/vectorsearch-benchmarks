@@ -1,6 +1,5 @@
 package com.searchscale.lucene.cuvs.benchmarks;
 
-
 public class BenchmarkConfiguration {
 
   public String benchmarkID;
@@ -36,8 +35,6 @@ public class BenchmarkConfiguration {
   public int cagraITopK;
   public int cagraSearchWidth;
 
-
-
   public void debugPrintArguments() {
     System.out.println("Benchmark ID: " + benchmarkID);
     System.out.println("Dataset file used is: " + datasetFile);
@@ -50,8 +47,8 @@ public class BenchmarkConfiguration {
     System.out.println("Flush frequency (every n documents): " + flushFreq);
     System.out.println("TopK value is: " + topK);
     System.out.println("numIndexThreads is: " + numIndexThreads);
-    //System.out.println("Lucene HNSW threads: " + hnswThreads);
-//    System.out.println("cuVS Merge strategy: " + mergeStrategy);
+    // System.out.println("Lucene HNSW threads: " + hnswThreads);
+    // System.out.println("cuVS Merge strategy: " + mergeStrategy);
     System.out.println("Query threads: " + queryThreads);
     System.out.println("Create index in memory: " + createIndexInMemory);
     System.out.println("Clean index directory: " + cleanIndexDirectory);
@@ -61,7 +58,7 @@ public class BenchmarkConfiguration {
     System.out.println("Ground Truth file used is: " + groundTruthFile);
     System.out.println("CuVS index directory path is: " + cuvsIndexDirPath);
     System.out.println("HNSW index directory path is: " + hnswIndexDirPath);
-    
+
     System.out.println("------- algo parameters ------");
     System.out.println("hnswMaxConn: " + hnswMaxConn);
     System.out.println("hnswBeamWidth: " + hnswBeamWidth);

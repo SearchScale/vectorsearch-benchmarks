@@ -3,13 +3,20 @@ package com.searchscale.lucene.cuvs.benchmarks;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.zip.GZIPInputStream;
 
+import org.mapdb.IndexTreeList;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 //TODO: The three static methods have a lot of common logic, ideally should be combined as just one.
 public class FBIvecsReader {
+
+  private static final Logger log = LoggerFactory.getLogger(FBIvecsReader.class.getName());
 
   public static int getDimension(InputStream fc) throws IOException {
     byte[] b = fc.readNBytes(4);
@@ -19,9 +26,8 @@ public class FBIvecsReader {
     return dimension;
   }
 
-  public static ArrayList<float[]> readFvecs(String filePath, int numRows) {
-    System.out.println("Reading " + numRows + " from file: " + filePath);
-    ArrayList<float[]> vectors = new ArrayList<float[]>();
+  public static void readFvecs(String filePath, int numRows, IndexTreeList<float[]> vectors) {
+    log.info("Reading {} from file: {}", numRows, filePath);
 
     try {
       InputStream is = null;
@@ -62,15 +68,14 @@ public class FBIvecsReader {
       }
       System.out.println();
       is.close();
-      System.out.println("Reading complete. Read " + count + " vectors");
+      log.info("Reading complete. Read {} vectors.", count);
     } catch (Exception e) {
       e.printStackTrace();
     }
-    return vectors;
   }
 
   public static ArrayList<int[]> readIvecs(String filePath, int numRows) {
-    System.out.println("Reading " + numRows + " from file: " + filePath);
+    log.info("Reading {} from file: {}", numRows, filePath);
     ArrayList<int[]> vectors = new ArrayList<int[]>();
 
     try {
@@ -113,16 +118,15 @@ public class FBIvecsReader {
       }
       System.out.println();
       is.close();
-      System.out.println("Reading complete. Read " + count + " vectors");
+      log.info("Reading complete. Read {} vectors.", count);
     } catch (Exception e) {
       e.printStackTrace();
     }
     return vectors;
   }
 
-  public static ArrayList<float[]> readBvecs(String filePath, int numRows) {
-    System.out.println("Reading " + numRows + " from file: " + filePath);
-    ArrayList<float[]> vectors = new ArrayList<float[]>();
+  public static void readBvecs(String filePath, int numRows, IndexTreeList<float[]> vectors) {
+    log.info("Reading {} from file: {}", numRows, filePath);
 
     try {
       InputStream is = null;
@@ -165,10 +169,9 @@ public class FBIvecsReader {
       }
       System.out.println();
       is.close();
-      System.out.println("Reading complete. Read " + count + " vectors");
+      log.info("Reading complete. Read {} vectors.", count);
     } catch (Exception e) {
       e.printStackTrace();
     }
-    return vectors;
   }
 }
