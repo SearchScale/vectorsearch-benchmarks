@@ -93,6 +93,10 @@ public class LuceneCuvsBenchmarks {
 
   @SuppressWarnings("resource")
   public static void main(String[] args) throws Throwable {
+    if (args.length != 1) {
+      System.err.println("Usage: ./benchmarks.sh <jobs-file>");
+      return;
+    }
     BenchmarkConfiguration config = new ObjectMapper().readValue(new File(args[0]), BenchmarkConfiguration.class);
     Map<String, Object> metrics = new LinkedHashMap<String, Object>();
     List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
