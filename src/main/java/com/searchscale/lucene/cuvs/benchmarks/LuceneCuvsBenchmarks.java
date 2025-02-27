@@ -142,156 +142,164 @@ public class LuceneCuvsBenchmarks {
       log.info("Mapdb file found for vectors. Loading ...");
       db = DBMaker.fileDB(datasetMapdbFile).make();
       vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
-      log.info("Loaded {} vectors", vectors.size());
+      log.info("{} vectors available from the mapdb file", vectors.size());
     }
 
     log.info("Time taken for parsing/loading dataset is {} ms", (System.currentTimeMillis() - parseStartTime));
 
     // [2] Benchmarking setup
 
-    // HNSW Writer:
-    IndexWriterConfig luceneHNSWWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
-    luceneHNSWWriterConfig.setCodec(getLuceneHnswCodec(config));
-    luceneHNSWWriterConfig.setUseCompoundFile(false);
-    luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq * 2);
-    luceneHNSWWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+    try {
 
-    // CuVS Writer:
-    // IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new
-    // StandardAnalyzer()).setCodec(new CuVSCodec(
-    // config.cuvsWriterThreads, config.cagraIntermediateGraphDegree,
-    // config.cagraGraphDegree, config.mergeStrategy));
-    IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
-    cuvsIndexWriterConfig.setCodec(getCuVSCodec(config));
-    cuvsIndexWriterConfig.setUseCompoundFile(false);
-    cuvsIndexWriterConfig.setMaxBufferedDocs(config.flushFreq * 2);
-    cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+      // HNSW Writer:
+      IndexWriterConfig luceneHNSWWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
+      luceneHNSWWriterConfig.setCodec(getLuceneHnswCodec(config));
+      luceneHNSWWriterConfig.setUseCompoundFile(false);
+      luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq * 2);
+      luceneHNSWWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
 
-    if (INDEX_WRITER_INFO_STREAM) {
-      luceneHNSWWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
-      cuvsIndexWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
-    }
+      // CuVS Writer:
+      // IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new
+      // StandardAnalyzer()).setCodec(new CuVSCodec(
+      // config.cuvsWriterThreads, config.cagraIntermediateGraphDegree,
+      // config.cagraGraphDegree, config.mergeStrategy));
+      IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
+      cuvsIndexWriterConfig.setCodec(getCuVSCodec(config));
+      cuvsIndexWriterConfig.setUseCompoundFile(false);
+      cuvsIndexWriterConfig.setMaxBufferedDocs(config.flushFreq * 2);
+      cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+
+      if (INDEX_WRITER_INFO_STREAM) {
+        luceneHNSWWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
+        cuvsIndexWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
+      }
 
 //    if (config.mergeStrategy.equals(MergeStrategy.NON_TRIVIAL_MERGE)) {
 //      luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
 //      cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
 //    }
 
-    IndexWriter luceneHnswIndexWriter;
-    IndexWriter cuvsIndexWriter;
+      IndexWriter luceneHnswIndexWriter;
+      IndexWriter cuvsIndexWriter;
 
-    if (!config.createIndexInMemory) {
-      Path hnswIndex = Path.of(config.hnswIndexDirPath);
-      Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
-      if (config.cleanIndexDirectory) {
-        FileUtils.deleteDirectory(hnswIndex.toFile());
-        FileUtils.deleteDirectory(cuvsIndex.toFile());
-      }
-      luceneHnswIndexWriter = new IndexWriter(FSDirectory.open(hnswIndex), luceneHNSWWriterConfig);
-      cuvsIndexWriter = new IndexWriter(FSDirectory.open(cuvsIndex), cuvsIndexWriterConfig);
-    } else {
-      luceneHnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), luceneHNSWWriterConfig);
-      cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
-    }
-
-    ArrayList<IndexWriter> writers = new ArrayList<IndexWriter>();
-
-    if ("ALL".equalsIgnoreCase(config.algoToRun)) {
-      writers.add(cuvsIndexWriter);
-      writers.add(luceneHnswIndexWriter);
-    } else if ("HNSW".equalsIgnoreCase(config.algoToRun)) {
-      writers.add(luceneHnswIndexWriter);
-    } else if ("CAGRA".equalsIgnoreCase(config.algoToRun)) {
-      writers.add(cuvsIndexWriter);
-    } else {
-      throw new IllegalArgumentException("Please pass an acceptable option for `algoToRun`. Choices: ALL, HNSW, CAGRA");
-    }
-
-    for (IndexWriter writer : writers) {
-      var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
-      boolean isCuVS = formatName.equals("CuVSVectorsFormat");
-      log.info("Indexing documents using {} ...", formatName); // error for different coloring
-      long indexStartTime = System.currentTimeMillis();
-      indexDocuments(writer, config, titles, vectors);
-      long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
-      if (isCuVS) {
-        metrics.put("cuvs-indexing-time", indexTimeTaken);
-      } else {
-        metrics.put("hnsw-indexing-time", indexTimeTaken);
-      }
-
-      log.info("Time taken for index building (end to end): {} ms", indexTimeTaken);
-
-      try {
-        if (luceneHnswIndexWriter.getDirectory() instanceof FSDirectory
-            && cuvsIndexWriter.getDirectory() instanceof FSDirectory) {
-          Path indexPath = writer == cuvsIndexWriter ? Paths.get(config.cuvsIndexDirPath)
-              : Paths.get(config.hnswIndexDirPath);
-          long directorySize;
-          try (var stream = Files.walk(indexPath, FileVisitOption.FOLLOW_LINKS)) {
-            directorySize = stream.filter(p -> p.toFile().isFile()).mapToLong(p -> p.toFile().length()).sum();
-          }
-          double directorySizeGB = directorySize / 1_073_741_824.0;
-          if (writer == cuvsIndexWriter) {
-            metrics.put("cuvs-index-size", directorySizeGB);
-          } else {
-            metrics.put("hnsw-index-size", directorySizeGB);
-          }
-          log.info("Size of {}: {} GB", indexPath.toString(), directorySizeGB);
+      if (!config.createIndexInMemory) {
+        Path hnswIndex = Path.of(config.hnswIndexDirPath);
+        Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
+        if (config.cleanIndexDirectory) {
+          FileUtils.deleteDirectory(hnswIndex.toFile());
+          FileUtils.deleteDirectory(cuvsIndex.toFile());
         }
-      } catch (IOException e) {
-        log.error("Failed to calculate directory size for {}",
-            writer == cuvsIndexWriter ? config.cuvsIndexDirPath : config.hnswIndexDirPath, e);
+        luceneHnswIndexWriter = new IndexWriter(FSDirectory.open(hnswIndex), luceneHNSWWriterConfig);
+        cuvsIndexWriter = new IndexWriter(FSDirectory.open(cuvsIndex), cuvsIndexWriterConfig);
+      } else {
+        luceneHnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), luceneHNSWWriterConfig);
+        cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
       }
-      log.info("Querying documents using {} ...", formatName);
-      query(writer.getDirectory(), config, isCuVS, metrics, queryResults,
-          readGroundTruthFile(config.groundTruthFile, config.numDocs));
+
+      ArrayList<IndexWriter> writers = new ArrayList<IndexWriter>();
+
+      if ("ALL".equalsIgnoreCase(config.algoToRun)) {
+        writers.add(cuvsIndexWriter);
+        writers.add(luceneHnswIndexWriter);
+      } else if ("HNSW".equalsIgnoreCase(config.algoToRun)) {
+        writers.add(luceneHnswIndexWriter);
+      } else if ("CAGRA".equalsIgnoreCase(config.algoToRun)) {
+        writers.add(cuvsIndexWriter);
+      } else {
+        throw new IllegalArgumentException(
+            "Please pass an acceptable option for `algoToRun`. Choices: ALL, HNSW, CAGRA");
+      }
+
+      for (IndexWriter writer : writers) {
+        var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
+        boolean isCuVS = formatName.equals("CuVSVectorsFormat");
+        log.info("Indexing documents using {} ...", formatName); // error for different coloring
+        long indexStartTime = System.currentTimeMillis();
+        indexDocuments(writer, config, titles, vectors);
+        long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
+        if (isCuVS) {
+          metrics.put("cuvs-indexing-time", indexTimeTaken);
+        } else {
+          metrics.put("hnsw-indexing-time", indexTimeTaken);
+        }
+
+        log.info("Time taken for index building (end to end): {} ms", indexTimeTaken);
+
+        try {
+          if (luceneHnswIndexWriter.getDirectory() instanceof FSDirectory
+              && cuvsIndexWriter.getDirectory() instanceof FSDirectory) {
+            Path indexPath = writer == cuvsIndexWriter ? Paths.get(config.cuvsIndexDirPath)
+                : Paths.get(config.hnswIndexDirPath);
+            long directorySize;
+            try (var stream = Files.walk(indexPath, FileVisitOption.FOLLOW_LINKS)) {
+              directorySize = stream.filter(p -> p.toFile().isFile()).mapToLong(p -> p.toFile().length()).sum();
+            }
+            double directorySizeGB = directorySize / 1_073_741_824.0;
+            if (writer == cuvsIndexWriter) {
+              metrics.put("cuvs-index-size", directorySizeGB);
+            } else {
+              metrics.put("hnsw-index-size", directorySizeGB);
+            }
+            log.info("Size of {}: {} GB", indexPath.toString(), directorySizeGB);
+          }
+        } catch (IOException e) {
+          log.error("Failed to calculate directory size for {}",
+              writer == cuvsIndexWriter ? config.cuvsIndexDirPath : config.hnswIndexDirPath, e);
+        }
+        log.info("Querying documents using {} ...", formatName);
+        query(writer.getDirectory(), config, isCuVS, metrics, queryResults,
+            readGroundTruthFile(config.groundTruthFile, config.numDocs));
+      }
+
+      String timeStamp = new SimpleDateFormat("yyyy-MM-dd_HHmmss").format(Calendar.getInstance().getTime());
+      File results = new File("results");
+      if (!results.exists()) {
+        results.mkdir();
+      }
+
+      double minPrecision = 100;
+      double maxPrecision = 0;
+      double avgPrecision = 0;
+      double minRecall = 100;
+      double maxRecall = 0;
+      double avgRecall = 0;
+
+      for (QueryResult result : queryResults) {
+        minPrecision = Math.min(minPrecision, result.precision);
+        maxPrecision = Math.max(maxPrecision, result.precision);
+        avgPrecision += result.precision;
+        minRecall = Math.min(minRecall, result.recall);
+        maxRecall = Math.max(maxRecall, result.recall);
+        avgRecall += result.recall;
+      }
+      avgPrecision = avgPrecision / queryResults.size();
+      avgRecall = avgRecall / queryResults.size();
+
+      metrics.put("min-precision", minPrecision);
+      metrics.put("max-precision", maxPrecision);
+      metrics.put("avg-precision", avgPrecision);
+
+      metrics.put("min-recall", minRecall);
+      metrics.put("max-recall", maxRecall);
+      metrics.put("avg-recall", avgRecall);
+
+      String resultsJson = newObjectMapper().writerWithDefaultPrettyPrinter()
+          .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
+
+      if (config.saveResultsOnDisk) {
+        writeCSV(queryResults, results.toString() + "/" + config.benchmarkID + "_neighbors_" + timeStamp + ".csv");
+        FileUtils.write(
+            new File(results.toString() + "/" + config.benchmarkID + "_benchmark_results_" + timeStamp + ".json"),
+            resultsJson, Charset.forName("UTF-8"));
+      }
+
+      log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
+
+    } finally {
+      if (db != null) {
+        db.close();
+      }
     }
-
-    String timeStamp = new SimpleDateFormat("yyyy-MM-dd_HHmmss").format(Calendar.getInstance().getTime());
-    File results = new File("results");
-    if (!results.exists()) {
-      results.mkdir();
-    }
-
-    double minPrecision = 100;
-    double maxPrecision = 0;
-    double avgPrecision = 0;
-    double minRecall = 100;
-    double maxRecall = 0;
-    double avgRecall = 0;
-
-    for (QueryResult result : queryResults) {
-      minPrecision = Math.min(minPrecision, result.precision);
-      maxPrecision = Math.max(maxPrecision, result.precision);
-      avgPrecision += result.precision;
-      minRecall = Math.min(minRecall, result.recall);
-      maxRecall = Math.max(maxRecall, result.recall);
-      avgRecall += result.recall;
-    }
-    avgPrecision = avgPrecision / queryResults.size();
-    avgRecall = avgRecall / queryResults.size();
-
-    metrics.put("min-precision", minPrecision);
-    metrics.put("max-precision", maxPrecision);
-    metrics.put("avg-precision", avgPrecision);
-
-    metrics.put("min-recall", minRecall);
-    metrics.put("max-recall", maxRecall);
-    metrics.put("avg-recall", avgRecall);
-
-    String resultsJson = newObjectMapper().writerWithDefaultPrettyPrinter()
-        .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
-
-    if (config.saveResultsOnDisk) {
-      writeCSV(queryResults, results.toString() + "/" + config.benchmarkID + "_neighbors_" + timeStamp + ".csv");
-      FileUtils.write(
-          new File(results.toString() + "/" + config.benchmarkID + "_benchmark_results_" + timeStamp + ".json"),
-          resultsJson, Charset.forName("UTF-8"));
-    }
-
-    log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
-    db.close();
   }
 
   private static List<int[]> readGroundTruthFile(String groundTruthFile, int numRows) throws IOException {
@@ -476,10 +484,11 @@ public class LuceneCuvsBenchmarks {
 
   private static void query(Directory directory, BenchmarkConfiguration config, boolean useCuVS,
       Map<String, Object> metrics, List<QueryResult> queryResults, List<int[]> groundTruth) {
+
+    DB db = null;
     try (IndexReader indexReader = DirectoryReader.open(directory)) {
       IndexSearcher indexSearcher = new IndexSearcher(indexReader);
 
-      DB db;
       IndexTreeList<float[]> queries;
       String queryMapdbFile = config.queryFile + ".mapdb";
 
@@ -502,7 +511,7 @@ public class LuceneCuvsBenchmarks {
         log.info("Mapdb file found for queries. Loading ...");
         db = DBMaker.fileDB(queryMapdbFile).make();
         queries = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
-        log.info("Loaded {} queries", queries.size());
+        log.info("{} queries available from mapdb file", queries.size());
       }
 
       int qThreads = config.queryThreads;
@@ -570,10 +579,14 @@ public class LuceneCuvsBenchmarks {
       double avgLatency = new ArrayList<>(queryLatencies.values()).stream().reduce(0.0, Double::sum)
           / queriesFinished.get();
       metrics.put((useCuVS ? "cuvs" : "hnsw") + "-mean-latency", avgLatency);
-      db.close();
+
     } catch (Exception e) {
       e.printStackTrace();
       log.error("Exception during querying", e);
+    } finally {
+      if (db != null) {
+        db.close();
+      }
     }
   }
 
