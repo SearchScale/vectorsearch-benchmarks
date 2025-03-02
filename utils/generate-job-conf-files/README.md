@@ -8,6 +8,6 @@ This is a python utility for generating job configuration files with combination
 ## To generate config set do:
 ```
 python3 generate_job_configuration_files.py <your configuration template (eg wikipedia_sweep.json)>
-``
+```
 
 A folder with a name `jobs_<benchmarkID>` should be created with all the job configuration files
