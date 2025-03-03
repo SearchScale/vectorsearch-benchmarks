@@ -37,3 +37,4 @@ Steps:
 - Add your benchmark job configuration in the `jobs.json` file
 - do `./benchmarks.sh jobs.json`
 - If `saveResultsOnDisk` is set as `true` (in `jobs.json`) then you can find your benchmark results in the `results` folder. For each successful benchmark run, two files are created `${benchmark_id}__benchmark_results_${timestamp}.json` and `${benchmark_id}__neighbors_${timestamp}.csv`
+- Note: you can also pass a directory as an argument to `benchmarks.sh` containing multiple job configuration files. In such a case all jobs are run one by one.
