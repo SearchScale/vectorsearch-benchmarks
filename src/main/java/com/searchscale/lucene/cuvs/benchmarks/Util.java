@@ -119,21 +119,26 @@ public class Util {
   public static List<int[]> readGroundTruthFile(String groundTruthFile) throws IOException {
     List<int[]> rst = new ArrayList<int[]>();
     if (groundTruthFile.endsWith("csv")) {
+      log.info("Seems like a csv groundtruth file. Reading ...");
       for (String line : FileUtils.readFileToString(new File(groundTruthFile), "UTF-8").split("\n")) {
         rst.add(Util.parseIntArrayFromStringArray(line));
       }
     } else if (groundTruthFile.endsWith("ivecs")) {
+      log.info("Seems like a ivecs groundtruth file. Reading ...");
       rst = FBIvecsReader.readIvecs(groundTruthFile, -1);
     } else {
       throw new RuntimeException("Not parsing groundtruth file and stopping. Are you passing the correct file path?");
     }
+    log.info("{} number of entries in the groundtruth file.", rst.size());
     return rst;
   }
 
   public static void readBaseFile(BenchmarkConfiguration config, List<String> titles, IndexTreeList<float[]> vectors) {
     if (config.datasetFile.contains("fvecs")) {
+      log.info("Seems like an fvecs base file. Reading ...");
       FBIvecsReader.readFvecs(config.datasetFile, config.numDocs, vectors);
     } else if (config.datasetFile.contains("bvecs")) {
+      log.info("Seems like an bvecs base file. Reading ...");
       FBIvecsReader.readBvecs(config.datasetFile, config.numDocs, vectors);
     }
     titles.add(config.vectorColName);
