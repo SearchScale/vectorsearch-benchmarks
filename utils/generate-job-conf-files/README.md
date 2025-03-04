@@ -1,9 +1,9 @@
 # Job configuration generator
 
-This is a python utility for generating job configuration files with combinations of `variant` parameters (see `wikipedia_sweep.json`).
+This is a python utility for generating job configuration files with combinations of `variants` parameters (see `wikipedia_sweep_CAGRA.json` OR `wikipedia_sweep_HNSW.json`).
 
 ## Before running
-- Create a copy of `wikipedia_sweep.json` to create your own configuration template OR modify `wikipedia_sweep.json` with your values (like file paths etc).
+- Create a copy of `wikipedia_sweep_<CAGRA|HNSW>.json` to create your own configuration template OR modify `wikipedia_sweep_<CAGRA|HNSW>.json` with your values (like file paths etc).
 
 ## To generate config set do:
 ```

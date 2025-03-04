@@ -1,0 +1,34 @@
+{
+    "invariants": {
+        "benchmarkID" : "WIKI_5Mx2048D__D5M_FF500K_HNSW",
+        "datasetFile" : "/data/wikipedia/wiki_dump_5Mx2048D.csv.gz",
+        "indexOfVector" : 3,
+        "vectorColName" : "article_vector",
+        "numDocs" : 5000000,
+        "vectorDimension" : 2048,
+        "queryFile" : "/data/wikipedia/queries_2P5M_546.csv",
+        "numQueriesToRun" : 500,
+        "flushFreq" : 500000,
+        "topK" : 64,
+        "groundTruthFile" : "/data/wikipedia/ground_truth_4P9M_546x64.csv",
+        "numIndexThreads" : 8,
+        "cuvsWriterThreads" : 8,
+        "queryThreads" : 1,
+        "createIndexInMemory" : false,
+        "cleanIndexDirectory" : true,
+        "saveResultsOnDisk" : true,
+        "hasColNames" : true,
+        "cuvsIndexDirPath" : "cuvsIndex",
+        "hnswIndexDirPath" : "hnswIndex",
+        "cagraSearchWidth" : 1,
+        "algoToRun" : "HNSW",
+        "cagraIntermediateGraphDegree" : 32,
+        "cagraGraphDegree" : 32,
+        "cagraITopK" : 100
+      },
+  "variants": {
+    "hnswMaxConn" : [8, 12, 16, 24, 32, 64, 128],
+    "hnswBeamWidth" : [64, 128, 192, 256, 512],
+    "hnswVisitedLimit" : [10]
+  }
+}
