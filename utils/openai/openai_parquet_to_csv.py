@@ -4,7 +4,7 @@ import csv
 with open('OpenAI_5Mx1536.csv', 'w', newline='') as ds_writer:
     dswriter = csv.writer(ds_writer, delimiter=',', escapechar=' ', quoting=csv.QUOTE_ALL)
     dswriter.writerow(['id', 'vector'])
-    for file_name in ["/data/openai/train-{:02d}-of-10.parquet".format(i) for i in range(1)]:
+    for file_name in ["/data/openai/train-{:02d}-of-10.parquet".format(i) for i in range(10)]:
         print("Reading file: ", file_name)
         df = pd.read_parquet(file_name)
 
