@@ -414,18 +414,30 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static Codec getCuVSCodec(BenchmarkConfiguration config) {
-    return new CuVSCodec();
+    return new CuVSCodec(config.cuvsWriterThreads, config.cagraIntermediateGraphDegree, config.cagraGraphDegree);
   }
 
   static final class CuVSCodec extends FilterCodec {
 
     static final int CUVS_WRITER_THREADS = 32;
 
+    // Unused
     static final KnnVectorsFormat KNN_FORMAT = new CuVSVectorsFormat(CUVS_WRITER_THREADS, 128, 64,
         MergeStrategy.NON_TRIVIAL_MERGE, IndexType.CAGRA);
 
+    int cuvsWriterThreads = CUVS_WRITER_THREADS;
+    int cuvsIntermediateGraphDegree = 128;
+    int cuvsGraphDegree = 64;
+
     CuVSCodec() {
       this("CuVSCodec", new Lucene101Codec());
+    }
+
+    CuVSCodec(int cuvsWriterThreads, int cuvsIntermediateGraphDegree, int cuvsGraphDegree) {
+      this("CuVSCodec", new Lucene101Codec());
+      this.cuvsWriterThreads = cuvsWriterThreads;
+      this.cuvsIntermediateGraphDegree = cuvsIntermediateGraphDegree;
+      this.cuvsGraphDegree = cuvsGraphDegree;
     }
 
     private CuVSCodec(String name, Codec delegate) {
@@ -434,7 +446,8 @@ public class LuceneCuvsBenchmarks {
 
     @Override
     public KnnVectorsFormat knnVectorsFormat() {
-      return KNN_FORMAT;
+      return new CuVSVectorsFormat(cuvsWriterThreads, cuvsIntermediateGraphDegree, cuvsGraphDegree,
+          MergeStrategy.NON_TRIVIAL_MERGE, IndexType.CAGRA);
     }
   }
 
