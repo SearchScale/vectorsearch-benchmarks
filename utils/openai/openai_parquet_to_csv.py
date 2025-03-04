@@ -1,7 +1,9 @@
 import pandas as pd
 import csv
+import sys
 
 with open('OpenAI_5Mx1536.csv', 'w', newline='') as ds_writer:
+    print("Starting the parquet to csv conversion.")
     dswriter = csv.writer(ds_writer, delimiter=',', escapechar=' ', quoting=csv.QUOTE_ALL)
     dswriter.writerow(['id', 'vector'])
     for file_name in ["/data/openai/train-{:02d}-of-10.parquet".format(i) for i in range(10)]:
@@ -18,6 +20,8 @@ with open('OpenAI_5Mx1536.csv', 'w', newline='') as ds_writer:
             for k in keys:
                 r.append(df[k][i].tolist())
             dswriter.writerow(r)
-        print(f"Data from file {file_name} is written.")
-
+            if i % 10000 == 0:
+                print(".", end='')
+                sys.stdout.flush()
+        print(f"Data from file {file_name} is written to the csv.")
     print("Done")
