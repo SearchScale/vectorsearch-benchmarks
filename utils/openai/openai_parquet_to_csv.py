@@ -16,7 +16,6 @@ with open('OpenAI_5Mx1536.csv', 'w', newline='') as ds_writer:
         print("Keys in the file: ", keys)
         print("Number of rows to read/write: ", rows)
         print("Writing to the csv file starting from id: ", start, " to: ", str(start + rows - 1))
-
         for i in range(start, start + rows):
             r = []
             for k in keys:
@@ -25,6 +24,8 @@ with open('OpenAI_5Mx1536.csv', 'w', newline='') as ds_writer:
             if i % 10000 == 0:
                 print(".", end='')
                 sys.stdout.flush()
-        print(f"Data from file {file_name} is written to the csv.")
+        print(f"\nData from file {file_name} is written to the csv.")
         start += rows
+        if start > 999999:
+            start = 0
     print("Done")
