@@ -13,7 +13,7 @@ if len(sys.argv) == 3:
     out_file = sys.argv[2]
 
 with open(out_file, 'w', newline='') as qs_writer:
-    qswriter = csv.writer(qs_writer, delimiter=' ', escapechar=' ', quoting=csv.QUOTE_ALL)
+    qswriter = csv.writer(qs_writer, delimiter=',', escapechar=' ', quoting=csv.QUOTE_ALL)
 
     for file in json_files:
         jfile = f"{absolute_path}/{file}"
