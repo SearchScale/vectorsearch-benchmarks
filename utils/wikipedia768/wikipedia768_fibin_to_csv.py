@@ -58,6 +58,7 @@ def generate(source_file_path: str, csv_out_file: str, wrap_in_b: bool):
         print("\nDone")
 
 if __name__ == "__main__":
-    genetate_dataset("/data/wikipedia768/base.1M.fbin", "/data/wikipedia768/Wikipedia_D10x768.csv")
-    generate("/data/wikipedia768/queries.fbin", "/data/wikipedia768/Wikipedia_D10x768_query.csv", True)
-    generate("/data/wikipedia768/groundtruth.1M.neighbors.ibin", "/data/wikipedia768/Wikipedia_D10x768_groundtruth.csv", False)
+    # To read the 10M dataset axel https://data.rapids.ai/raft/datasets/wiki_all_10M/wiki_all_10M.tar
+    genetate_dataset("/data/wikipedia768/base.10M.fbin", "/data/wikipedia768/Wikipedia_10Mx768.csv")
+    generate("/data/wikipedia768/queries.fbin", "/data/wikipedia768/Wikipedia_10Mx768_query.csv", True)
+    generate("/data/wikipedia768/groundtruth.10M.neighbors.ibin", "/data/wikipedia768/Wikipedia_10Mx768_groundtruth.csv", False)
