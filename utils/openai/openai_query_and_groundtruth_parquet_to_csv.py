@@ -1,0 +1,27 @@
+import pandas as pd
+import csv
+import sys
+
+def generate(parquet_file_path: str, csv_out_file: str, col_name: str):
+    with open(csv_out_file, 'w', newline='') as ds_writer:
+        print("Starting the parquet to csv conversion.")
+        dswriter = csv.writer(ds_writer, delimiter=',', escapechar=' ', quoting=csv.QUOTE_NONE)
+
+        df = pd.read_parquet(parquet_file_path)
+        keys = df.keys()
+        rows = len(df[keys[0]])
+        print("Available keys in the file: ", keys)
+        print("Number of rows to read/write: ", rows)
+
+        for i in range(rows):
+            x = "[" + ",".join([str(i) for i in df[col_name][i].tolist()]) + "]"
+            dswriter.writerow([x])
+            if i % 100 == 0:
+                print(".", end='')
+                sys.stdout.flush()
+
+        print("\nDone")
+
+if __name__ == "__main__":
+    generate('/data/openai/neighbors.parquet' ,'OpenAI_5Mx1536_groundtruth_1000.csv', 'neighbors_id')
+    generate('/data/openai/test.parquet' ,'OpenAI_5Mx1536_query_1000.csv', 'emb')
