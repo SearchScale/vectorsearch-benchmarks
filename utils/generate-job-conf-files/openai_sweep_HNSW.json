@@ -27,8 +27,8 @@
         "cagraITopK" : 100
       },
   "variants": {
-    "hnswMaxConn" : [8, 12, 16, 24, 32, 64, 128],
-    "hnswBeamWidth" : [64, 128, 192, 256, 512],
+    "hnswMaxConn" : [4, 8, 16, 32, 64, 128],
+    "hnswBeamWidth" : [8, 16, 32, 64, 128, 256],
     "hnswVisitedLimit" : [10]
   }
 }
