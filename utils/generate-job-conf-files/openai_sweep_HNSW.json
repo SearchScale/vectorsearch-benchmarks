@@ -1,0 +1,34 @@
+{
+    "invariants": {
+        "benchmarkID" : "OPENAI_D5Mx1536_FF500K_HNSW",
+        "datasetFile" : "/data/openai/OpenAI_5Mx1536.csv.gz",
+        "indexOfVector" : 1,
+        "vectorColName" : "vector",
+        "numDocs" : 5000000,
+        "vectorDimension" : 1536,
+        "queryFile" : "/data/openai/OpenAI_5Mx1536_query_1000.csv",
+        "numQueriesToRun" : 1000,
+        "flushFreq" : 500000,
+        "topK" : 64,
+        "groundTruthFile" : "/data/openai/OpenAI_5Mx1536_groundtruth_1000.csv",
+        "numIndexThreads" : 8,
+        "cuvsWriterThreads" : 8,
+        "queryThreads" : 1,
+        "createIndexInMemory" : false,
+        "cleanIndexDirectory" : true,
+        "saveResultsOnDisk" : true,
+        "hasColNames" : true,
+        "cuvsIndexDirPath" : "cuvsIndex",
+        "hnswIndexDirPath" : "hnswIndex",
+        "cagraSearchWidth" : 1,
+        "algoToRun" : "HNSW",
+        "cagraIntermediateGraphDegree" : 32,
+        "cagraGraphDegree" : 32,
+        "cagraITopK" : 100
+      },
+  "variants": {
+    "hnswMaxConn" : [8, 12, 16, 24, 32, 64, 128],
+    "hnswBeamWidth" : [64, 128, 192, 256, 512],
+    "hnswVisitedLimit" : [10]
+  }
+}
