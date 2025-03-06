@@ -21,8 +21,9 @@ with open(out_file, 'w', newline='') as qs_writer:
             json_data = json.load(json_file)
 
             # deleting the following k,v's from the dict as not useful in consolidated results csv file
-            for key in ['datasetFile', 'groundTruthFile', 'queryFile']:
-                del json_data["configuration"][key]
+            for key in ['datasetFile', 'groundTruthFile', 'queryFile', 'indexOfVector', 'vectorColName', 'saveResultsOnDisk', 'cuvsIndexDirPath', 'hnswIndexDirPath']:
+                if key in json_data["configuration"]:
+                    del json_data["configuration"][key]
 
             if not header_written:
                 header = list(json_data["configuration"].keys()) + list(json_data["metrics"].keys())
