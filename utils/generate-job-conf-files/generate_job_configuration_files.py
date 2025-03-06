@@ -20,7 +20,20 @@ def generate_json_files(input_file):
     for idx, combination in enumerate(combinations):
         result = invariants.copy()
 
-        idv = invariants["benchmarkID"] + "_D" + str(invariants["numDocs"]) + "_FF" + str(invariants["flushFreq"])
+        numdocs = None
+        flushfreq = None
+
+        if "numDocs" in invariants:
+            numdocs = invariants["numDocs"]
+        elif "numDocs" in variants:
+            numdocs = variants["numDocs"]
+
+        if "flushFreq" in invariants:
+            flushfreq = invariants["flushFreq"]
+        elif "flushFreq" in variants:
+            flushfreq = variants["flushFreq"]
+
+        idv = invariants["benchmarkID"] + "_D" + str(numdocs) + "_FF" + str(flushfreq)
         for key, value in zip(variant_keys, combination):
             result[key] = value
             idv += "_" + key + str(value)
@@ -34,7 +47,7 @@ def generate_json_files(input_file):
 
         print(f"Generated {filepath}")
 
-    print("A total of " + str(idx) + " job configuration files have been generated.")
+    print("A total of " + str(idx + 1) + " job configuration files have been generated.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate JSON files based on input configuration.")
