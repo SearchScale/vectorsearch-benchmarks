@@ -14,7 +14,6 @@ import java.util.zip.ZipFile;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.mapdb.IndexTreeList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -161,34 +160,20 @@ public class Util {
   }
 
   /**
-   * Adds precision and recall values to the metrics map
+   * Adds recall values to the metrics map
    * 
    * @param queryResults
    * @param metrics
    */
-  public static void calculatePrecisionAndRecall(List<QueryResult> queryResults, Map<String, Object> metrics,
+  public static void calculateRecallAccuracy(List<QueryResult> queryResults, Map<String, Object> metrics,
       boolean useCuVS) {
 
-    DescriptiveStatistics precisionStats = new DescriptiveStatistics();
-    DescriptiveStatistics recallStats = new DescriptiveStatistics();
-
+    double totalRecall = 0;
     for (QueryResult result : queryResults) {
-      precisionStats.addValue(result.precision);
-      recallStats.addValue(result.recall);
+      totalRecall += result.getRecall();
     }
 
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-min-precision", precisionStats.getMin());
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-max-precision", precisionStats.getMax());
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-avg-precision", precisionStats.getMean());
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-90th-precision", precisionStats.getPercentile(90));
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-95th-precision", precisionStats.getPercentile(95));
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-99th-precision", precisionStats.getPercentile(99));
-
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-min-recall", recallStats.getMin());
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-max-recall", recallStats.getMax());
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-avg-recall", recallStats.getMean());
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-90th-recall", recallStats.getPercentile(90));
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-95th-recall", recallStats.getPercentile(95));
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-99th-recall", recallStats.getPercentile(99));
+    double percentRecallAccuracy = (totalRecall / (double)queryResults.size()) * 100.0;
+    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-recall-accuracy", percentRecallAccuracy);
   }
 }

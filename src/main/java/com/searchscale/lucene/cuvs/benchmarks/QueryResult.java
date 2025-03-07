@@ -22,8 +22,6 @@ public class QueryResult {
   final List<Float> scores;
   @JsonProperty("latency")
   final double latencyMs;
-  @JsonProperty("precision")
-  double precision;
   @JsonProperty("recall")
   double recall;
 
@@ -35,28 +33,21 @@ public class QueryResult {
     this.groundTruth = groundTruth;
     this.scores = scores;
     this.latencyMs = latencyMs;
-    calculatePrecisionAndRecall();
+    calculateRecallAccuracy();
   }
 
-  private void calculatePrecisionAndRecall() {
+  private void calculateRecallAccuracy() {
 
     ArrayList<Integer> topKGroundtruthValues = new ArrayList<Integer>();
-    for (int i = 0; i < docs.size(); i++) { // docs.size() is the topK value
+    for (int i = 0; i < docs.size(); i++) {
       topKGroundtruthValues.add(groundTruth[i]);
     }
-
-    int precisionMatches = 0;
-    for (int g : groundTruth) {
-      if (docs.contains(g)) {
-        precisionMatches += 1;
-      }
-    }
-    this.precision = ((float) precisionMatches / (float) docs.size()) * 100.0;
 
     Set<Integer> matchingRecallValues = docs.stream().distinct().filter(topKGroundtruthValues::contains)
         .collect(Collectors.toSet());
 
-    this.recall = ((float) matchingRecallValues.size() / (float) topKGroundtruthValues.size()) * 100.0;
+    // docs.size() is the topK value
+    this.recall = ((double)matchingRecallValues.size() / (double)docs.size());
   }
 
   @Override
@@ -66,5 +57,9 @@ public class QueryResult {
     } catch (JsonProcessingException e) {
       throw new RuntimeException("Problem with converting the result to a string", e);
     }
+  }
+
+  public double getRecall() {
+    return recall;
   }
 }

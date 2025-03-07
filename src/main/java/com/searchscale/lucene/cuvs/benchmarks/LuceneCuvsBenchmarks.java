@@ -217,7 +217,7 @@ public class LuceneCuvsBenchmarks {
         query(writer.getDirectory(), config, isCuVS, metrics, queryResults,
             Util.readGroundTruthFile(config.groundTruthFile));
 
-        Util.calculatePrecisionAndRecall(queryResults, metrics, writer == cuvsIndexWriter);
+        Util.calculateRecallAccuracy(queryResults, metrics, writer == cuvsIndexWriter);
       }
 
       String resultsJson = Util.newObjectMapper().writerWithDefaultPrettyPrinter()
