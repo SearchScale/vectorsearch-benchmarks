@@ -20,15 +20,15 @@
         "hasColNames" : true,
         "cuvsIndexDirPath" : "cuvsIndex",
         "hnswIndexDirPath" : "hnswIndex",
-        "cagraSearchWidth" : 1,
         "algoToRun" : "CAGRA",
         "hnswMaxConn" : 8,
         "hnswBeamWidth" : 64,
         "hnswVisitedLimit" : 10
       },
   "variants": {
-    "cagraIntermediateGraphDegree" : [256, 512, 1024],
-    "cagraGraphDegree" : [4, 8, 16, 32, 64, 128],
-    "cagraITopK" : [100]
+    "cagraIntermediateGraphDegree" : [32, 64, 96, 128],
+    "cagraGraphDegree" : [32, 64, 96, 128],
+    "cagraITopK" : [32, 64, 128, 256, 512],
+    "cagraSearchWidth" : [1, 2, 4, 8, 16, 32, 64]
   }
 }
