@@ -24,7 +24,7 @@
     "cagraSearchWidth" : 1
   },
   "variants": {
-    "cagraIntermediateGraphDegree" : [32, 64, 96, 128, 256],
-    "cagraGraphDegree" : [32, 64, 96, 128, 256]
+    "cagraIntermediateGraphDegree" : [32, 64, 96, 128, 256, 512],
+    "cagraGraphDegree" : [32, 64, 96, 128, 256, 512]
   }
 }
