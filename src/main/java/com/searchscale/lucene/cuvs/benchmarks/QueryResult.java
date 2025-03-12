@@ -47,7 +47,7 @@ public class QueryResult {
         .collect(Collectors.toSet());
 
     // docs.size() is the topK value
-    this.recall = ((double)matchingRecallValues.size() / (double)docs.size());
+    this.recall = ((double) matchingRecallValues.size() / (double) docs.size());
   }
 
   @Override

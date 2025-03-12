@@ -92,7 +92,7 @@ public class LuceneCuvsBenchmarks {
     // [1] Parse/load data set
     List<String> titles = new ArrayList<String>();
     DB db;
-    IndexTreeList<float[]> vectors;
+    List<float[]> vectors;
 
     long parseStartTime = System.currentTimeMillis();
 
@@ -112,7 +112,15 @@ public class LuceneCuvsBenchmarks {
       vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
       log.info("{} vectors available from the mapdb file", vectors.size());
     }
-
+    
+    log.info("Mapdb loaded. Now loading all vectors in memory");
+    long start = System.currentTimeMillis();
+    List<float[]> loadedVectors = new ArrayList<float[]>(vectors.size());
+    for (int i = 0; i < vectors.size(); i++) {
+      loadedVectors.add(vectors.get(i));
+    }
+    vectors = loadedVectors;
+    log.info("Time taken to load the vectors in-memory is: {}", (System.currentTimeMillis() - start));
     log.info("Time taken for parsing/loading dataset is {} ms", (System.currentTimeMillis() - parseStartTime));
 
     // [2] Benchmarking setup
@@ -122,9 +130,9 @@ public class LuceneCuvsBenchmarks {
       IndexWriterConfig luceneHNSWWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
       luceneHNSWWriterConfig.setCodec(getLuceneHnswCodec(config));
       luceneHNSWWriterConfig.setUseCompoundFile(false);
-      luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq * 2);
+      luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq);
       luceneHNSWWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
-
+      
       // CuVS Writer:
       // IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new
       // StandardAnalyzer()).setCodec(new CuVSCodec(
@@ -133,7 +141,7 @@ public class LuceneCuvsBenchmarks {
       IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
       cuvsIndexWriterConfig.setCodec(getCuVSCodec(config));
       cuvsIndexWriterConfig.setUseCompoundFile(false);
-      cuvsIndexWriterConfig.setMaxBufferedDocs(config.flushFreq * 2);
+      cuvsIndexWriterConfig.setMaxBufferedDocs(config.flushFreq);
       cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
 
       if (INDEX_WRITER_INFO_STREAM) {
@@ -145,7 +153,7 @@ public class LuceneCuvsBenchmarks {
       // luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       // cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       // }
-
+ 
       IndexWriter luceneHnswIndexWriter;
       IndexWriter cuvsIndexWriter;
 
@@ -246,7 +254,7 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static void indexDocuments(IndexWriter writer, BenchmarkConfiguration config, List<String> titles,
-      IndexTreeList<float[]> vectors) throws IOException, InterruptedException {
+      List<float[]> vectors) throws IOException, InterruptedException {
 
     int threads = config.numIndexThreads;
     ExecutorService pool = Executors.newFixedThreadPool(threads);

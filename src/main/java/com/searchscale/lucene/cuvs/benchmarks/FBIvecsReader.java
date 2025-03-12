@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 import org.mapdb.IndexTreeList;
@@ -25,7 +26,7 @@ public class FBIvecsReader {
     return dimension;
   }
 
-  public static void readFvecs(String filePath, int numRows, IndexTreeList<float[]> vectors) {
+  public static void readFvecs(String filePath, int numRows, List<float[]> vectors) {
     log.info("Reading {} from file: {}", numRows, filePath);
 
     try {
@@ -124,7 +125,7 @@ public class FBIvecsReader {
     return vectors;
   }
 
-  public static void readBvecs(String filePath, int numRows, IndexTreeList<float[]> vectors) {
+  public static void readBvecs(String filePath, int numRows, List<float[]> vectors) {
     log.info("Reading {} from file: {}", numRows, filePath);
 
     try {

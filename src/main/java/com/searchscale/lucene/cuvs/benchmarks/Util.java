@@ -32,7 +32,7 @@ public class Util {
   private static final Logger log = LoggerFactory.getLogger(Util.class.getName());
   public static final int DEFAULT_BUFFER_SIZE = 65536;
 
-  public static void parseCSVFile(BenchmarkConfiguration config, List<String> titles, IndexTreeList<float[]> vectors)
+  public static void parseCSVFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectors)
       throws IOException, CsvValidationException {
     InputStreamReader isr = null;
     ZipFile zipFile = null;
@@ -132,7 +132,7 @@ public class Util {
     return rst;
   }
 
-  public static void readBaseFile(BenchmarkConfiguration config, List<String> titles, IndexTreeList<float[]> vectors) {
+  public static void readBaseFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectors) {
     if (config.datasetFile.contains("fvecs")) {
       log.info("Seems like an fvecs base file. Reading ...");
       FBIvecsReader.readFvecs(config.datasetFile, config.numDocs, vectors);
