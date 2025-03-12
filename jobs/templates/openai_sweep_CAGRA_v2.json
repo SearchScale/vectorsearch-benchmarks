@@ -10,7 +10,7 @@
     "numQueriesToRun" : 1000,
     "flushFreq" : 500000,
     "topK" : 64,
-    "numIndexThreads" : 4,
+    "numIndexThreads" : 1,
     "cuvsWriterThreads" : 32,
     "queryThreads" : 1,
     "createIndexInMemory" : false,
