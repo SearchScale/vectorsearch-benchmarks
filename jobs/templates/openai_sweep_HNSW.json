@@ -11,7 +11,7 @@
         "flushFreq" : 500000,
         "topK" : 10,
         "groundTruthFile" : "/data/openai/OpenAI_5Mx1536_groundtruth_1000.csv",
-        "numIndexThreads" : 64,
+        "numIndexThreads" : 32,
         "queryThreads" : 1,
         "createIndexInMemory" : false,
         "cleanIndexDirectory" : true,
@@ -21,8 +21,8 @@
         "algoToRun" : "HNSW"
       },
   "variants": {
-    "hnswMaxConn" : [16, 32, 64, 128, 256],
-    "hnswBeamWidth" : [16, 32, 64, 128, 256],
+    "hnswMaxConn" : [16, 32, 64, 128, 256, 512],
+    "hnswBeamWidth" : [16, 32, 64, 128, 256, 512],
     "hnswVisitedLimit" : [10]
   }
 }
