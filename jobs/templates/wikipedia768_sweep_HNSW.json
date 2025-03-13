@@ -1,0 +1,29 @@
+{
+  "invariants": {
+    "benchmarkID" : "WIKIPEDIA_D10Mx768_FF1M_HNSW",
+    "datasetFile" : "/data/wikipedia768/Wikipedia_10Mx768.csv.gz",
+    "indexOfVector" : 1,
+    "vectorColName" : "vector",
+    "numDocs" : 10000000,
+    "vectorDimension" : 1536,
+    "queryFile" : "/data/wikipedia768/Wikipedia_10Mx768_query.csv",
+    "numQueriesToRun" : 1000,
+    "flushFreq" : 1000000,
+    "topK" : 10,
+    "groundTruthFile" : "/data/wikipedia768/Wikipedia_10Mx768_groundtruth.csv",
+    "numIndexThreads" : 32,
+    "queryThreads" : 1,
+    "createIndexInMemory" : false,
+    "cleanIndexDirectory" : true,
+    "saveResultsOnDisk" : true,
+    "hasColNames" : true,
+    "hnswIndexDirPath" : "hnswIndex",
+    "algoToRun" : "HNSW",
+    "loadVectorsInMemory": true
+  },
+  "variants": {
+    "hnswMaxConn" : [16, 32, 64, 128, 256],
+    "hnswBeamWidth" : [16, 32, 64, 128, 256],
+    "hnswVisitedLimit" : [10]
+  }
+}
