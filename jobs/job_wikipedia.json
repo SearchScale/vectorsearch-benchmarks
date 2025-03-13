@@ -26,5 +26,6 @@
   "cagraIntermediateGraphDegree" : 2,
   "cagraGraphDegree" : 1,
   "cagraITopK" : 5,
-  "cagraSearchWidth" : 1
+  "cagraSearchWidth" : 1,
+  "loadVectorsInMemory": true
 }

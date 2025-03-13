@@ -21,7 +21,8 @@
     "groundTruthFile" : "/data/openai/OpenAI_5Mx1536_groundtruth_1000.csv",
     "cuvsIndexDirPath" : "cuvsIndex",
     "cagraITopK" : 10,
-    "cagraSearchWidth" : 1
+    "cagraSearchWidth" : 1,
+    "loadVectorsInMemory": true
   },
   "variants": {
     "cagraIntermediateGraphDegree" : [32, 64, 96, 128, 256, 512],

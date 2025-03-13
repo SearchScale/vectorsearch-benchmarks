@@ -23,6 +23,7 @@ public class BenchmarkConfiguration {
   public String groundTruthFile;
   public String cuvsIndexDirPath;
   public String hnswIndexDirPath;
+  public boolean loadVectorsInMemory;
 
   // HNSW parameters
   public int hnswMaxConn; // 16 default (max 512)
@@ -54,10 +55,11 @@ public class BenchmarkConfiguration {
     System.out.println("Clean index directory: " + cleanIndexDirectory);
     System.out.println("Save results on disk: " + saveResultsOnDisk);
     System.out.println("Has column names in the dataset file: " + hasColNames);
-    System.out.println("algoToRun {Choices: HNSW | CAGRA | ALL}: " + algoToRun);
+    System.out.println("algoToRun {Choices: HNSW | CAGRA}: " + algoToRun);
     System.out.println("Ground Truth file used is: " + groundTruthFile);
     System.out.println("CuVS index directory path is: " + cuvsIndexDirPath);
     System.out.println("HNSW index directory path is: " + hnswIndexDirPath);
+    System.out.println("Load vectors in memory before indexing: " + loadVectorsInMemory);
 
     System.out.println("------- algo parameters ------");
     System.out.println("hnswMaxConn: " + hnswMaxConn);

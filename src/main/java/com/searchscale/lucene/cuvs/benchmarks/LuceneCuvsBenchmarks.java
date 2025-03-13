@@ -112,15 +112,18 @@ public class LuceneCuvsBenchmarks {
       vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
       log.info("{} vectors available from the mapdb file", vectors.size());
     }
-    
-    log.info("Mapdb loaded. Now loading all vectors in memory");
-    long start = System.currentTimeMillis();
-    List<float[]> loadedVectors = new ArrayList<float[]>(vectors.size());
-    for (int i = 0; i < vectors.size(); i++) {
-      loadedVectors.add(vectors.get(i));
+
+    if (config.loadVectorsInMemory) {
+      log.info("Mapdb loaded. Now loading all vectors in memory (loadVectorsInMemory is enabled)");
+      long start = System.currentTimeMillis();
+      List<float[]> loadedVectors = new ArrayList<float[]>(vectors.size());
+      for (int i = 0; i < vectors.size(); i++) {
+        loadedVectors.add(vectors.get(i));
+      }
+      vectors = loadedVectors;
+      log.info("Time taken to load the vectors in-memory is: {}", (System.currentTimeMillis() - start));
     }
-    vectors = loadedVectors;
-    log.info("Time taken to load the vectors in-memory is: {}", (System.currentTimeMillis() - start));
+
     log.info("Time taken for parsing/loading dataset is {} ms", (System.currentTimeMillis() - parseStartTime));
 
     // [2] Benchmarking setup
@@ -132,7 +135,7 @@ public class LuceneCuvsBenchmarks {
       luceneHNSWWriterConfig.setUseCompoundFile(false);
       luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq);
       luceneHNSWWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
-      
+
       // CuVS Writer:
       // IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new
       // StandardAnalyzer()).setCodec(new CuVSCodec(
@@ -153,36 +156,58 @@ public class LuceneCuvsBenchmarks {
       // luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       // cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       // }
- 
-      IndexWriter luceneHnswIndexWriter;
-      IndexWriter cuvsIndexWriter;
 
-      if (!config.createIndexInMemory) {
-        Path hnswIndex = Path.of(config.hnswIndexDirPath);
-        Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
-        if (config.cleanIndexDirectory) {
-          FileUtils.deleteDirectory(hnswIndex.toFile());
-          FileUtils.deleteDirectory(cuvsIndex.toFile());
+      IndexWriter luceneHnswIndexWriter = null;
+      IndexWriter cuvsIndexWriter = null;
+
+      // if (!config.createIndexInMemory) {
+      // Path hnswIndex = Path.of(config.hnswIndexDirPath);
+      // Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
+      // if (config.cleanIndexDirectory) {
+      // FileUtils.deleteDirectory(hnswIndex.toFile());
+      // FileUtils.deleteDirectory(cuvsIndex.toFile());
+      // }
+      // luceneHnswIndexWriter = new IndexWriter(FSDirectory.open(hnswIndex),
+      // luceneHNSWWriterConfig);
+      // cuvsIndexWriter = new IndexWriter(FSDirectory.open(cuvsIndex),
+      // cuvsIndexWriterConfig);
+      // } else {
+      // luceneHnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(),
+      // luceneHNSWWriterConfig);
+      // cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(),
+      // cuvsIndexWriterConfig);
+      // }
+
+      if (config.algoToRun.equalsIgnoreCase("HNSW")) {
+        if (!config.createIndexInMemory) {
+          Path hnswIndex = Path.of(config.hnswIndexDirPath);
+          if (config.cleanIndexDirectory) {
+            FileUtils.deleteDirectory(hnswIndex.toFile());
+          }
+          luceneHnswIndexWriter = new IndexWriter(FSDirectory.open(hnswIndex), luceneHNSWWriterConfig);
+        } else {
+          luceneHnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), luceneHNSWWriterConfig);
         }
-        luceneHnswIndexWriter = new IndexWriter(FSDirectory.open(hnswIndex), luceneHNSWWriterConfig);
-        cuvsIndexWriter = new IndexWriter(FSDirectory.open(cuvsIndex), cuvsIndexWriterConfig);
-      } else {
-        luceneHnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), luceneHNSWWriterConfig);
-        cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
+      } else if (config.algoToRun.equalsIgnoreCase("CAGRA")) {
+        if (!config.createIndexInMemory) {
+          Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
+          if (config.cleanIndexDirectory) {
+            FileUtils.deleteDirectory(cuvsIndex.toFile());
+          }
+          cuvsIndexWriter = new IndexWriter(FSDirectory.open(cuvsIndex), cuvsIndexWriterConfig);
+        } else {
+          cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
+        }
       }
 
       ArrayList<IndexWriter> writers = new ArrayList<IndexWriter>();
 
-      if ("ALL".equalsIgnoreCase(config.algoToRun)) {
-        writers.add(cuvsIndexWriter);
-        writers.add(luceneHnswIndexWriter);
-      } else if ("HNSW".equalsIgnoreCase(config.algoToRun)) {
+      if ("HNSW".equalsIgnoreCase(config.algoToRun)) {
         writers.add(luceneHnswIndexWriter);
       } else if ("CAGRA".equalsIgnoreCase(config.algoToRun)) {
         writers.add(cuvsIndexWriter);
       } else {
-        throw new IllegalArgumentException(
-            "Please pass an acceptable option for `algoToRun`. Choices: ALL, HNSW, CAGRA");
+        throw new IllegalArgumentException("Please pass an acceptable option for `algoToRun`. Choices: HNSW, CAGRA");
       }
 
       for (IndexWriter writer : writers) {
@@ -200,9 +225,12 @@ public class LuceneCuvsBenchmarks {
 
         log.info("Time taken for index building (end to end): {} ms", indexTimeTaken);
 
+        boolean usingFSDirectory = luceneHnswIndexWriter != null
+            ? luceneHnswIndexWriter.getDirectory() instanceof FSDirectory
+            : cuvsIndexWriter.getDirectory() instanceof FSDirectory;
+
         try {
-          if (luceneHnswIndexWriter.getDirectory() instanceof FSDirectory
-              && cuvsIndexWriter.getDirectory() instanceof FSDirectory) {
+          if (usingFSDirectory) {
             Path indexPath = writer == cuvsIndexWriter ? Paths.get(config.cuvsIndexDirPath)
                 : Paths.get(config.hnswIndexDirPath);
             long directorySize;
