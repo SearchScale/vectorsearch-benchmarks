@@ -5,7 +5,7 @@
     "indexOfVector" : 1,
     "vectorColName" : "vector",
     "numDocs" : 10000000,
-    "vectorDimension" : 1536,
+    "vectorDimension" : 768,
     "queryFile" : "/data/wikipedia768/Wikipedia_10Mx768_query.csv",
     "numQueriesToRun" : 10000,
     "flushFreq" : 1000000,
