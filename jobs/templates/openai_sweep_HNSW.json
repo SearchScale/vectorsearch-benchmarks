@@ -22,8 +22,8 @@
     "loadVectorsInMemory": true
   },
   "variants": {
-    "hnswMaxConn" : [16, 32, 64, 128, 256, 512],
-    "hnswBeamWidth" : [16, 32, 64, 128, 256, 512],
+    "hnswMaxConn" : [16, 32, 64, 128, 256],
+    "hnswBeamWidth" : [16, 32, 64, 128, 256],
     "hnswVisitedLimit" : [10]
   }
 }
