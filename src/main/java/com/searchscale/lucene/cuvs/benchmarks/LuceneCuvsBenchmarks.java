@@ -304,11 +304,6 @@ public class LuceneCuvsBenchmarks {
 
     DB db = null;
     try (IndexReader indexReader = DirectoryReader.open(directory)) {
-    	log.info("Total segments: " + indexReader.getContext().leaves().size());
-    	for (LeafReaderContext ctx: indexReader.getContext().leaves()) {
-    		SegmentReader reader = (SegmentReader) ctx.reader();
-    		log.info("\t"+reader.getSegmentName()+" contains files: " + reader.getSegmentInfo().files());
-    	}
       IndexSearcher indexSearcher = new IndexSearcher(indexReader);
 
       IndexTreeList<float[]> queries;
