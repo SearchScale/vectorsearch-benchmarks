@@ -20,8 +20,8 @@
     "algoToRun" : "CAGRA",
     "groundTruthFile" : "/data/openai/OpenAI_5Mx1536_groundtruth_1000.csv",
     "cuvsIndexDirPath" : "cuvsIndex",
-    "cagraITopK" : 10,
-    "cagraSearchWidth" : 1,
+    "cagraITopK" : 64,
+    "cagraSearchWidth" : 64,
     "loadVectorsInMemory": true
   },
   "variants": {

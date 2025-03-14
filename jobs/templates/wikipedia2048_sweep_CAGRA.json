@@ -9,7 +9,7 @@
     "queryFile" : "/data/wikipedia/queries_2P5M_546.csv",
     "numQueriesToRun" : 500,
     "flushFreq" : 500000,
-    "topK" : 10,
+    "topK" : 64,
     "numIndexThreads" : 1,
     "cuvsWriterThreads" : 32,
     "queryThreads" : 1,
@@ -20,8 +20,8 @@
     "algoToRun" : "CAGRA",
     "groundTruthFile" : "/data/wikipedia/ground_truth_4P9M_546x64.csv",
     "cuvsIndexDirPath" : "cuvsIndex",
-    "cagraITopK" : 10,
-    "cagraSearchWidth" : 1,
+    "cagraITopK" : 64,
+    "cagraSearchWidth" : 64,
     "loadVectorsInMemory": true
   },
   "variants": {
