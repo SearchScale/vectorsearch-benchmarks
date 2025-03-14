@@ -42,7 +42,9 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.index.SegmentReadState;
+import org.apache.lucene.index.SegmentReader;
 import org.apache.lucene.index.SegmentWriteState;
 import org.apache.lucene.sandbox.vectorsearch.CuVSKnnFloatVectorQuery;
 import org.apache.lucene.sandbox.vectorsearch.CuVSVectorsFormat;
@@ -113,21 +115,22 @@ public class LuceneCuvsBenchmarks {
       log.info("{} vectors available from the mapdb file", vectors.size());
     }
 
-    if (config.loadVectorsInMemory) {
-      log.info("Mapdb loaded. Now loading all vectors in memory (loadVectorsInMemory is enabled)");
-      long start = System.currentTimeMillis();
-      List<float[]> loadedVectors = new ArrayList<float[]>(vectors.size());
-      for (int i = 0; i < vectors.size(); i++) {
-        loadedVectors.add(vectors.get(i));
-      }
-      vectors = loadedVectors;
-      log.info("Time taken to load the vectors in-memory is: {}", (System.currentTimeMillis() - start));
-    }
-
-    log.info("Time taken for parsing/loading dataset is {} ms", (System.currentTimeMillis() - parseStartTime));
-
-    // [2] Benchmarking setup
     try {
+
+      if (config.loadVectorsInMemory) {
+        log.info("Mapdb loaded. Now loading all vectors in memory (loadVectorsInMemory is enabled)");
+        long start = System.currentTimeMillis();
+        List<float[]> loadedVectors = new ArrayList<float[]>(vectors.size());
+        for (int i = 0; i < vectors.size(); i++) {
+          loadedVectors.add(vectors.get(i));
+        }
+        vectors = loadedVectors;
+        log.info("Time taken to load the vectors in-memory is: {}", (System.currentTimeMillis() - start));
+      }
+
+      log.info("Time taken for parsing/loading dataset is {} ms", (System.currentTimeMillis() - parseStartTime));
+
+      // [2] Benchmarking setup
 
       // HNSW Writer:
       IndexWriterConfig luceneHNSWWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
@@ -136,11 +139,6 @@ public class LuceneCuvsBenchmarks {
       luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq);
       luceneHNSWWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
 
-      // CuVS Writer:
-      // IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new
-      // StandardAnalyzer()).setCodec(new CuVSCodec(
-      // config.cuvsWriterThreads, config.cagraIntermediateGraphDegree,
-      // config.cagraGraphDegree, config.mergeStrategy));
       IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
       cuvsIndexWriterConfig.setCodec(getCuVSCodec(config));
       cuvsIndexWriterConfig.setUseCompoundFile(false);
@@ -152,31 +150,8 @@ public class LuceneCuvsBenchmarks {
         cuvsIndexWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
       }
 
-      // if (config.mergeStrategy.equals(MergeStrategy.NON_TRIVIAL_MERGE)) {
-      // luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
-      // cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
-      // }
-
       IndexWriter luceneHnswIndexWriter = null;
       IndexWriter cuvsIndexWriter = null;
-
-      // if (!config.createIndexInMemory) {
-      // Path hnswIndex = Path.of(config.hnswIndexDirPath);
-      // Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
-      // if (config.cleanIndexDirectory) {
-      // FileUtils.deleteDirectory(hnswIndex.toFile());
-      // FileUtils.deleteDirectory(cuvsIndex.toFile());
-      // }
-      // luceneHnswIndexWriter = new IndexWriter(FSDirectory.open(hnswIndex),
-      // luceneHNSWWriterConfig);
-      // cuvsIndexWriter = new IndexWriter(FSDirectory.open(cuvsIndex),
-      // cuvsIndexWriterConfig);
-      // } else {
-      // luceneHnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(),
-      // luceneHNSWWriterConfig);
-      // cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(),
-      // cuvsIndexWriterConfig);
-      // }
 
       if (config.algoToRun.equalsIgnoreCase("HNSW")) {
         if (!config.createIndexInMemory) {
@@ -329,6 +304,11 @@ public class LuceneCuvsBenchmarks {
 
     DB db = null;
     try (IndexReader indexReader = DirectoryReader.open(directory)) {
+    	log.info("Total segments: " + indexReader.getContext().leaves().size());
+    	for (LeafReaderContext ctx: indexReader.getContext().leaves()) {
+    		SegmentReader reader = (SegmentReader) ctx.reader();
+    		log.info("\t"+reader.getSegmentName()+" contains files: " + reader.getSegmentInfo().files());
+    	}
       IndexSearcher indexSearcher = new IndexSearcher(indexReader);
 
       IndexTreeList<float[]> queries;
@@ -435,9 +415,6 @@ public class LuceneCuvsBenchmarks {
 
   private static Lucene101Codec getLuceneHnswCodec(BenchmarkConfiguration config) {
     return new Lucene101Codec(Mode.BEST_SPEED) {
-
-      static final int DEFAULT_MAX_CONN = Lucene99HnswVectorsFormat.DEFAULT_MAX_CONN; // 16
-      static final int DEFAULT_BEAM_WIDTH = Lucene99HnswVectorsFormat.DEFAULT_BEAM_WIDTH; // 100
 
       @Override
       public KnnVectorsFormat getKnnVectorsFormatForField(String field) {
