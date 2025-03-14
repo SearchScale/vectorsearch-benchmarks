@@ -9,7 +9,7 @@
     "queryFile" : "/data/openai/OpenAI_5Mx1536_query_1000.csv",
     "numQueriesToRun" : 1000,
     "flushFreq" : 500000,
-    "topK" : 10,
+    "topK" : 64,
     "numIndexThreads" : 1,
     "cuvsWriterThreads" : 32,
     "queryThreads" : 1,
