@@ -22,7 +22,6 @@
   "hnswIndexDirPath" : "hnswIndex",
   "hnswMaxConn" : 24,
   "hnswBeamWidth" : 256,
-  "hnswVisitedLimit" : 10,
   "cagraIntermediateGraphDegree" : 2,
   "cagraGraphDegree" : 1,
   "cagraITopK" : 5,

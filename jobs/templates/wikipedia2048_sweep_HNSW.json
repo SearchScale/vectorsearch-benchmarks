@@ -9,7 +9,7 @@
     "queryFile" : "/data/wikipedia/queries_2P5M_546.csv",
     "numQueriesToRun" : 500,
     "flushFreq" : 500000,
-    "topK" : 10,
+    "topK" : 64,
     "groundTruthFile" : "/data/wikipedia/ground_truth_4P9M_546x64.csv",
     "numIndexThreads" : 32,
     "queryThreads" : 1,
@@ -22,8 +22,7 @@
     "loadVectorsInMemory": true
   },
   "variants": {
-    "hnswMaxConn" : [16, 32, 64, 128, 256],
-    "hnswBeamWidth" : [16, 32, 64, 128, 256],
-    "hnswVisitedLimit" : [10]
+    "hnswMaxConn" : [64, 128, 256, 512],
+    "hnswBeamWidth" : [16, 24, 32, 64]
   }
 }
