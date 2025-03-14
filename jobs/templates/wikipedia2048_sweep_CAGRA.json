@@ -1,0 +1,31 @@
+{
+  "invariants": {
+    "benchmarkID" : "WIKIPEDIA_D5Mx2048_FF500K_Q500_CAGRA",
+    "datasetFile" : "/data/wikipedia/wiki_dump_5Mx2048D.csv.gz",
+    "indexOfVector" : 3,
+    "vectorColName" : "article_vector",
+    "numDocs" : 5000000,
+    "vectorDimension" : 2048,
+    "queryFile" : "/data/wikipedia/queries_2P5M_546.csv",
+    "numQueriesToRun" : 500,
+    "flushFreq" : 500000,
+    "topK" : 10,
+    "numIndexThreads" : 1,
+    "cuvsWriterThreads" : 32,
+    "queryThreads" : 1,
+    "createIndexInMemory" : false,
+    "cleanIndexDirectory" : true,
+    "saveResultsOnDisk" : true,
+    "hasColNames" : true,
+    "algoToRun" : "CAGRA",
+    "groundTruthFile" : "/data/wikipedia/ground_truth_4P9M_546x64.csv",
+    "cuvsIndexDirPath" : "cuvsIndex",
+    "cagraITopK" : 10,
+    "cagraSearchWidth" : 1,
+    "loadVectorsInMemory": true
+  },
+  "variants": {
+    "cagraIntermediateGraphDegree" : [32, 64, 96, 128, 256],
+    "cagraGraphDegree" : [32, 64, 96, 128, 256]
+  }
+}
