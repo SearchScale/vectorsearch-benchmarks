@@ -28,7 +28,6 @@ public class BenchmarkConfiguration {
   // HNSW parameters
   public int hnswMaxConn; // 16 default (max 512)
   public int hnswBeamWidth; // 100 default (max 3200)
-  public int hnswVisitedLimit;
 
   // Cagra parameters
   public int cagraIntermediateGraphDegree; // 128 default
@@ -64,7 +63,6 @@ public class BenchmarkConfiguration {
     System.out.println("------- algo parameters ------");
     System.out.println("hnswMaxConn: " + hnswMaxConn);
     System.out.println("hnswBeamWidth: " + hnswBeamWidth);
-    System.out.println("hnswVisitedLimit: " + hnswVisitedLimit);
     System.out.println("cagraIntermediateGraphDegree: " + cagraIntermediateGraphDegree);
     System.out.println("cagraGraphDegree: " + cagraGraphDegree);
     System.out.println("cagraITopK: " + cagraITopK);
