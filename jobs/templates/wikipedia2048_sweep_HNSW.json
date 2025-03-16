@@ -23,6 +23,6 @@
   },
   "variants": {
     "hnswMaxConn" : [64, 128, 256, 512],
-    "hnswBeamWidth" : [16, 24, 32, 64, 128]
+    "hnswBeamWidth" : [64, 128, 256, 512]
   }
 }
