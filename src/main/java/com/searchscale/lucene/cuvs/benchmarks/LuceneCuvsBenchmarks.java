@@ -342,6 +342,8 @@ public class LuceneCuvsBenchmarks {
       long startTime = System.currentTimeMillis();
       AtomicInteger queryId = new AtomicInteger(0);
       queries.stream().limit(config.numQueriesToRun).forEach((queryVector) -> {
+        // Get a unique query ID for this query before submitting to thread pool
+        int currentQueryId = queryId.getAndIncrement();
         pool.submit(() -> {
           KnnFloatVectorQuery query;
 
@@ -370,10 +372,15 @@ public class LuceneCuvsBenchmarks {
           if (finishedCount % 2 == 0 || finishedCount == config.numQueriesToRun) {
             log.info("Done querying " + finishedCount + " out of " + config.numQueriesToRun + " queries.");
           }
-
+          
           ScoreDoc[] hits = topDocs.scoreDocs;
           List<Integer> neighbors = new ArrayList<>();
           List<Float> scores = new ArrayList<>();
+          
+          // Debug: Log search results for first query
+          if (queryId.get() == 0) {
+            log.info("Debug: First query returned " + hits.length + " hits");
+          }
           for (ScoreDoc hit : hits) {
             try {
               Document d = indexReader.storedFields().document(hit.doc);
@@ -383,12 +390,17 @@ public class LuceneCuvsBenchmarks {
             }
             scores.add(hit.score);
           }
+          
+          // Debug: Log results for all queries
+          log.info("Query " + currentQueryId + " - First 5 neighbors: " + neighbors.subList(0, Math.min(5, neighbors.size())));
+          log.info("Query " + currentQueryId + " - First 5 distances: " + scores.subList(0, Math.min(5, scores.size())));
+          int[] expectedNeighbors = groundTruth.get(currentQueryId);
+          log.info("Query " + currentQueryId + " - Expected neighbors: " + java.util.Arrays.toString(java.util.Arrays.copyOf(expectedNeighbors, Math.min(5, expectedNeighbors.length))));
 
           var s = useCuVS ? "lucene_cuvs" : "lucene_hnsw";
-          QueryResult result = new QueryResult(s, queryId.get(), neighbors, groundTruth.get(queryId.get()), scores,
+          QueryResult result = new QueryResult(s, currentQueryId, neighbors, groundTruth.get(currentQueryId), scores,
               searchTimeTakenMs);
           queryResults.add(result);
-          queryId.addAndGet(1);
         });
       });
 
