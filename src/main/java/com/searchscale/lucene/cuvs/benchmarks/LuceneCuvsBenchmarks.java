@@ -42,6 +42,7 @@ import org.apache.lucene.index.DirectoryReader;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
+import org.apache.lucene.index.NoMergePolicy;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
 import com.nvidia.cuvs.lucene.CuVSKnnFloatVectorQuery;
@@ -136,12 +137,14 @@ public class LuceneCuvsBenchmarks {
       luceneHNSWWriterConfig.setUseCompoundFile(false);
       luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq);
       luceneHNSWWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+      luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
 
       IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
       cuvsIndexWriterConfig.setCodec(getCuVSCodec(config));
       cuvsIndexWriterConfig.setUseCompoundFile(false);
       cuvsIndexWriterConfig.setMaxBufferedDocs(config.flushFreq);
       cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+      cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
 
       if (INDEX_WRITER_INFO_STREAM) {
         luceneHNSWWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
@@ -400,6 +403,10 @@ public class LuceneCuvsBenchmarks {
       double avgLatency = new ArrayList<>(queryLatencies.values()).stream().reduce(0.0, Double::sum)
           / queriesFinished.get();
       metrics.put((useCuVS ? "cuvs" : "hnsw") + "-mean-latency", avgLatency);
+      
+      // Add segment count to metrics
+      int segmentCount = indexReader.leaves().size();
+      metrics.put((useCuVS ? "cuvs" : "hnsw") + "-segment-count", segmentCount);
 
     } catch (Exception e) {
       e.printStackTrace();
