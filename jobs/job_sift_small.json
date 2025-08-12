@@ -16,7 +16,7 @@
   "cleanIndexDirectory" : true,
   "saveResultsOnDisk" : false,
   "hasColNames" : true,
-  "algoToRun" : "CAGRA",
+  "algoToRun" : "CAGRA_HNSW",
   "groundTruthFile" : "/data/siftsmall/siftsmall_groundtruth.ivecs",
   "cuvsIndexDirPath" : "cuvsIndex",
   "hnswIndexDirPath" : "hnswIndex",

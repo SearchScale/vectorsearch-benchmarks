@@ -1,2 +1,2 @@
-org.apache.lucene.sandbox.vectorsearch.CuVSCodec
+com.nvidia.cuvs.lucene.CuVSCPUSearchCodec
 org.apache.lucene.codecs.lucene101.Lucene101Codec

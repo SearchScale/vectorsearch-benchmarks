@@ -1,10 +1,11 @@
 #!/bin/bash
 
-mvn clean package
+# Export LD_LIBRARY_PATH for cuVS native libraries
+export LD_LIBRARY_PATH=/home/ishan/code/cuvs/cpp/build:$LD_LIBRARY_PATH
 
-CUVS_VERSION=25.02.0
-CUVS_JAVA_JAR=$HOME/.m2/repository/com/nvidia/cuvs/cuvs-java/$CUVS_VERSION/cuvs-java-$CUVS_VERSION.jar
-BENCHMARK_JAR=target/vectorsearch-benchmarks-1.0-jar-with-dependencies.jar
+mvn clean compile
+
+# Use Maven to run with proper classpath instead of fat JAR to handle multi-release JARs correctly
 PASSED_ARGUMENT=$1
 
 if   [ -d "${PASSED_ARGUMENT}" ]
@@ -13,18 +14,14 @@ then
     echo "${PASSED_ARGUMENT} is a directory.";
     for config_file in "$PASSED_ARGUMENT"/*; do
         echo "####################### Now running: $config_file #######################"
-        "$JAVA_HOME"/bin/java -cp "$CUVS_JAVA_JAR":"$BENCHMARK_JAR" \
-        --add-modules=jdk.incubator.vector \
-        --enable-native-access=ALL-UNNAMED \
-        com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks \
-        $config_file # the job configuration file from the directory picked up for this run
+        mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
+        -Dexec.args="$config_file" \
+        -Dexec.jvmArgs="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
     done
 elif [ -f "${PASSED_ARGUMENT}" ]
 then
     echo "${PASSED_ARGUMENT} is a file. Running now.";
-    "$JAVA_HOME"/bin/java -cp "$CUVS_JAVA_JAR":"$BENCHMARK_JAR" \
-    --add-modules=jdk.incubator.vector \
-    --enable-native-access=ALL-UNNAMED \
-    com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks \
-    $PASSED_ARGUMENT # the job configuration file to run
+    mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
+    -Dexec.args="$PASSED_ARGUMENT" \
+    -Dexec.jvmArgs="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
 fi

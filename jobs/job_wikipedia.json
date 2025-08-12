@@ -16,7 +16,7 @@
   "cleanIndexDirectory" : true,
   "saveResultsOnDisk" : false,
   "hasColNames" : true,
-  "algoToRun" : "CAGRA",
+  "algoToRun" : "CAGRA_HNSW",
   "groundTruthFile" : "/data/ground_truth_100x64.csv",
   "cuvsIndexDirPath" : "cuvsIndex",
   "hnswIndexDirPath" : "hnswIndex",

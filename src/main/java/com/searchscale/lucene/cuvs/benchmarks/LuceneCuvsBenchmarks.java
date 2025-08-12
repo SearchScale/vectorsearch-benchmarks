@@ -44,10 +44,10 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
-import org.apache.lucene.sandbox.vectorsearch.CuVSKnnFloatVectorQuery;
-import org.apache.lucene.sandbox.vectorsearch.CuVSVectorsFormat;
-import org.apache.lucene.sandbox.vectorsearch.CuVSVectorsWriter.IndexType;
-import org.apache.lucene.sandbox.vectorsearch.CuVSVectorsWriter.MergeStrategy;
+import com.nvidia.cuvs.lucene.CuVSKnnFloatVectorQuery;
+import com.nvidia.cuvs.lucene.CuVSVectorsFormat;
+import com.nvidia.cuvs.lucene.CuVSVectorsWriter.IndexType;
+import com.nvidia.cuvs.lucene.CuVSCPUSearchCodec;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.KnnFloatVectorQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -151,7 +151,7 @@ public class LuceneCuvsBenchmarks {
       IndexWriter luceneHnswIndexWriter = null;
       IndexWriter cuvsIndexWriter = null;
 
-      if (config.algoToRun.equalsIgnoreCase("HNSW")) {
+      if (config.algoToRun.equalsIgnoreCase("LUCENE_HNSW")) {
         if (!config.createIndexInMemory) {
           Path hnswIndex = Path.of(config.hnswIndexDirPath);
           if (config.cleanIndexDirectory) {
@@ -161,7 +161,7 @@ public class LuceneCuvsBenchmarks {
         } else {
           luceneHnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), luceneHNSWWriterConfig);
         }
-      } else if (config.algoToRun.equalsIgnoreCase("CAGRA")) {
+      } else if (config.algoToRun.equalsIgnoreCase("CAGRA_HNSW")) {
         if (!config.createIndexInMemory) {
           Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
           if (config.cleanIndexDirectory) {
@@ -175,12 +175,12 @@ public class LuceneCuvsBenchmarks {
 
       ArrayList<IndexWriter> writers = new ArrayList<IndexWriter>();
 
-      if ("HNSW".equalsIgnoreCase(config.algoToRun)) {
+      if ("LUCENE_HNSW".equalsIgnoreCase(config.algoToRun)) {
         writers.add(luceneHnswIndexWriter);
-      } else if ("CAGRA".equalsIgnoreCase(config.algoToRun)) {
+      } else if ("CAGRA_HNSW".equalsIgnoreCase(config.algoToRun)) {
         writers.add(cuvsIndexWriter);
       } else {
-        throw new IllegalArgumentException("Please pass an acceptable option for `algoToRun`. Choices: HNSW, CAGRA");
+        throw new IllegalArgumentException("Please pass an acceptable option for `algoToRun`. Choices: LUCENE_HNSW, CAGRA_HNSW");
       }
 
       for (IndexWriter writer : writers) {
@@ -361,7 +361,12 @@ public class LuceneCuvsBenchmarks {
           double searchTimeTakenMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - searchStartTime);
           // log.info("End to end search took: " + searchTimeTakenMs);
           queryLatencies.put(queryId.get(), searchTimeTakenMs);
-          queriesFinished.incrementAndGet();
+          int finishedCount = queriesFinished.incrementAndGet();
+          
+          // Log progress every 2 queries
+          if (finishedCount % 2 == 0 || finishedCount == config.numQueriesToRun) {
+            log.info("Done querying " + finishedCount + " out of " + config.numQueriesToRun + " queries.");
+          }
 
           ScoreDoc[] hits = topDocs.scoreDocs;
           List<Integer> neighbors = new ArrayList<>();
@@ -420,42 +425,11 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static Codec getCuVSCodec(BenchmarkConfiguration config) {
-    return new CuVSCodec(config.cuvsWriterThreads, config.cagraIntermediateGraphDegree, config.cagraGraphDegree);
+    // Use CuVSCPUSearchCodec directly
+    return new CuVSCPUSearchCodec();
   }
 
-  static final class CuVSCodec extends FilterCodec {
-
-    static final int CUVS_WRITER_THREADS = 32;
-
-    // Unused
-    static final KnnVectorsFormat KNN_FORMAT = new CuVSVectorsFormat(CUVS_WRITER_THREADS, 128, 64,
-        MergeStrategy.NON_TRIVIAL_MERGE, IndexType.CAGRA);
-
-    int cuvsWriterThreads = CUVS_WRITER_THREADS;
-    int cuvsIntermediateGraphDegree = 128;
-    int cuvsGraphDegree = 64;
-
-    CuVSCodec() {
-      this("CuVSCodec", new Lucene101Codec());
-    }
-
-    CuVSCodec(int cuvsWriterThreads, int cuvsIntermediateGraphDegree, int cuvsGraphDegree) {
-      this("CuVSCodec", new Lucene101Codec());
-      this.cuvsWriterThreads = cuvsWriterThreads;
-      this.cuvsIntermediateGraphDegree = cuvsIntermediateGraphDegree;
-      this.cuvsGraphDegree = cuvsGraphDegree;
-    }
-
-    private CuVSCodec(String name, Codec delegate) {
-      super(name, delegate);
-    }
-
-    @Override
-    public KnnVectorsFormat knnVectorsFormat() {
-      return new CuVSVectorsFormat(cuvsWriterThreads, cuvsIntermediateGraphDegree, cuvsGraphDegree,
-          MergeStrategy.NON_TRIVIAL_MERGE, IndexType.CAGRA);
-    }
-  }
+  // Removed ConfigurableCuVSCodec - using CuVSCPUSearchCodec directly with better error handling
 
   private static class HighDimensionKnnVectorsFormat extends KnnVectorsFormat {
     private final KnnVectorsFormat knnFormat;

@@ -17,7 +17,7 @@
     "cleanIndexDirectory" : true,
     "saveResultsOnDisk" : true,
     "hasColNames" : true,
-    "algoToRun" : "CAGRA",
+    "algoToRun" : "CAGRA_HNSW",
     "groundTruthFile" : "/data/wikipedia768/Wikipedia_10Mx768_groundtruth.csv",
     "cuvsIndexDirPath" : "cuvsIndex",
     "cagraITopK" : 64,
