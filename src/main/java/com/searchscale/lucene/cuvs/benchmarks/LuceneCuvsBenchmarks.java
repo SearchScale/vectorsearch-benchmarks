@@ -44,10 +44,6 @@ import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
-import org.apache.lucene.sandbox.vectorsearch.CuVSKnnFloatVectorQuery;
-import org.apache.lucene.sandbox.vectorsearch.CuVSVectorsFormat;
-import org.apache.lucene.sandbox.vectorsearch.CuVSVectorsWriter.IndexType;
-import org.apache.lucene.sandbox.vectorsearch.CuVSVectorsWriter.MergeStrategy;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.KnnFloatVectorQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -63,6 +59,11 @@ import org.mapdb.IndexTreeList;
 import org.mapdb.QueueLong.Node.SERIALIZER;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.nvidia.cuvs.CagraMergeParams.MergeStrategy;
+import com.nvidia.cuvs.lucene.CuVSKnnFloatVectorQuery;
+import com.nvidia.cuvs.lucene.CuVSVectorsFormat;
+import com.nvidia.cuvs.lucene.CuVSVectorsWriter.IndexType;
 
 public class LuceneCuvsBenchmarks {
 

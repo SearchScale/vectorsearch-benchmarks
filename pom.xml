@@ -28,30 +28,46 @@
     </dependencies>
   </dependencyManagement>
 
+  <repositories>
+    <repository>
+      <id>cuvs-java</id>
+      <name>SearchScale Maven</name>
+      <url>https://maven.searchscale.com/snapshots</url>
+    </repository>
+  </repositories>
+
     <dependencies>
-        <dependency>
-            <groupId>org.apache.lucene</groupId>
-            <artifactId>lucene-sandbox</artifactId>
-            <version>11.0.0-SNAPSHOT</version>
-        </dependency>
+
         <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-core</artifactId>
-            <version>11.0.0-SNAPSHOT</version>
+            <version>10.2.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-codecs</artifactId>
-            <version>11.0.0-SNAPSHOT</version>
+            <version>10.2.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-test-framework</artifactId>
+            <version>10.2.0</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
-            <groupId>org.apache.lucene</groupId>
-            <artifactId>lucene-test-framework</artifactId>
-            <version>9.11.0</version>
-            <scope>test</scope>
+            <groupId>com.nvidia.cuvs</groupId>
+            <artifactId>cuvs-java</artifactId>
+            <version>25.10.0-lorenzo-9362a-SNAPSHOT</version>
         </dependency>
+
+        <dependency>
+            <groupId>com.nvidia.cuvs.lucene</groupId>
+            <artifactId>cuvs-lucene</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
+
         <dependency>
             <groupId>com.opencsv</groupId>
             <artifactId>opencsv</artifactId>
