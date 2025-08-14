@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Export LD_LIBRARY_PATH for cuVS native libraries
-export LD_LIBRARY_PATH=/home/ishan/code/cuvs/cpp/build:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/home/puneet/miniforge3/envs/cuvs-25.08/lib:$LD_LIBRARY_PATH
 
 mvn clean compile
 
@@ -16,12 +16,12 @@ then
         echo "####################### Now running: $config_file #######################"
         mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
         -Dexec.args="$config_file" \
-        -Dexec.jvmArgs="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
+        -Dexec.jvmArgs="-Xmx32g -Xms16g --add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
     done
 elif [ -f "${PASSED_ARGUMENT}" ]
 then
     echo "${PASSED_ARGUMENT} is a file. Running now.";
     mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
     -Dexec.args="$PASSED_ARGUMENT" \
-    -Dexec.jvmArgs="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
+    -Dexec.jvmArgs="-Xmx32g -Xms16g --add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
 fi

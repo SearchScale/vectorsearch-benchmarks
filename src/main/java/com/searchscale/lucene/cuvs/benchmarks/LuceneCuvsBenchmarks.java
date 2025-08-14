@@ -109,7 +109,7 @@ public class LuceneCuvsBenchmarks {
       log.info("Created a mapdb file with {} number of vectors.", vectors.size());
     } else {
       log.info("Mapdb file found for vectors. Loading ...");
-      db = DBMaker.fileDB(datasetMapdbFile).make();
+      db = DBMaker.fileDB(datasetMapdbFile).checksumHeaderBypass().make();
       vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
       log.info("{} vectors available from the mapdb file", vectors.size());
     }
@@ -327,7 +327,7 @@ public class LuceneCuvsBenchmarks {
         log.info("Mapdb file created with {} number of queries", queries.size());
       } else {
         log.info("Mapdb file found for queries. Loading ...");
-        db = DBMaker.fileDB(queryMapdbFile).make();
+        db = DBMaker.fileDB(queryMapdbFile).checksumHeaderBypass().make();
         queries = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
         log.info("{} queries available from the mapdb file", queries.size());
       }

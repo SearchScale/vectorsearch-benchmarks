@@ -1,12 +1,12 @@
 {
-  "benchmarkID": "ANN_WIKI2M_CAGRA_HNSW",
-  "datasetFile": "/data/wiki_dump_5Mx2048D.csv.gz",
+  "benchmarkID": "ANN_GIST_CAGRA_HNSW",
+  "datasetFile": "/data/gist/gist/gist_base.fvecs",
   "indexOfVector": 3,
-  "vectorColName": "wiki_vector",
-  "numDocs": 2000000,
-  "vectorDimension": 2048,
-  "queryFile": "/data/queries_2P5M_546.csv",
-  "numQueriesToRun": 546,
+  "vectorColName": "gist_vector",
+  "numDocs": 1000000,
+  "vectorDimension": 960,
+  "queryFile": "/data/gist/gist/gist_query.fvecs",
+  "numQueriesToRun": 1000,
   "flushFreq": 2000000,
   "topK": 100,
   "numIndexThreads": 1,
@@ -17,7 +17,7 @@
   "saveResultsOnDisk": true,
   "hasColNames": true,
   "algoToRun": "CAGRA_HNSW",
-  "groundTruthFile": "/data/wikipedia_ground_truth_2M_final_neighbors.csv",
+  "groundTruthFile": "/data/gist/gist/gist_groundtruth.ivecs",
   "cuvsIndexDirPath": "cuvsIndex",
   "hnswIndexDirPath": "hnswIndex",
   "hnswMaxConn": 32,
@@ -26,5 +26,5 @@
   "cagraGraphDegree": 64,
   "cagraITopK": 256,
   "cagraSearchWidth": 128,
-  "loadVectorsInMemory": false
+  "loadVectorsInMemory": true
 }
