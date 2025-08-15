@@ -34,6 +34,7 @@ public class BenchmarkConfiguration {
   public int cagraGraphDegree; // 64 default
   public int cagraITopK;
   public int cagraSearchWidth;
+  public int cagraHnswLayers; // Number of layers to create in CAGRA->HNSW conversion
 
   public void debugPrintArguments() {
     System.out.println("Benchmark ID: " + benchmarkID);
@@ -67,5 +68,6 @@ public class BenchmarkConfiguration {
     System.out.println("cagraGraphDegree: " + cagraGraphDegree);
     System.out.println("cagraITopK: " + cagraITopK);
     System.out.println("cagraSearchWidth: " + cagraSearchWidth);
+    System.out.println("cagraHnswLayers: " + cagraHnswLayers);
   }
 }

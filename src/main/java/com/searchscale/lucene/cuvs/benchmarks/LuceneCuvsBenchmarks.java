@@ -188,12 +188,13 @@ public class LuceneCuvsBenchmarks {
 
       for (IndexWriter writer : writers) {
         var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
-        boolean isCuVS = formatName.equals("CuVSVectorsFormat");
-        log.info("Indexing documents using {} ...", formatName); // error for different coloring
+        boolean isCuVSIndexing = formatName.equals("CuVSVectorsFormat");
+        
+        log.info("Indexing documents using {} ...", formatName);
         long indexStartTime = System.currentTimeMillis();
         indexDocuments(writer, config, titles, vectors);
         long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
-        if (isCuVS) {
+        if (isCuVSIndexing) {
           metrics.put("cuvs-indexing-time", indexTimeTaken);
         } else {
           metrics.put("hnsw-indexing-time", indexTimeTaken);
@@ -226,7 +227,8 @@ public class LuceneCuvsBenchmarks {
               writer == cuvsIndexWriter ? config.cuvsIndexDirPath : config.hnswIndexDirPath, e);
         }
         log.info("Querying documents using {} ...", formatName);
-        query(writer.getDirectory(), config, isCuVS, metrics, queryResults,
+        // Always use standard Lucene search since we always create Lucene HNSW indexes
+        query(writer.getDirectory(), config, false, metrics, queryResults,
             Util.readGroundTruthFile(config.groundTruthFile));
 
         Util.calculateRecallAccuracy(queryResults, metrics, writer == cuvsIndexWriter);
@@ -444,8 +446,12 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static Codec getCuVSCodec(BenchmarkConfiguration config) {
-    // Use CuVSCPUSearchCodec directly
-    return new CuVSCPUSearchCodec();
+    // Use CuVSCPUSearchCodec with configurable parameters
+    return new CuVSCPUSearchCodec(
+        config.cuvsWriterThreads,
+        config.cagraIntermediateGraphDegree,
+        config.cagraGraphDegree,
+        config.cagraHnswLayers);
   }
 
   // Removed ConfigurableCuVSCodec - using CuVSCPUSearchCodec directly with better error handling

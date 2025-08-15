@@ -26,5 +26,6 @@
   "cagraGraphDegree" : 64,
   "cagraITopK" : 256,
   "cagraSearchWidth" : 128,
+  "cagraHnswLayers" : 1,
   "loadVectorsInMemory": true
 }
