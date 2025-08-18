@@ -27,7 +27,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.io.FileUtils;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.codecs.Codec;
-import org.apache.lucene.codecs.FilterCodec;
 import org.apache.lucene.codecs.KnnVectorsFormat;
 import org.apache.lucene.codecs.KnnVectorsReader;
 import org.apache.lucene.codecs.KnnVectorsWriter;
@@ -45,10 +44,6 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.NoMergePolicy;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
-import com.nvidia.cuvs.lucene.CuVSKnnFloatVectorQuery;
-import com.nvidia.cuvs.lucene.CuVSVectorsFormat;
-import com.nvidia.cuvs.lucene.CuVSVectorsWriter.IndexType;
-import com.nvidia.cuvs.lucene.CuVSCPUSearchCodec;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.KnnFloatVectorQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -64,6 +59,9 @@ import org.mapdb.IndexTreeList;
 import org.mapdb.QueueLong.Node.SERIALIZER;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
+import com.nvidia.cuvs.lucene.HNSWSearchCodec;
 
 public class LuceneCuvsBenchmarks {
 
@@ -350,7 +348,7 @@ public class LuceneCuvsBenchmarks {
           KnnFloatVectorQuery query;
 
           if (useCuVS) {
-            query = new CuVSKnnFloatVectorQuery(config.vectorColName, queryVector, config.topK, config.cagraITopK,
+            query = new GPUKnnFloatVectorQuery(config.vectorColName, queryVector, config.topK, null, config.cagraITopK,
                 config.cagraSearchWidth);
           } else {
             query = new KnnFloatVectorQuery(config.vectorColName, queryVector, config.topK);
@@ -447,7 +445,7 @@ public class LuceneCuvsBenchmarks {
 
   private static Codec getCuVSCodec(BenchmarkConfiguration config) {
     // Use CuVSCPUSearchCodec with configurable parameters
-    return new CuVSCPUSearchCodec(
+    return new HNSWSearchCodec(
         config.cuvsWriterThreads,
         config.cagraIntermediateGraphDegree,
         config.cagraGraphDegree,

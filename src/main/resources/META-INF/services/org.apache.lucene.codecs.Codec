@@ -1,2 +1,3 @@
-com.nvidia.cuvs.lucene.CuVSCPUSearchCodec
+com.nvidia.cuvs.lucene.HNSWSearchCodec
+com.nvidia.cuvs.lucene.GPUSearchCodec
 org.apache.lucene.codecs.lucene101.Lucene101Codec
