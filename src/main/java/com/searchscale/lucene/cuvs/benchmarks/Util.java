@@ -120,7 +120,18 @@ public class Util {
     if (groundTruthFile.endsWith("csv")) {
       log.info("Seems like a csv groundtruth file. Reading ...");
       for (String line : FileUtils.readFileToString(new File(groundTruthFile), "UTF-8").split("\n")) {
-        rst.add(Util.parseIntArrayFromStringArray(line));
+        // Handle comma-separated values directly
+        if (line.contains(",")) {
+          String[] values = line.split(",");
+          int[] row = new int[values.length];
+          for (int i = 0; i < values.length; i++) {
+            row[i] = Integer.parseInt(values[i].trim());
+          }
+          rst.add(row);
+        } else {
+          // Fall back to original parsing for other formats
+          rst.add(Util.parseIntArrayFromStringArray(line));
+        }
       }
     } else if (groundTruthFile.endsWith("ivecs")) {
       log.info("Seems like a ivecs groundtruth file. Reading ...");
