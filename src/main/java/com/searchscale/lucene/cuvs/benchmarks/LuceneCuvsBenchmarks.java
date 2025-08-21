@@ -90,29 +90,48 @@ public class LuceneCuvsBenchmarks {
 
     // [1] Parse/load data set
     List<String> titles = new ArrayList<String>();
-    DB db;
-    List<float[]> vectors;
+    VectorProvider vectorProvider;
 
     long parseStartTime = System.currentTimeMillis();
 
-    if (new File(datasetMapdbFile).exists() == false) {
-      log.info("Mapdb file not found for dataset. Preparing one ...");
-      db = DBMaker.fileDB(datasetMapdbFile).make();
-      vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
-      if (config.datasetFile.endsWith(".csv") || config.datasetFile.endsWith(".csv.gz")) {
-        Util.parseCSVFile(config, titles, vectors);
-      } else if (config.datasetFile.contains("fvecs") || config.datasetFile.contains("bvecs")) {
-        Util.readBaseFile(config, titles, vectors);
+    // Check if dataset is .fvecs format and handle it directly
+    if (config.datasetFile.contains("fvecs")) {
+      log.info("Detected .fvecs file format. Loading directly without MapDB...");
+      
+      if (config.loadVectorsInMemory) {
+        log.info("Loading all .fvecs vectors in memory (loadVectorsInMemory is enabled)");
+        long start = System.currentTimeMillis();
+        List<float[]> loadedVectors = new ArrayList<float[]>();
+        FBIvecsReader.readFvecs(config.datasetFile, config.numDocs, loadedVectors);
+        vectorProvider = new MemoryVectorProvider(loadedVectors);
+        log.info("Time taken to load {} vectors in-memory: {} ms", loadedVectors.size(), (System.currentTimeMillis() - start));
+      } else {
+        log.info("Creating streaming .fvecs vector provider (loadVectorsInMemory is disabled)");
+        vectorProvider = new FvecsStreamingVectorProvider(config.datasetFile, config.numDocs);
       }
-      log.info("Created a mapdb file with {} number of vectors.", vectors.size());
+      
+      titles.add(config.vectorColName);
     } else {
-      log.info("Mapdb file found for vectors. Loading ...");
-      db = DBMaker.fileDB(datasetMapdbFile).make();
-      vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
-      log.info("{} vectors available from the mapdb file", vectors.size());
-    }
-
-    try {
+      // Use MapDB for non-.fvecs files (CSV, bvecs, etc.)
+      DB db;
+      IndexTreeList<float[]> vectors;
+      
+      if (new File(datasetMapdbFile).exists() == false) {
+        log.info("Mapdb file not found for dataset. Preparing one ...");
+        db = DBMaker.fileDB(datasetMapdbFile).make();
+        vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
+        if (config.datasetFile.endsWith(".csv") || config.datasetFile.endsWith(".csv.gz")) {
+          Util.parseCSVFile(config, titles, vectors);
+        } else if (config.datasetFile.contains("bvecs")) {
+          Util.readBaseFile(config, titles, vectors);
+        }
+        log.info("Created a mapdb file with {} number of vectors.", vectors.size());
+      } else {
+        log.info("Mapdb file found for vectors. Loading ...");
+        db = DBMaker.fileDB(datasetMapdbFile).make();
+        vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
+        log.info("{} vectors available from the mapdb file", vectors.size());
+      }
 
       if (config.loadVectorsInMemory) {
         log.info("Mapdb loaded. Now loading all vectors in memory (loadVectorsInMemory is enabled)");
@@ -121,9 +140,15 @@ public class LuceneCuvsBenchmarks {
         for (int i = 0; i < vectors.size(); i++) {
           loadedVectors.add(vectors.get(i));
         }
-        vectors = loadedVectors;
+        vectorProvider = new MemoryVectorProvider(loadedVectors);
+        db.close();
         log.info("Time taken to load the vectors in-memory is: {}", (System.currentTimeMillis() - start));
+      } else {
+        vectorProvider = new MapDBVectorProvider(vectors, db);
       }
+    }
+
+    try {
 
       log.info("Time taken for parsing/loading dataset is {} ms", (System.currentTimeMillis() - parseStartTime));
 
@@ -190,7 +215,7 @@ public class LuceneCuvsBenchmarks {
         
         log.info("Indexing documents using {} ...", formatName);
         long indexStartTime = System.currentTimeMillis();
-        indexDocuments(writer, config, titles, vectors);
+        indexDocuments(writer, config, titles, vectorProvider);
         long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
         if (isCuVSIndexing) {
           metrics.put("cuvs-indexing-time", indexTimeTaken);
@@ -251,20 +276,20 @@ public class LuceneCuvsBenchmarks {
 
       log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
     } finally {
-      if (db != null) {
-        db.close();
+      if (vectorProvider != null) {
+        vectorProvider.close();
       }
     }
   }
 
   private static void indexDocuments(IndexWriter writer, BenchmarkConfiguration config, List<String> titles,
-      List<float[]> vectors) throws IOException, InterruptedException {
+      VectorProvider vectorProvider) throws IOException, InterruptedException {
 
     int threads = config.numIndexThreads;
     ExecutorService pool = Executors.newFixedThreadPool(threads);
     AtomicInteger numDocsIndexed = new AtomicInteger(0);
     log.info("Starting indexing with {} threads.", threads);
-    final int numDocsToIndex = config.numDocs;
+    final int numDocsToIndex = Math.min(config.numDocs, vectorProvider.size());
 
     for (int i = 0; i <= threads; i++) {
       pool.submit(() -> {
@@ -273,7 +298,12 @@ public class LuceneCuvsBenchmarks {
           if (id >= numDocsToIndex) {
             break; // done
           }
-          float[] vector = Objects.requireNonNull(vectors.get(id));
+          float[] vector;
+          try {
+            vector = Objects.requireNonNull(vectorProvider.get(id));
+          } catch (IOException e) {
+            throw new UncheckedIOException("Failed to read vector at index " + id, e);
+          }
           Document doc = new Document();
           doc.add(new StringField("id", String.valueOf(id), Field.Store.YES));
           doc.add(new KnnFloatVectorField(config.vectorColName, vector, EUCLIDEAN));
