@@ -174,4 +174,100 @@ public class FBIvecsReader {
       e.printStackTrace();
     }
   }
+
+  // New method to read .fbin files (768-dimension format)
+  public static void readFbin(String filePath, int numRows, List<float[]> vectors) {
+    log.info("Reading {} from file: {}", numRows, filePath);
+
+    try {
+      InputStream is = new FileInputStream(filePath);
+
+      // Read dimension from first 4 bytes (little endian)
+      int dimension = getDimension(is);
+      log.info("Detected dimension: {}", dimension);
+
+      float[] row = new float[dimension];
+      int count = 0;
+
+      while (is.available() != 0) {
+        // Read dimension * 4 bytes (float values)
+        byte[] vectorBytes = is.readNBytes(dimension * 4);
+        if (vectorBytes.length != dimension * 4) {
+          break; // End of file
+        }
+
+        ByteBuffer bb = ByteBuffer.wrap(vectorBytes);
+        bb.order(ByteOrder.LITTLE_ENDIAN);
+
+        for (int i = 0; i < dimension; i++) {
+          row[i] = bb.getFloat();
+        }
+
+        vectors.add(row.clone());
+        count += 1;
+
+        if (count % 1000 == 0) {
+          System.out.print(".");
+        }
+
+        if (numRows != -1 && count == numRows) {
+          break;
+        }
+      }
+      System.out.println();
+      is.close();
+      log.info("Reading complete. Read {} vectors.", count);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  // New method to read .ibin files (ground truth neighbors)
+  public static ArrayList<int[]> readIbin(String filePath, int numRows) {
+    log.info("Reading {} from file: {}", numRows, filePath);
+    ArrayList<int[]> vectors = new ArrayList<int[]>();
+
+    try {
+      InputStream is = new FileInputStream(filePath);
+
+      // Read dimension from first 4 bytes (little endian)
+      int dimension = getDimension(is);
+      log.info("Detected dimension: {}", dimension);
+
+      int[] row = new int[dimension];
+      int count = 0;
+
+      while (is.available() != 0) {
+        // Read dimension * 4 bytes (int values)
+        byte[] vectorBytes = is.readNBytes(dimension * 4);
+        if (vectorBytes.length != dimension * 4) {
+          break; // End of file
+        }
+
+        ByteBuffer bb = ByteBuffer.wrap(vectorBytes);
+        bb.order(ByteOrder.LITTLE_ENDIAN);
+
+        for (int i = 0; i < dimension; i++) {
+          row[i] = bb.getInt();
+        }
+
+        vectors.add(row.clone());
+        count += 1;
+
+        if (count % 1000 == 0) {
+          System.out.print(".");
+        }
+
+        if (numRows != -1 && count == numRows) {
+          break;
+        }
+      }
+      System.out.println();
+      is.close();
+      log.info("Reading complete. Read {} vectors.", count);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+    return vectors;
+  }
 }

@@ -94,28 +94,34 @@ public class LuceneCuvsBenchmarks {
 
     long parseStartTime = System.currentTimeMillis();
 
-    // Check if dataset is .fvecs format and handle it directly
-    if (config.datasetFile.contains("fvecs")) {
-      log.info("Detected .fvecs file format. Loading directly without MapDB...");
-      
+    // Check if dataset is .fvecs or .fbin format and handle it directly
+    if (config.datasetFile.contains("fvecs") || config.datasetFile.contains("fbin")) {
+      log.info("Detected .fvecs or .fbin file format. Loading directly without MapDB...");
+
       if (config.loadVectorsInMemory) {
-        log.info("Loading all .fvecs vectors in memory (loadVectorsInMemory is enabled)");
+        log.info("Loading all vectors in memory (loadVectorsInMemory is enabled)");
         long start = System.currentTimeMillis();
         List<float[]> loadedVectors = new ArrayList<float[]>();
-        FBIvecsReader.readFvecs(config.datasetFile, config.numDocs, loadedVectors);
+
+        if (config.datasetFile.contains("fbin")) {
+          FBIvecsReader.readFbin(config.datasetFile, config.numDocs, loadedVectors);
+        } else {
+          FBIvecsReader.readFvecs(config.datasetFile, config.numDocs, loadedVectors);
+        }
+
         vectorProvider = new MemoryVectorProvider(loadedVectors);
         log.info("Time taken to load {} vectors in-memory: {} ms", loadedVectors.size(), (System.currentTimeMillis() - start));
       } else {
-        log.info("Creating streaming .fvecs vector provider (loadVectorsInMemory is disabled)");
-        vectorProvider = new FvecsStreamingVectorProvider(config.datasetFile, config.numDocs);
+        log.info("Creating streaming vector provider (loadVectorsInMemory is disabled)");
+          vectorProvider = new StreamingVectorProvider(config.datasetFile, config.numDocs);
       }
-      
+
       titles.add(config.vectorColName);
     } else {
       // Use MapDB for non-.fvecs files (CSV, bvecs, etc.)
       DB db;
       IndexTreeList<float[]> vectors;
-      
+
       if (new File(datasetMapdbFile).exists() == false) {
         log.info("Mapdb file not found for dataset. Preparing one ...");
         db = DBMaker.fileDB(datasetMapdbFile).make();
@@ -212,7 +218,7 @@ public class LuceneCuvsBenchmarks {
       for (IndexWriter writer : writers) {
         var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
         boolean isCuVSIndexing = formatName.equals("CuVSVectorsFormat");
-        
+
         log.info("Indexing documents using {} ...", formatName);
         long indexStartTime = System.currentTimeMillis();
         indexDocuments(writer, config, titles, vectorProvider);
@@ -345,14 +351,16 @@ public class LuceneCuvsBenchmarks {
         db = DBMaker.fileDB(queryMapdbFile).make();
         queries = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
 
-        if (config.queryFile.endsWith(".csv")) {
-          for (String line : FileUtils.readFileToString(new File(config.queryFile), "UTF-8").split("\n")) {
-            queries.add(Util.parseFloatArrayFromStringArray(line));
-          }
-        } else if (config.queryFile.contains("fvecs")) {
-          FBIvecsReader.readFvecs(config.queryFile, -1, queries);
-        } else if (config.queryFile.contains("bvecs")) {
-          FBIvecsReader.readBvecs(config.queryFile, -1, queries);
+              if (config.queryFile.endsWith(".csv")) {
+        for (String line : FileUtils.readFileToString(new File(config.queryFile), "UTF-8").split("\n")) {
+          queries.add(Util.parseFloatArrayFromStringArray(line));
+        }
+      } else if (config.queryFile.contains("fvecs")) {
+        FBIvecsReader.readFvecs(config.queryFile, -1, queries);
+      } else if (config.queryFile.contains("fbin")) {
+        FBIvecsReader.readFbin(config.queryFile, -1, queries);
+      } else if (config.queryFile.contains("bvecs")) {
+        FBIvecsReader.readBvecs(config.queryFile, -1, queries);
         }
         log.info("Mapdb file created with {} number of queries", queries.size());
       } else {
@@ -397,16 +405,16 @@ public class LuceneCuvsBenchmarks {
           // log.info("End to end search took: " + searchTimeTakenMs);
           queryLatencies.put(queryId.get(), searchTimeTakenMs);
           int finishedCount = queriesFinished.incrementAndGet();
-          
+
           // Log progress every 2 queries
           if (finishedCount % 2 == 0 || finishedCount == config.numQueriesToRun) {
             log.info("Done querying " + finishedCount + " out of " + config.numQueriesToRun + " queries.");
           }
-          
+
           ScoreDoc[] hits = topDocs.scoreDocs;
           List<Integer> neighbors = new ArrayList<>();
           List<Float> scores = new ArrayList<>();
-          
+
           // Debug: Log search results for first query
           if (queryId.get() == 0) {
             log.info("Debug: First query returned " + hits.length + " hits");
@@ -420,7 +428,7 @@ public class LuceneCuvsBenchmarks {
             }
             scores.add(hit.score);
           }
-          
+
           // Debug: Log results for all queries
           log.info("Query " + currentQueryId + " - First 5 neighbors: " + neighbors.subList(0, Math.min(5, neighbors.size())));
           log.info("Query " + currentQueryId + " - First 5 distances: " + scores.subList(0, Math.min(5, scores.size())));
@@ -445,7 +453,7 @@ public class LuceneCuvsBenchmarks {
       double avgLatency = new ArrayList<>(queryLatencies.values()).stream().reduce(0.0, Double::sum)
           / queriesFinished.get();
       metrics.put((useCuVS ? "cuvs" : "hnsw") + "-mean-latency", avgLatency);
-      
+
       // Add segment count to metrics
       int segmentCount = indexReader.leaves().size();
       metrics.put((useCuVS ? "cuvs" : "hnsw") + "-segment-count", segmentCount);
