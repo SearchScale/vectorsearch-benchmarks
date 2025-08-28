@@ -45,75 +45,86 @@ public class StreamingVectorProvider implements VectorProvider {
             throw new IllegalArgumentException("Unsupported file format: " + filePath);
         }
 
-        // Read dimension from first vector/header
+        // Read header and initialize fields based on format
+        int tempDimension;
+        int tempVectorCount;
+        long tempVectorSize;
+
         try (FileInputStream fis = new FileInputStream(filePath)) {
             java.io.InputStream is = isCompressed ? new GZIPInputStream(fis) : fis;
-            this.dimension = FBIvecsReader.getDimension(is);
-            log.info("Detected dimension: {} from file: {} (format: {})", dimension, filePath, format);
 
-            // Calculate vector size based on format
-            switch (format) {
-                case FVECS:
-                case IVECS:
-                    this.vectorSize = 4 + 4L * dimension; // dimension int + dimension values
-                    break;
-                case FBIN:
-                    this.vectorSize = 4L * dimension; // just dimension floats (no per-vector dimension)
-                    break;
-                case BVECS:
-                    this.vectorSize = 4 + dimension; // dimension int + dimension bytes
-                    break;
-                default:
-                    throw new IllegalArgumentException("Unsupported format: " + format);
+            if (format == FileFormat.FBIN) {
+                // For .fbin: Read num_vectors first, then dimension
+                byte[] numVecBytes = is.readNBytes(4);
+                ByteBuffer numVecBuffer = ByteBuffer.wrap(numVecBytes).order(ByteOrder.LITTLE_ENDIAN);
+                int numVectors = numVecBuffer.getInt();
+
+                byte[] dimBytes = is.readNBytes(4);
+                ByteBuffer dimBuffer = ByteBuffer.wrap(dimBytes).order(ByteOrder.LITTLE_ENDIAN);
+                tempDimension = dimBuffer.getInt();
+
+                tempVectorCount = maxVectors > 0 ? Math.min(maxVectors, numVectors) : numVectors;
+                tempVectorSize = 4L * tempDimension; // just dimension floats (no per-vector dimension)
+
+                log.info("File header - total vectors: {}, dimension: {}", numVectors, tempDimension);
+            } else {
+                // For other formats: Read dimension normally using existing method
+                tempDimension = FBIvecsReader.getDimension(is);
+
+                // Calculate vector size based on format
+                switch (format) {
+                    case FVECS:
+                    case IVECS:
+                        tempVectorSize = 4 + 4L * tempDimension; // dimension int + dimension values
+                        break;
+                    case BVECS:
+                        tempVectorSize = 4 + tempDimension; // dimension int + dimension bytes
+                        break;
+                    default:
+                        throw new IllegalArgumentException("Unsupported format: " + format);
+                }
+
+                // Calculate vector count
+                if (isCompressed) {
+                    tempVectorCount = countVectorsInCompressedFile(maxVectors, tempDimension, tempVectorSize);
+                } else {
+                    tempVectorCount = calculateVectorCount(maxVectors, tempVectorSize);
+                }
             }
         }
 
-        // Calculate total vector count
-        if (isCompressed) {
-            this.vectorCount = countVectorsInCompressedFile(maxVectors);
-        } else {
-            this.vectorCount = calculateVectorCount(maxVectors);
-        }
+        // Single assignment to final fields
+        this.dimension = tempDimension;
+        this.vectorCount = tempVectorCount;
+        this.vectorSize = tempVectorSize;
 
         log.info("StreamingVectorProvider initialized: {} vectors, {} dimensions, format: {}",
                  vectorCount, dimension, format);
     }
 
-    private int calculateVectorCount(int maxVectors) throws IOException {
+    private int calculateVectorCount(int maxVectors, long vectorSize) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(filePath, "r")) {
             long fileSize = raf.length();
-            long totalVectors;
-
-            if (format == FileFormat.FBIN) {
-                // For .fbin: subtract 4 bytes for initial dimension
-                long dataSize = fileSize - 4;
-                totalVectors = dataSize / vectorSize;
-            } else {
-                // For .fvecs, .ivecs, .bvecs: each vector has its own dimension prefix
-                totalVectors = fileSize / vectorSize;
-            }
-
+            long totalVectors = fileSize / vectorSize;
             return maxVectors > 0 ? Math.min((int)totalVectors, maxVectors) : (int)totalVectors;
         }
     }
 
-    private int countVectorsInCompressedFile(int maxVectors) throws IOException {
+    private int countVectorsInCompressedFile(int maxVectors, int dimension, long vectorSize) throws IOException {
         int count = 0;
         try (FileInputStream fis = new FileInputStream(filePath);
              GZIPInputStream gzis = new GZIPInputStream(fis)) {
 
-            if (format == FileFormat.FBIN) {
-                // Skip initial dimension for .fbin files
-                gzis.skip(4L * dimension);
+            // Skip dimension of first vector (already read)
+            if (format == FileFormat.BVECS) {
+                gzis.skip(dimension);
             } else {
-                // Skip dimension of first vector (already read)
-                gzis.skip(format == FileFormat.BVECS ? dimension : 4L * dimension);
+                gzis.skip(4L * dimension);
             }
 
             byte[] buffer = new byte[4096];
             long bytesPerVector = vectorSize;
-            long totalBytesRead = (format == FileFormat.FBIN ? 4 : 0) +
-                                 (format == FileFormat.BVECS ? 4 + dimension : 4 + 4L * dimension);
+            long totalBytesRead = 4 + (format == FileFormat.BVECS ? dimension : 4L * dimension);
 
             while (gzis.available() > 0 && (maxVectors <= 0 || count < maxVectors - 1)) {
                 int bytesRead = gzis.read(buffer);
@@ -148,8 +159,8 @@ public class StreamingVectorProvider implements VectorProvider {
 
             long position;
             if (format == FileFormat.FBIN) {
-                // Skip initial dimension (4 bytes) and go to vector position
-                position = 4 + index * vectorSize;
+                // Skip initial header (8 bytes: num_vectors + dimension) and go to vector position
+                position = 8 + index * vectorSize;
             } else {
                 // Standard position calculation for other formats
                 position = index * vectorSize;
@@ -223,8 +234,8 @@ public class StreamingVectorProvider implements VectorProvider {
              GZIPInputStream gzis = new GZIPInputStream(fis)) {
 
             if (format == FileFormat.FBIN) {
-                // Skip initial dimension for .fbin files
-                gzis.skip(4);
+                // Skip initial header (8 bytes: num_vectors + dimension)
+                gzis.skip(8);
 
                 // Read vectors until we reach the desired index
                 for (int i = 0; i <= index; i++) {
@@ -310,3 +321,4 @@ public class StreamingVectorProvider implements VectorProvider {
         return format;
     }
 }
+
