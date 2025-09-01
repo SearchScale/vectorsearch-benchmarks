@@ -10,6 +10,7 @@ public class BenchmarkConfiguration {
   public int vectorDimension;
   public String queryFile;
   public int numQueriesToRun;
+  public int numWarmUpQueries;
   public int flushFreq;
   public int topK;
   public int numIndexThreads;
@@ -47,6 +48,7 @@ public class BenchmarkConfiguration {
     System.out.println("Number of dimensions are: " + vectorDimension);
     System.out.println("Query file used is: " + queryFile);
     System.out.println("Number of queries to run: " + numQueriesToRun);
+    System.out.println("Number of warmup queries: " + numWarmUpQueries);
     System.out.println("Flush frequency (every n documents): " + flushFreq);
     System.out.println("TopK value is: " + topK);
     System.out.println("numIndexThreads is: " + numIndexThreads);

@@ -445,9 +445,11 @@ public class LuceneCuvsBenchmarks {
           log.info("Query " + currentQueryId + " - Expected neighbors: " + java.util.Arrays.toString(java.util.Arrays.copyOf(expectedNeighbors, Math.min(5, expectedNeighbors.length))));
 
           var s = useCuVS ? "lucene_cuvs" : "lucene_hnsw";
-          QueryResult result = new QueryResult(s, currentQueryId, neighbors, groundTruth.get(currentQueryId), scores,
-              searchTimeTakenMs);
-          queryResults.add(result);
+          if (currentQueryId > config.numWarmUpQueries) {
+	          QueryResult result = new QueryResult(s, currentQueryId, neighbors, groundTruth.get(currentQueryId), scores,
+	              searchTimeTakenMs);          
+	          queryResults.add(result);
+          }
         });
       });
 
