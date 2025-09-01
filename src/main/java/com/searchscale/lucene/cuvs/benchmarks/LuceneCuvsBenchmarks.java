@@ -385,6 +385,7 @@ public class LuceneCuvsBenchmarks {
       ExecutorService pool = Executors.newFixedThreadPool(qThreads);
       AtomicInteger queriesFinished = new AtomicInteger(0);
       ConcurrentHashMap<Integer, Double> queryLatencies = new ConcurrentHashMap<Integer, Double>();
+      ConcurrentHashMap<Integer, Double> retrievalLatencies = new ConcurrentHashMap<Integer, Double>();
 
       long startTime = System.currentTimeMillis();
       AtomicInteger queryId = new AtomicInteger(0);
@@ -412,7 +413,9 @@ public class LuceneCuvsBenchmarks {
           }
           double searchTimeTakenMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - searchStartTime);
           // log.info("End to end search took: " + searchTimeTakenMs);
-          queryLatencies.put(queryId.get(), searchTimeTakenMs);
+          if (currentQueryId > config.numWarmUpQueries) {
+        	  queryLatencies.put(queryId.get(), searchTimeTakenMs);
+          }
           int finishedCount = queriesFinished.incrementAndGet();
 
           // Log progress every 2 queries
@@ -428,6 +431,7 @@ public class LuceneCuvsBenchmarks {
           if (queryId.get() == 0) {
             log.info("Debug: First query returned " + hits.length + " hits");
           }
+          long retrievalStartTime = System.nanoTime();
           for (ScoreDoc hit : hits) {
             try {
               Document d = indexReader.storedFields().document(hit.doc);
@@ -437,7 +441,11 @@ public class LuceneCuvsBenchmarks {
             }
             scores.add(hit.score);
           }
-
+          double retrievalTimeTakenMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - retrievalStartTime);
+          if (currentQueryId > config.numWarmUpQueries) {
+        	  retrievalLatencies.put(queryId.get(), retrievalTimeTakenMs);
+          }          
+          
           // Debug: Log results for all queries
           log.info("Query " + currentQueryId + " - First 5 neighbors: " + neighbors.subList(0, Math.min(5, neighbors.size())));
           log.info("Query " + currentQueryId + " - First 5 distances: " + scores.subList(0, Math.min(5, scores.size())));
@@ -462,10 +470,14 @@ public class LuceneCuvsBenchmarks {
 
       metrics.put((useCuVS ? "cuvs" : "hnsw") + "-query-time", (endTime - startTime));
       metrics.put((useCuVS ? "cuvs" : "hnsw") + "-query-throughput",
-          (queriesFinished.get() / ((endTime - startTime) / 1000.0)));
+          (queryLatencies.size() / ((endTime - startTime) / 1000.0)));
       double avgLatency = new ArrayList<>(queryLatencies.values()).stream().reduce(0.0, Double::sum)
-          / queriesFinished.get();
+          / queryLatencies.size();
+      double avgRetLatency = new ArrayList<>(retrievalLatencies.values()).stream().reduce(0.0, Double::sum)
+              / retrievalLatencies.size();
+
       metrics.put((useCuVS ? "cuvs" : "hnsw") + "-mean-latency", avgLatency);
+      metrics.put((useCuVS ? "cuvs" : "hnsw") + "-mean-retrieval-latency", avgRetLatency);
 
       // Add segment count to metrics
       int segmentCount = indexReader.leaves().size();
