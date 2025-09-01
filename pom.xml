@@ -18,7 +18,7 @@
 
   <repositories>
     <repository>
-      <id>cuvs-java</id>
+      <id>searchscale-maven</id>
       <name>SearchScale Maven</name>
       <url>https://maven.searchscale.com/snapshots</url>
     </repository>
@@ -37,15 +37,15 @@
   </dependencyManagement>
 
     <dependencies>
-        <dependency>
-            <groupId>com.nvidia.cuvs.lucene</groupId>
-            <artifactId>cuvs-lucene</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
-        </dependency>
+	<dependency>
+		  <groupId>com.nvidia.cuvs.lucene</groupId>
+		    <artifactId>cuvs-lucene</artifactId>
+		      <version>0.0.1-953d0-SNAPSHOT</version>
+		      </dependency>
         <dependency>
             <groupId>com.nvidia.cuvs</groupId>
             <artifactId>cuvs-java</artifactId>
-            <version>25.8.0-134d3-SNAPSHOT</version>
+            <version>25.10.0-55985-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.apache.lucene</groupId>

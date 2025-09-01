@@ -61,7 +61,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
-import com.nvidia.cuvs.lucene.HNSWSearchCodec;
+import com.nvidia.cuvs.lucene.Lucene101AcceleratedHNSWCodec;
 
 public class LuceneCuvsBenchmarks {
 
@@ -482,8 +482,8 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static Codec getCuVSCodec(BenchmarkConfiguration config) {
-    // Use CuVSCPUSearchCodec with configurable parameters
-    return new HNSWSearchCodec(
+    // Use Lucene101AcceleratedHNSWCodec with configurable parameters
+    return new Lucene101AcceleratedHNSWCodec(
         config.cuvsWriterThreads,
         config.cagraIntermediateGraphDegree,
         config.cagraGraphDegree,
