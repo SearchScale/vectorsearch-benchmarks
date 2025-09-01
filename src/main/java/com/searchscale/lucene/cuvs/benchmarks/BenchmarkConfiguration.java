@@ -24,6 +24,7 @@ public class BenchmarkConfiguration {
   public String cuvsIndexDirPath;
   public String hnswIndexDirPath;
   public boolean loadVectorsInMemory;
+  public boolean skipIndexing;
 
   // HNSW parameters
   public int hnswMaxConn; // 16 default (max 512)
@@ -35,6 +36,7 @@ public class BenchmarkConfiguration {
   public int cagraITopK;
   public int cagraSearchWidth;
   public int cagraHnswLayers; // Number of layers to create in CAGRA->HNSW conversion
+  
 
   public void debugPrintArguments() {
     System.out.println("Benchmark ID: " + benchmarkID);
@@ -60,7 +62,8 @@ public class BenchmarkConfiguration {
     System.out.println("CuVS index directory path is: " + cuvsIndexDirPath);
     System.out.println("HNSW index directory path is: " + hnswIndexDirPath);
     System.out.println("Load vectors in memory before indexing: " + loadVectorsInMemory);
-
+    System.out.println("Skip indexing (and use existing index for search): " + skipIndexing);
+    
     System.out.println("------- algo parameters ------");
     System.out.println("hnswMaxConn: " + hnswMaxConn);
     System.out.println("hnswBeamWidth: " + hnswBeamWidth);

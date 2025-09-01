@@ -217,6 +217,8 @@ public class LuceneCuvsBenchmarks {
 
       for (IndexWriter writer : writers) {
         var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
+   	  
+    	if (!config.skipIndexing) {
         boolean isCuVSIndexing = formatName.equals("CuVSVectorsFormat");
 
         log.info("Indexing documents using {} ...", formatName);
@@ -255,9 +257,10 @@ public class LuceneCuvsBenchmarks {
           log.error("Failed to calculate directory size for {}",
               writer == cuvsIndexWriter ? config.cuvsIndexDirPath : config.hnswIndexDirPath, e);
         }
+       }
         log.info("Querying documents using {} ...", formatName);
         // Always use standard Lucene search since we always create Lucene HNSW indexes
-        query(writer.getDirectory(), config, false, metrics, queryResults,
+        search(writer.getDirectory(), config, false, metrics, queryResults,
             Util.readGroundTruthFile(config.groundTruthFile));
 
         Util.calculateRecallAccuracy(queryResults, metrics, writer == cuvsIndexWriter);
@@ -336,7 +339,7 @@ public class LuceneCuvsBenchmarks {
     writer.close();
   }
 
-  private static void query(Directory directory, BenchmarkConfiguration config, boolean useCuVS,
+  private static void search(Directory directory, BenchmarkConfiguration config, boolean useCuVS,
       Map<String, Object> metrics, List<QueryResult> queryResults, List<int[]> groundTruth) {
 
     DB db = null;

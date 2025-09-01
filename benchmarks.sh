@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Export LD_LIBRARY_PATH for cuVS native libraries
-export LD_LIBRARY_PATH=/home/ishan/code/cuvs/cpp/build:$LD_LIBRARY_PATH
-
 mvn clean compile
 
 # Use Maven to run with proper classpath instead of fat JAR to handle multi-release JARs correctly
