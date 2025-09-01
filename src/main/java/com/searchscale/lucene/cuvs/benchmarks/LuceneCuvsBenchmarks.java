@@ -180,9 +180,14 @@ public class LuceneCuvsBenchmarks {
         cuvsIndexWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
       }
 
+     	if (!config.skipIndexing) {
+
+
       IndexWriter luceneHnswIndexWriter = null;
       IndexWriter cuvsIndexWriter = null;
 
+      
+      
       if (config.algoToRun.equalsIgnoreCase("LUCENE_HNSW")) {
         if (!config.createIndexInMemory) {
           Path hnswIndex = Path.of(config.hnswIndexDirPath);
@@ -205,20 +210,19 @@ public class LuceneCuvsBenchmarks {
         }
       }
 
-      ArrayList<IndexWriter> writers = new ArrayList<IndexWriter>();
+
+      IndexWriter writer;
 
       if ("LUCENE_HNSW".equalsIgnoreCase(config.algoToRun)) {
-        writers.add(luceneHnswIndexWriter);
+        writer = luceneHnswIndexWriter;
       } else if ("CAGRA_HNSW".equalsIgnoreCase(config.algoToRun)) {
-        writers.add(cuvsIndexWriter);
+        writer = cuvsIndexWriter;
       } else {
         throw new IllegalArgumentException("Please pass an acceptable option for `algoToRun`. Choices: LUCENE_HNSW, CAGRA_HNSW");
       }
 
-      for (IndexWriter writer : writers) {
         var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
    	  
-    	if (!config.skipIndexing) {
         boolean isCuVSIndexing = formatName.equals("CuVSVectorsFormat");
 
         log.info("Indexing documents using {} ...", formatName);
@@ -258,13 +262,15 @@ public class LuceneCuvsBenchmarks {
               writer == cuvsIndexWriter ? config.cuvsIndexDirPath : config.hnswIndexDirPath, e);
         }
        }
-        log.info("Querying documents using {} ...", formatName);
-        // Always use standard Lucene search since we always create Lucene HNSW indexes
-        search(writer.getDirectory(), config, false, metrics, queryResults,
-            Util.readGroundTruthFile(config.groundTruthFile));
+     	
+      Directory indexDir = FSDirectory.open("CAGRA_HNSW".equals(config.algoToRun) ? Path.of(config.cuvsIndexDirPath) : Path.of(config.hnswIndexDirPath));
+      log.info("Index directory is: {}", indexDir);
+      log.info("Querying documents using {} ...", config.algoToRun);
+      // Always use standard Lucene search since we always create Lucene HNSW indexes
+      search(indexDir, config, false, metrics, queryResults,
+        Util.readGroundTruthFile(config.groundTruthFile));
 
-        Util.calculateRecallAccuracy(queryResults, metrics, writer == cuvsIndexWriter);
-      }
+      Util.calculateRecallAccuracy(queryResults, metrics, "CAGRA_HNSW".equalsIgnoreCase(config.algoToRun));
 
       String resultsJson = Util.newObjectMapper().writerWithDefaultPrettyPrinter()
           .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
@@ -341,7 +347,7 @@ public class LuceneCuvsBenchmarks {
 
   private static void search(Directory directory, BenchmarkConfiguration config, boolean useCuVS,
       Map<String, Object> metrics, List<QueryResult> queryResults, List<int[]> groundTruth) {
-
+	  
     DB db = null;
     try (IndexReader indexReader = DirectoryReader.open(directory)) {
       IndexSearcher indexSearcher = new IndexSearcher(indexReader);
