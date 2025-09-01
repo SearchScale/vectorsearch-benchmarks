@@ -449,6 +449,8 @@ public class LuceneCuvsBenchmarks {
 	          QueryResult result = new QueryResult(s, currentQueryId, neighbors, groundTruth.get(currentQueryId), scores,
 	              searchTimeTakenMs);          
 	          queryResults.add(result);
+          } else {
+        	  log.info("Skipping warmup query: {}", currentQueryId);
           }
         });
       });
