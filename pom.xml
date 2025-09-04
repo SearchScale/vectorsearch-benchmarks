@@ -40,7 +40,7 @@
 	<dependency>
 		  <groupId>com.nvidia.cuvs.lucene</groupId>
 		    <artifactId>cuvs-lucene</artifactId>
-		      <version>0.0.1-5553e-SNAPSHOT</version>
+		      <version>0.0.1-38e54-SNAPSHOT</version>
 		      </dependency>
         <dependency>
             <groupId>com.nvidia.cuvs</groupId>
