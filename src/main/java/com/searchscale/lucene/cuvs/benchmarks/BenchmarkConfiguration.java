@@ -19,60 +19,78 @@ public class BenchmarkConfiguration {
   public boolean createIndexInMemory;
   public boolean cleanIndexDirectory;
   public boolean saveResultsOnDisk;
+  public String resultsDirectory;
   public boolean hasColNames;
-  public String algoToRun;
+  public String algoToRun;              // keep as String
   public String groundTruthFile;
   public String cuvsIndexDirPath;
   public String hnswIndexDirPath;
   public boolean loadVectorsInMemory;
   public boolean skipIndexing;
 
-  // HNSW parameters
-  public int hnswMaxConn; // 16 default (max 512)
-  public int hnswBeamWidth; // 100 default (max 3200)
+  // Lucene HNSW parameters
+  public int hnswMaxConn;               // 16 default (max 512)
+  public int hnswBeamWidth;             // 100 default (max 3200)
 
-  // Cagra parameters
+  // CAGRA parameters
   public int cagraIntermediateGraphDegree; // 128 default
-  public int cagraGraphDegree; // 64 default
+  public int cagraGraphDegree;             // 64 default
   public int cagraITopK;
   public int cagraSearchWidth;
-  public int cagraHnswLayers; // Number of layers to create in CAGRA->HNSW conversion
-  
+  public int cagraHnswLayers;             // layers in CAGRA->HNSW conversion
+
+  private boolean isLucene() {
+    return "LUCENE_HNSW".equalsIgnoreCase(algoToRun);
+  }
+  private boolean isCagra() {
+    return "CAGRA_HNSW".equalsIgnoreCase(algoToRun);
+  }
+
+  public String prettyString() {
+    StringBuilder sb = new StringBuilder();
+    sb.append("Benchmark ID: ").append(benchmarkID).append('\n');
+    sb.append("Dataset file used is: ").append(datasetFile).append('\n');
+    sb.append("Index of vector field is: ").append(indexOfVector).append('\n');
+    sb.append("Name of the vector field is: ").append(vectorColName).append('\n');
+    sb.append("Number of documents to be indexed are: ").append(numDocs).append('\n');
+    sb.append("Number of dimensions are: ").append(vectorDimension).append('\n');
+    sb.append("Query file used is: ").append(queryFile).append('\n');
+    sb.append("Number of queries to run: ").append(numQueriesToRun).append('\n');
+    sb.append("Number of warmup queries: ").append(numWarmUpQueries).append('\n');
+    sb.append("Flush frequency (every n documents): ").append(flushFreq).append('\n');
+    sb.append("TopK value is: ").append(topK).append('\n');
+    sb.append("numIndexThreads is: ").append(numIndexThreads).append('\n');
+    sb.append("Query threads: ").append(queryThreads).append('\n');
+    sb.append("Create index in memory: ").append(createIndexInMemory).append('\n');
+    sb.append("Clean index directory: ").append(cleanIndexDirectory).append('\n');
+    sb.append("Save results on disk: ").append(saveResultsOnDisk).append('\n');
+    sb.append("Has column names in the dataset file: ").append(hasColNames).append('\n');
+    sb.append("algoToRun {Choices: HNSW | CAGRA}: ").append(algoToRun).append('\n');
+    sb.append("Ground Truth file used is: ").append(groundTruthFile).append('\n');
+    if (cuvsIndexDirPath != null) sb.append("CuVS index directory path is: ").append(cuvsIndexDirPath).append('\n');
+    if (hnswIndexDirPath != null) sb.append("HNSW index directory path is: ").append(hnswIndexDirPath).append('\n');
+    sb.append("Load vectors in memory before indexing: ").append(loadVectorsInMemory).append('\n');
+    sb.append("Skip indexing (and use existing index for search): ").append(skipIndexing).append('\n');
+
+    sb.append("------- algo parameters ------\n");
+    if (isLucene()) {
+      sb.append("hnswMaxConn: ").append(hnswMaxConn).append('\n');
+      sb.append("hnswBeamWidth: ").append(hnswBeamWidth).append('\n');
+    } else if (isCagra()) {
+      sb.append("cagraIntermediateGraphDegree: ").append(cagraIntermediateGraphDegree).append('\n');
+      sb.append("cagraGraphDegree: ").append(cagraGraphDegree).append('\n');
+      sb.append("cuvsWriterThreads: ").append(cuvsWriterThreads).append('\n');
+      sb.append("cagraITopK: ").append(cagraITopK).append('\n');
+      sb.append("cagraSearchWidth: ").append(cagraSearchWidth).append('\n');
+      sb.append("cagraHnswLayers: ").append(cagraHnswLayers).append('\n');
+    }
+    return sb.toString();
+  }
+
+  @Override public String toString() { return prettyString(); }
 
   public void debugPrintArguments() {
-    System.out.println("Benchmark ID: " + benchmarkID);
-    System.out.println("Dataset file used is: " + datasetFile);
-    System.out.println("Index of vector field is: " + indexOfVector);
-    System.out.println("Name of the vector field is: " + vectorColName);
-    System.out.println("Number of documents to be indexed are: " + numDocs);
-    System.out.println("Number of dimensions are: " + vectorDimension);
-    System.out.println("Query file used is: " + queryFile);
-    System.out.println("Number of queries to run: " + numQueriesToRun);
-    System.out.println("Number of warmup queries: " + numWarmUpQueries);
-    System.out.println("Flush frequency (every n documents): " + flushFreq);
-    System.out.println("TopK value is: " + topK);
-    System.out.println("numIndexThreads is: " + numIndexThreads);
-    // System.out.println("Lucene HNSW threads: " + hnswThreads);
-    // System.out.println("cuVS Merge strategy: " + mergeStrategy);
-    System.out.println("Query threads: " + queryThreads);
-    System.out.println("Create index in memory: " + createIndexInMemory);
-    System.out.println("Clean index directory: " + cleanIndexDirectory);
-    System.out.println("Save results on disk: " + saveResultsOnDisk);
-    System.out.println("Has column names in the dataset file: " + hasColNames);
-    System.out.println("algoToRun {Choices: HNSW | CAGRA}: " + algoToRun);
-    System.out.println("Ground Truth file used is: " + groundTruthFile);
-    System.out.println("CuVS index directory path is: " + cuvsIndexDirPath);
-    System.out.println("HNSW index directory path is: " + hnswIndexDirPath);
-    System.out.println("Load vectors in memory before indexing: " + loadVectorsInMemory);
-    System.out.println("Skip indexing (and use existing index for search): " + skipIndexing);
-    
-    System.out.println("------- algo parameters ------");
-    System.out.println("hnswMaxConn: " + hnswMaxConn);
-    System.out.println("hnswBeamWidth: " + hnswBeamWidth);
-    System.out.println("cagraIntermediateGraphDegree: " + cagraIntermediateGraphDegree);
-    System.out.println("cagraGraphDegree: " + cagraGraphDegree);
-    System.out.println("cagraITopK: " + cagraITopK);
-    System.out.println("cagraSearchWidth: " + cagraSearchWidth);
-    System.out.println("cagraHnswLayers: " + cagraHnswLayers);
+    // keep a single source of truth for printing
+    System.out.print(prettyString());
   }
 }

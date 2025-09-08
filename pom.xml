@@ -40,7 +40,7 @@
 	<dependency>
 		  <groupId>com.nvidia.cuvs.lucene</groupId>
 		    <artifactId>cuvs-lucene</artifactId>
-		      <version>0.0.1-38e54-SNAPSHOT</version>
+		      <version>0.0.1-5553e-SNAPSHOT</version>
 		      </dependency>
         <dependency>
             <groupId>com.nvidia.cuvs</groupId>
@@ -123,6 +123,21 @@
             <artifactId>commons-math3</artifactId>
             <version>3.5</version>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>2.17.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.knowm.xchart</groupId>
+            <artifactId>xchart</artifactId>
+            <version>3.8.8</version>
+        </dependency>
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+            <version>4.7.5</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -151,7 +166,7 @@
                     <archive>
                         <manifest>
                             <mainClass>
-                                com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks</mainClass>
+                                com.searchscale.lucene.cuvs.benchmarks.bench.BenchCLI</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -174,7 +189,7 @@
                         <manifest>
                             <addClasspath>true</addClasspath>
                             <mainClass>
-                                com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks</mainClass>
+                                com.searchscale.lucene.cuvs.benchmarks.bench.BenchCLI</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

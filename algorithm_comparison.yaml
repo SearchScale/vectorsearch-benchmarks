@@ -1,0 +1,27 @@
+meta:
+  name: "CAGRA vs Lucene Algorithm Comparison"
+  dataset: "sift-1m"
+  algorithm: "MIXED"
+
+base:
+  benchmarkID: "ALGO_COMPARISON"
+  numQueriesToRun: 1000
+  numWarmUpQueries: 20
+  flushFreq: 500000
+  topK: 100
+  queryThreads: 1
+  createIndexInMemory: false
+  cleanIndexDirectory: true
+  saveResultsOnDisk: false
+  hasColNames: true
+  cuvsIndexDirPath: "cuvsIndex"
+  hnswIndexDirPath: "hnswIndex"
+
+matrix:
+  algoToRun: ["CAGRA_HNSW", "LUCENE_HNSW"]
+  cagraGraphDegree: [32, 48]
+  cagraIntermediateGraphDegree: [64, 96]
+  cuvsWriterThreads: [4, 8]
+  hnswMaxConn: [24, 32]
+  hnswBeamWidth: [128, 256]
+  numIndexThreads: [2, 4, 8]

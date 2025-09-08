@@ -1,0 +1,25 @@
+meta:
+  name: "CAGRA-HNSW Parameter Sweep"
+  dataset: "sift-1m"
+  algorithm: "CAGRA_HNSW"
+
+base:
+  benchmarkID: "CAGRA_SWEEP"
+  numQueriesToRun: 1000
+  numWarmUpQueries: 20
+  flushFreq: 500000
+  topK: 100
+  queryThreads: 1
+  createIndexInMemory: false
+  cleanIndexDirectory: true
+  saveResultsOnDisk: false
+  hasColNames: true
+  cuvsIndexDirPath: "cuvsIndex"
+  hnswIndexDirPath: "hnswIndex"
+
+matrix:
+  algoToRun: ["CAGRA_HNSW"]
+  cagraGraphDegree: [16, 32, 48, 64]
+  cagraIntermediateGraphDegree: [32, 64, 96, 128]
+  numIndexThreads: [1, 2, 4]
+  cuvsWriterThreads: [4, 8]
