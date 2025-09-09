@@ -52,6 +52,8 @@ import org.apache.lucene.search.TopScoreDocCollectorManager;
 import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
+import org.apache.lucene.store.MMapDirectory;
+import org.apache.lucene.store.NIOFSDirectory;
 import org.apache.lucene.util.PrintStreamInfoStream;
 import org.mapdb.DB;
 import org.mapdb.DBMaker;
@@ -68,7 +70,51 @@ public class LuceneCuvsBenchmarks {
   private static final Logger log = LoggerFactory.getLogger(LuceneCuvsBenchmarks.class.getName());
 
   private static boolean RESULTS_DEBUGGING = false; // when enabled, titles are indexed and printed after search
-  private static boolean INDEX_WRITER_INFO_STREAM = false; // when enabled, prints information about merges, deletes,
+  private static boolean INDEX_WRITER_INFO_STREAM = true; // when enabled, prints information about merges, deletes,
+
+  /**
+   * Uses reflection to bypass the 2048MB hard limit for per-thread RAM buffer.
+   * This is a workaround to allow larger segments to be created before flushing.
+   */
+  private static void setPerThreadRAMLimit(IndexWriterConfig config, int limitMB) {
+    try {
+      // First, try to find the field in IndexWriterConfig
+      java.lang.reflect.Field field = null;
+      Class<?> clazz = config.getClass();
+      
+      // Try to find the field in the class hierarchy
+      while (clazz != null && field == null) {
+        try {
+          field = clazz.getDeclaredField("perThreadHardLimitMB");
+        } catch (NoSuchFieldException e) {
+          // Try superclass
+          clazz = clazz.getSuperclass();
+        }
+      }
+      
+      if (field == null) {
+        // If not found in IndexWriterConfig, try LiveIndexWriterConfig
+        clazz = config.getClass().getSuperclass();
+        while (clazz != null && field == null) {
+          try {
+            field = clazz.getDeclaredField("perThreadHardLimitMB");
+          } catch (NoSuchFieldException e) {
+            clazz = clazz.getSuperclass();
+          }
+        }
+      }
+      
+      if (field != null) {
+        field.setAccessible(true);
+        field.setInt(config, limitMB);
+        log.info("Successfully set perThreadHardLimitMB to {} MB using reflection", limitMB);
+      } else {
+        log.error("Could not find perThreadHardLimitMB field using reflection");
+      }
+    } catch (Exception e) {
+      log.error("Failed to set per-thread RAM limit using reflection", e);
+    }
+  }
 
   @SuppressWarnings("resource")
   public static void main(String[] args) throws Throwable {
@@ -163,17 +209,35 @@ public class LuceneCuvsBenchmarks {
       // HNSW Writer:
       IndexWriterConfig luceneHNSWWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
       luceneHNSWWriterConfig.setCodec(getLuceneHnswCodec(config));
-      luceneHNSWWriterConfig.setUseCompoundFile(false);
+      //luceneHNSWWriterConfig.setUseCompoundFile(false);
+      // Configure to flush based on document count only
+      // For 4M docs with 768-dim float vectors, we need approximately:
+      // 4M * 768 * 4 bytes = ~12GB just for vectors, plus overhead
+      // Set RAM buffer to 20GB to ensure doc count triggers flush first
+      luceneHNSWWriterConfig.setRAMBufferSizeMB(20000); // 20GB RAM buffer
       luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq);
-      luceneHNSWWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
       luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
+      // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
+      setPerThreadRAMLimit(luceneHNSWWriterConfig, 10240); // 10GB per thread
+      log.info("Configured HNSW writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB", 
+              config.flushFreq, luceneHNSWWriterConfig.getRAMBufferSizeMB(), 
+              luceneHNSWWriterConfig.getRAMPerThreadHardLimitMB());
 
       IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
       cuvsIndexWriterConfig.setCodec(getCuVSCodec(config));
-      cuvsIndexWriterConfig.setUseCompoundFile(false);
+      //cuvsIndexWriterConfig.setUseCompoundFile(false);
+      // Configure to flush based on document count only
+      // For 4M docs with 768-dim float vectors, we need approximately:
+      // 4M * 768 * 4 bytes = ~12GB just for vectors, plus overhead
+      // Set RAM buffer to 20GB to ensure doc count triggers flush first
+      cuvsIndexWriterConfig.setRAMBufferSizeMB(20000); // 20GB RAM buffer
       cuvsIndexWriterConfig.setMaxBufferedDocs(config.flushFreq);
-      cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
       cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
+      // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
+      setPerThreadRAMLimit(cuvsIndexWriterConfig, 10240); // 10GB per thread
+      log.info("Configured CuVS writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB", 
+              config.flushFreq, cuvsIndexWriterConfig.getRAMBufferSizeMB(),
+              cuvsIndexWriterConfig.getRAMPerThreadHardLimitMB());
 
       if (INDEX_WRITER_INFO_STREAM) {
         luceneHNSWWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
@@ -263,8 +327,8 @@ public class LuceneCuvsBenchmarks {
         }
        }
      	
-      Directory indexDir = FSDirectory.open("CAGRA_HNSW".equals(config.algoToRun) ? Path.of(config.cuvsIndexDirPath) : Path.of(config.hnswIndexDirPath));
-      log.info("Index directory is: {}", indexDir);
+      Directory indexDir = MMapDirectory.open("CAGRA_HNSW".equals(config.algoToRun) ? Path.of(config.cuvsIndexDirPath) : Path.of(config.hnswIndexDirPath));
+      log.info("Index directory is: {} (using memory-mapped files)", indexDir);
       log.info("Querying documents using {} ...", config.algoToRun);
       // Always use standard Lucene search since we always create Lucene HNSW indexes
       search(indexDir, config, false, metrics, queryResults,
@@ -304,9 +368,11 @@ public class LuceneCuvsBenchmarks {
     ExecutorService pool = Executors.newFixedThreadPool(threads);
     AtomicInteger numDocsIndexed = new AtomicInteger(0);
     log.info("Starting indexing with {} threads.", threads);
+    log.info("IndexWriter config - MaxBufferedDocs: {}, RAMBufferSizeMB: {}", 
+            writer.getConfig().getMaxBufferedDocs(), writer.getConfig().getRAMBufferSizeMB());
     final int numDocsToIndex = Math.min(config.numDocs, vectorProvider.size());
 
-    for (int i = 0; i <= threads; i++) {
+    for (int i = 0; i < threads; i++) {
       pool.submit(() -> {
         while (true) {
           int id = numDocsIndexed.getAndIncrement();
@@ -327,7 +393,11 @@ public class LuceneCuvsBenchmarks {
           try {
             writer.addDocument(doc);
             if ((id + 1) % 25000 == 0) {
-              log.info("Done indexing {} documents.", (id + 1));
+              log.info("Done indexing {} documents. Pending docs: {}", (id + 1), writer.getPendingNumDocs());
+            }
+            // Log when we expect a flush
+            if ((id + 1) == config.flushFreq || (id + 1) == 2 * config.flushFreq) {
+              log.info("Expected flush point reached at {} documents", (id + 1));
             }
           } catch (IOException ex) {
             throw new UncheckedIOException(ex);
