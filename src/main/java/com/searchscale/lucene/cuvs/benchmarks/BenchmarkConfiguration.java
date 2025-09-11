@@ -38,12 +38,20 @@ public class BenchmarkConfiguration {
   public int cagraITopK;
   public int cagraSearchWidth;
   public int cagraHnswLayers;             // layers in CAGRA->HNSW conversion
+  public int efSearch;
 
   private boolean isLucene() {
     return "LUCENE_HNSW".equalsIgnoreCase(algoToRun);
   }
   private boolean isCagra() {
     return "CAGRA_HNSW".equalsIgnoreCase(algoToRun);
+  }
+
+  public int getEffectiveEfSearch() {
+    if (efSearch > 0) {
+      return efSearch;
+    }
+    return Math.max(topK, (int) Math.ceil(topK * 1.5));
   }
 
   public String prettyString() {

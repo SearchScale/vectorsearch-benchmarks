@@ -473,16 +473,19 @@ public class LuceneCuvsBenchmarks {
           KnnFloatVectorQuery query;
 
           if (useCuVS) {
-            query = new GPUKnnFloatVectorQuery(config.vectorColName, queryVector, config.topK, null, config.cagraITopK,
-                config.cagraSearchWidth);
+            int effectiveEfSearch = config.getEffectiveEfSearch();
+            query = new GPUKnnFloatVectorQuery(config.vectorColName, queryVector, effectiveEfSearch, null, config.cagraITopK,
+                                               config.cagraSearchWidth);
           } else {
-            query = new KnnFloatVectorQuery(config.vectorColName, queryVector, config.topK);
+              int effectiveEfSearch = config.getEffectiveEfSearch();
+              query = new KnnFloatVectorQuery(config.vectorColName, queryVector, effectiveEfSearch);   
           }
 
           TopDocs topDocs;
           long searchStartTime = System.nanoTime();
           try {
-            TopScoreDocCollectorManager collectorManager = new TopScoreDocCollectorManager(config.topK, null,
+                int effectiveEfSearch = config.getEffectiveEfSearch();
+                TopScoreDocCollectorManager collectorManager = new TopScoreDocCollectorManager(effectiveEfSearch, null,
                 Integer.MAX_VALUE, true);
             topDocs = indexSearcher.search(query, collectorManager);
           } catch (IOException e) {
@@ -506,10 +509,13 @@ public class LuceneCuvsBenchmarks {
 
           // Debug: Log search results for first query
           if (queryId.get() == 0) {
-            log.info("Debug: First query returned " + hits.length + " hits");
+            log.info("Debug: First query returned " + hits.length + " hits (ef-search candidates)");
+            log.info("Debug: Will select top " + config.topK + " from " + hits.length + " candidates");
           }
+          int numResultsToTake = Math.min(config.topK, hits.length);
           long retrievalStartTime = System.nanoTime();
-          for (ScoreDoc hit : hits) {
+          for (int i = 0; i < numResultsToTake; i++) {
+            ScoreDoc hit = hits[i];
             try {
               Document d = indexReader.storedFields().document(hit.doc);
               neighbors.add(Integer.parseInt(d.get("id")));

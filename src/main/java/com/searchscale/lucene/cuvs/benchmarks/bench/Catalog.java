@@ -250,7 +250,10 @@ public class Catalog {
         public int topK = -1;
         public double qps = -1;
         public double meanLatency = -1;
-        
+        public double indexSize = -1;
+        public double peakHeapMemory = -1;
+        public double avgHeapMemory = -1; 
+
         public RunEntry() {}
         
         public RunEntry(String runId, String name, String dataset, String algo, 
