@@ -1,13 +1,15 @@
 package com.searchscale.lucene.cuvs.benchmarks.bench;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.knowm.xchart.*;
 import org.knowm.xchart.style.Styler;
 import org.knowm.xchart.style.markers.SeriesMarkers;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -50,7 +52,10 @@ public class Reporter {
     }
 
     // Generate plots
-    generatePlots(runs);
+    // generatePlots(runs); // Disabled - using web UI charts instead
+    
+    // Generate Pareto analysis
+    generateParetoAnalysis(runs);
 
     System.out.printf("Reports generated in: %s%n", outputDir);
   }
@@ -104,6 +109,34 @@ public class Reporter {
       return;
     }
 
+    // Generate sweep-specific CSV with new naming convention
+    generateSweepCsv(runs);
+    
+    // Also generate the consolidated CSV for backward compatibility
+    generateConsolidatedCsv(runs);
+  }
+
+  private void generateSweepCsv(List<Catalog.RunEntry> runs) throws IOException {
+    // Group runs by sweep (assuming runs with same dataset and similar timestamp are from same sweep)
+    Map<String, List<Catalog.RunEntry>> sweepGroups = groupRunsBySweep(runs);
+    
+    for (Map.Entry<String, List<Catalog.RunEntry>> entry : sweepGroups.entrySet()) {
+      String sweepId = entry.getKey();
+      List<Catalog.RunEntry> sweepRuns = entry.getValue();
+      
+      // Generate CSV for this sweep
+      String csvContent = generateCsvContent(sweepRuns);
+      
+      // Create filename with new convention: dd-mm-yyyy-hash.csv
+      String fileName = generateSweepFileName(sweepId, sweepRuns);
+      Path csvFile = outputDir.resolve(fileName);
+      
+      Files.writeString(csvFile, csvContent);
+      System.out.println("Sweep CSV generated: " + csvFile);
+    }
+  }
+
+  private void generateConsolidatedCsv(List<Catalog.RunEntry> runs) throws IOException {
     // Collect all possible column names from all runs
     Set<String> allColumns = new LinkedHashSet<>();
 
@@ -113,6 +146,8 @@ public class Reporter {
     allColumns.add("dataset");
     allColumns.add("algorithm");
     allColumns.add("createdAt");
+    allColumns.add("sweepId");
+    allColumns.add("commitId");
 
     // Performance metrics
     allColumns.add("indexingTime");
@@ -163,14 +198,142 @@ public class Reporter {
       }
     }
 
+    // Generate CSV content
+    String csvContent = generateCsvContent(runs, finalColumns);
+
+    Path csvFile = outputDir.resolve("benchmark_results.csv");
+    Files.writeString(csvFile, csvContent);
+    System.out.println("Enhanced CSV report generated: " + csvFile);
+    System.out.println("Columns included: " + finalColumns.size() + " (skipped " + (columnOrder.size() - finalColumns.size()) + " uniform columns)");
+    
+    // Auto-update web UI data
+    updateWebUIData(csvFile, csvContent);
+  }
+
+  /**
+   * Automatically updates web UI data after generating benchmark results
+   */
+  private void updateWebUIData(Path csvFile, String csvContent) {
+    try {
+      // Copy the main results file to web-ui directory for direct access
+      Path webUIDataDir = Paths.get("web-ui", "data");
+      if (!Files.exists(webUIDataDir)) {
+        Files.createDirectories(webUIDataDir);
+      }
+      
+      Path webUIResultsFile = webUIDataDir.resolve("consolidated_results.csv");
+      Files.writeString(webUIResultsFile, csvContent);
+      
+      // Run the sweep CSV generation script
+      ProcessBuilder pb = new ProcessBuilder("python3", "generate_sweep_csvs.py");
+      pb.directory(new File("."));
+      pb.inheritIO(); // Show output in console
+      
+      Process process = pb.start();
+      int exitCode = process.waitFor();
+      
+      if (exitCode == 0) {
+        System.out.println("✅ Web UI data updated successfully!");
+        System.out.println("📊 Dashboard will show latest results automatically");
+      } else {
+        System.out.println("⚠️  Warning: Failed to update web UI data (exit code: " + exitCode + ")");
+        System.out.println("💡 You can manually run: ./update_web_ui_data.sh");
+      }
+      
+    } catch (Exception e) {
+      System.out.println("⚠️  Warning: Could not auto-update web UI data: " + e.getMessage());
+      System.out.println("💡 You can manually run: ./update_web_ui_data.sh");
+    }
+  }
+
+  private Map<String, List<Catalog.RunEntry>> groupRunsBySweep(List<Catalog.RunEntry> runs) {
+    Map<String, List<Catalog.RunEntry>> groups = new LinkedHashMap<>();
+    
+    for (Catalog.RunEntry run : runs) {
+      // Use the sweep ID from the catalog entry (which includes unique sweep IDs)
+      String sweepId = run.sweepId;
+      groups.computeIfAbsent(sweepId, k -> new ArrayList<>()).add(run);
+    }
+    
+    return groups;
+  }
+
+  private String generateSweepFileName(String sweepId, List<Catalog.RunEntry> runs) {
+    if (runs.isEmpty()) return sweepId + ".csv";
+    
+    // Get the date from the first run
+    String dateStr = runs.get(0).createdAt.substring(0, 10); // YYYY-MM-DD
+    String[] dateParts = dateStr.split("-");
+    String formattedDate = dateParts[2] + "-" + dateParts[1] + "-" + dateParts[0]; // DD-MM-YYYY
+    
+    // Generate hash from sweep parameters
+    String hash = generateSweepHash(runs);
+    
+    return formattedDate + "-" + hash + ".csv";
+  }
+
+  private String generateSweepHash(List<Catalog.RunEntry> runs) {
+    // Create a hash based on the sweep configuration
+    StringBuilder configStr = new StringBuilder();
+    if (!runs.isEmpty()) {
+      Catalog.RunEntry firstRun = runs.get(0);
+      configStr.append(firstRun.dataset).append("_");
+      configStr.append(firstRun.algo).append("_");
+      if (firstRun.params != null) {
+        firstRun.params.entrySet().stream()
+          .sorted(Map.Entry.comparingByKey())
+          .forEach(entry -> configStr.append(entry.getKey()).append("=").append(entry.getValue()).append("_"));
+      }
+    }
+    
+    // Generate a short hash
+    String hashStr = String.valueOf(Math.abs(configStr.toString().hashCode()));
+    return hashStr.length() >= 8 ? hashStr.substring(0, 8) : hashStr;
+  }
+
+  private String generateCsvContent(List<Catalog.RunEntry> runs) {
+    return generateCsvContent(runs, null);
+  }
+
+  private String generateCsvContent(List<Catalog.RunEntry> runs, List<String> columns) {
+    if (columns == null) {
+      // Generate columns dynamically
+      Set<String> allColumns = new LinkedHashSet<>();
+      allColumns.add("runId");
+      allColumns.add("name");
+      allColumns.add("dataset");
+      allColumns.add("algorithm");
+      allColumns.add("createdAt");
+      allColumns.add("indexingTime");
+      allColumns.add("queryTime");
+      allColumns.add("recall");
+      allColumns.add("qps");
+      allColumns.add("meanLatency");
+      allColumns.add("indexSize");
+      allColumns.add("peakHeapMemory");
+      allColumns.add("avgHeapMemory");
+      allColumns.add("segmentCount");
+      allColumns.add("cuvsWriterThreads");
+      allColumns.add("efSearch");
+      
+      for (Catalog.RunEntry run : runs) {
+        if (run.params != null) {
+          allColumns.addAll(run.params.keySet());
+        }
+      }
+      
+      columns = new ArrayList<>(allColumns);
+      Collections.sort(columns);
+    }
+
     // Generate CSV header
     StringBuilder csv = new StringBuilder();
-    csv.append(String.join(",", finalColumns)).append("\n");
+    csv.append(String.join(",", columns)).append("\n");
 
     // Generate CSV rows
     for (Catalog.RunEntry run : runs) {
       List<String> row = new ArrayList<>();
-      for (String column : finalColumns) {
+      for (String column : columns) {
         Object value = getColumnValue(run, column);
         String csvValue = formatCsvValue(value);
         row.add(csvValue);
@@ -178,11 +341,74 @@ public class Reporter {
       csv.append(String.join(",", row)).append("\n");
     }
 
-    Path csvFile = outputDir.resolve("benchmark_results.csv");
-    Files.writeString(csvFile, csv.toString());
-    System.out.println("Enhanced CSV report generated: " + csvFile);
-    System.out.println("Columns included: " + finalColumns.size() + " (skipped " + (columnOrder.size() - finalColumns.size()) + " uniform columns)");
+    return csv.toString();
   }   
+
+  private void generateParetoAnalysis(List<Catalog.RunEntry> runs) throws IOException {
+    System.out.println("Generating Pareto analysis...");
+    
+    try {
+      ParetoAnalyzer analyzer = new ParetoAnalyzer();
+      double[] recallThresholds = {0.90, 0.95}; // 90% and 95% recall thresholds
+      
+      ParetoAnalyzer.ParetoAnalysisResult result = analyzer.analyzeParetoOptimal(runs, recallThresholds);
+      
+      // Generate analysis report
+      analyzer.generateAnalysisReport(result, outputDir);
+      
+      // Generate speedup comparison JSON for web UI
+      generateSpeedupComparisonJson(result);
+      
+      System.out.println("Pareto analysis completed successfully");
+    } catch (Exception e) {
+      System.err.println("Failed to generate Pareto analysis: " + e.getMessage());
+      e.printStackTrace();
+    }
+  }
+
+  private void generateSpeedupComparisonJson(ParetoAnalyzer.ParetoAnalysisResult result) throws IOException {
+    Map<String, Object> speedupData = new HashMap<>();
+    
+    // Group optimal configs by recall threshold
+    Map<Double, List<ParetoAnalyzer.ParetoOptimalConfig>> byThreshold = result.optimalConfigs.stream()
+        .collect(Collectors.groupingBy(config -> config.recallThreshold));
+    
+    for (Map.Entry<Double, List<ParetoAnalyzer.ParetoOptimalConfig>> entry : byThreshold.entrySet()) {
+      double threshold = entry.getKey();
+      List<ParetoAnalyzer.ParetoOptimalConfig> configs = entry.getValue();
+      
+      // Find CAGRA and Lucene configs for this threshold
+      ParetoAnalyzer.ParetoOptimalConfig cagraConfig = configs.stream()
+          .filter(c -> "CAGRA_HNSW".equals(c.algorithm))
+          .findFirst().orElse(null);
+      
+      ParetoAnalyzer.ParetoOptimalConfig luceneConfig = configs.stream()
+          .filter(c -> "LUCENE_HNSW".equals(c.algorithm))
+          .findFirst().orElse(null);
+      
+      if (cagraConfig != null && luceneConfig != null) {
+        String thresholdLabel = threshold == 0.90 ? "~90%" : "~95%";
+        
+        Map<String, Object> thresholdData = new HashMap<>();
+        thresholdData.put("cagra", Map.of(
+            "indexingTime", cagraConfig.indexingTime / 1000.0, // Convert to seconds
+            "recall", cagraConfig.actualRecall * 100.0 // Convert to percentage
+        ));
+        thresholdData.put("lucene", Map.of(
+            "indexingTime", luceneConfig.indexingTime / 1000.0, // Convert to seconds
+            "recall", luceneConfig.actualRecall * 100.0 // Convert to percentage
+        ));
+        thresholdData.put("speedup", luceneConfig.indexingTime / cagraConfig.indexingTime);
+        
+        speedupData.put(thresholdLabel, thresholdData);
+      }
+    }
+    
+    // Save speedup comparison JSON
+    Path speedupFile = outputDir.resolve("speedup_comparison.json");
+    json.writerWithDefaultPrettyPrinter().writeValue(speedupFile.toFile(), speedupData);
+    System.out.println("Speedup comparison JSON generated: " + speedupFile);
+  }
 
   private void generatePlots(List<Catalog.RunEntry> runs) throws IOException {
     if (runs.isEmpty()) {
@@ -554,6 +780,10 @@ public class Reporter {
         return run.algo;
       case "createdAt":
         return run.createdAt;
+      case "sweepId":
+        return run.sweepId;
+      case "commitId":
+        return run.commitId;
       case "indexingTime":
         return run.indexingTime;
       case "queryTime":
@@ -613,7 +843,7 @@ public class Reporter {
 
   private boolean isCoreColumn(String column) {
     return Arrays.asList("runId", "name", "dataset", "algorithm", "createdAt", 
-        "indexingTime", "queryTime", "recall", "qps", "meanLatency",
+        "sweepId", "commitId", "indexingTime", "queryTime", "recall", "qps", "meanLatency",
         "indexSize", "peakHeapMemory", "avgHeapMemory", "segmentCount", 
         "cuvsWriterThreads", "efSearch").contains(column);
   }

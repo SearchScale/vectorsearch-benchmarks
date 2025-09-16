@@ -2,6 +2,7 @@ package com.searchscale.lucene.cuvs.benchmarks.bench;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.io.IOException;
 
 /**
  * Executes parameter sweeps using the new architecture
@@ -14,6 +15,10 @@ public class SweepRunner {
         this.runsDir = runsDir;
     }
     
+    public Path getRunsDir() {
+        return runsDir;
+    }
+    
     /**
      * Run a parameter sweep
      */
@@ -21,6 +26,10 @@ public class SweepRunner {
         // Load sweep configuration
         SweepLoader loader = new SweepLoader();
         SweepLoader.SweepConfig sweepConfig = loader.loadSweep(sweepYaml);
+        
+        // Generate unique sweep ID for this execution
+        String uniqueSweepId = generateUniqueSweepId(sweepConfig, sweepYaml);
+        sweepConfig.meta.put("unique_sweep_id", uniqueSweepId);
         
         // Materialize configurations
         Materializer materializer = new Materializer();
@@ -66,6 +75,15 @@ public class SweepRunner {
         System.out.printf("%nSweep completed: %d successful, %d failed%n", 
             successCount, failureCount);
         
+        // Automatically generate CSV report for this sweep
+        if (successCount > 0) {
+            try {
+                generateSweepCsvReport(sweepConfig);
+            } catch (Exception e) {
+                System.err.printf("Warning: Failed to generate CSV report: %s%n", e.getMessage());
+            }
+        }
+        
         return failureCount > 0 ? 1 : 0;
     }
     
@@ -73,6 +91,12 @@ public class SweepRunner {
      * Run a parameter sweep with an already loaded configuration
      */
     public int runSweepWithConfig(SweepLoader.SweepConfig sweepConfig, boolean dryRun) throws Exception {
+        // Generate unique sweep ID for this execution if not already set
+        if (!sweepConfig.meta.containsKey("unique_sweep_id")) {
+            String uniqueSweepId = generateUniqueSweepId(sweepConfig, null);
+            sweepConfig.meta.put("unique_sweep_id", uniqueSweepId);
+        }
+        
         // Materialize configurations
         Materializer materializer = new Materializer();
         List<Materializer.MaterializedRun> runs = materializer.materializeSweep(sweepConfig);
@@ -117,6 +141,15 @@ public class SweepRunner {
         System.out.printf("%nSweep completed: %d successful, %d failed%n", 
             successCount, failureCount);
         
+        // Automatically generate CSV report for this sweep
+        if (successCount > 0) {
+            try {
+                generateSweepCsvReport(sweepConfig);
+            } catch (Exception e) {
+                System.err.printf("Warning: Failed to generate CSV report: %s%n", e.getMessage());
+            }
+        }
+        
         return failureCount > 0 ? 1 : 0;
     }
     
@@ -126,5 +159,77 @@ public class SweepRunner {
     private int executeRun(Materializer.MaterializedRun run) throws Exception {
         Runner runner = new Runner(runsDir);
         return runner.executeRun(run);
+    }
+    
+    /**
+     * Generate CSV report for the completed sweep
+     */
+    private void generateSweepCsvReport(SweepLoader.SweepConfig sweepConfig) throws IOException {
+        System.out.println("Generating CSV report for sweep...");
+        
+        // Create reports directory if it doesn't exist
+        Path reportsDir = Path.of("reports");
+        if (!reportsDir.toFile().exists()) {
+            reportsDir.toFile().mkdirs();
+        }
+        
+        // Use the Reporter to generate CSV reports
+        Reporter reporter = new Reporter(runsDir, reportsDir);
+        reporter.generateReports("csv");
+        
+        // Also generate web UI data for immediate viewing
+        generateWebUiData();
+        
+        System.out.println("CSV report generated successfully!");
+    }
+    
+    /**
+     * Generate web UI data by running the Python script
+     */
+    private void generateWebUiData() {
+        try {
+            System.out.println("Updating web UI data...");
+            ProcessBuilder pb = new ProcessBuilder("python3", "generate_sweep_csvs.py");
+            pb.directory(Path.of(".").toFile());
+            Process process = pb.start();
+            int exitCode = process.waitFor();
+            
+            if (exitCode == 0) {
+                System.out.println("Web UI data updated successfully!");
+            } else {
+                System.err.println("Warning: Failed to update web UI data (exit code: " + exitCode + ")");
+            }
+        } catch (Exception e) {
+            System.err.println("Warning: Failed to run web UI data update script: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * Generate a unique sweep ID for this sweep execution
+     */
+    private String generateUniqueSweepId(SweepLoader.SweepConfig sweepConfig, Path sweepYaml) {
+        StringBuilder idBuilder = new StringBuilder();
+        
+        // Add dataset
+        String dataset = (String) sweepConfig.meta.getOrDefault("dataset", "unknown");
+        idBuilder.append(dataset).append("_");
+        
+        // Add timestamp (to the minute for uniqueness)
+        String timestamp = java.time.Instant.now().toString().substring(0, 16); // YYYY-MM-DDTHH:MM
+        idBuilder.append(timestamp.replace(":", "").replace("-", "").replace("T", "_"));
+        
+        // Add sweep name if available
+        String sweepName = (String) sweepConfig.meta.getOrDefault("name", "");
+        if (!sweepName.isEmpty()) {
+            idBuilder.append("_").append(sweepName.replaceAll("[^a-zA-Z0-9]", "_"));
+        }
+        
+        // Add filename if available
+        if (sweepYaml != null) {
+            String fileName = sweepYaml.getFileName().toString().replaceAll("[^a-zA-Z0-9]", "_");
+            idBuilder.append("_").append(fileName);
+        }
+        
+        return idBuilder.toString();
     }
 }

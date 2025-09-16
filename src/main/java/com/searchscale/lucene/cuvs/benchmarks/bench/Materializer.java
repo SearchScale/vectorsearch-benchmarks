@@ -33,6 +33,11 @@ public class Materializer {
             Map<String, Object> materialized = new LinkedHashMap<>(sweepConfig.base);
             materialized.putAll(combo);
             
+            // Debug: Print key configuration values
+            System.out.println("DEBUG: Materialized config - numDocs: " + materialized.get("numDocs") + 
+                             ", vectorDimension: " + materialized.get("vectorDimension") +
+                             ", datasetFile: " + materialized.get("datasetFile"));
+            
             // Drop parameters that don't belong to the selected algorithm
             pruneByAlgo(materialized);
             
@@ -211,6 +216,12 @@ public class Materializer {
                     params.put(key, entry.getValue());
                 }
             }
+            
+            // Add unique sweep ID from meta if available
+            if (meta != null && meta.containsKey("unique_sweep_id")) {
+                params.put("unique_sweep_id", meta.get("unique_sweep_id"));
+            }
+            
             return params;
         }
         

@@ -42,3 +42,8 @@ default_paths:
   sift_path: "/home/puneet/datasetwiki/sift1B/extracted"
   glove_path: "/home/puneet/datasetwiki/glove"
   ground_truth_path: "/home/puneet/datasetwiki/sift1B/gnd"
+
+
+
+
+

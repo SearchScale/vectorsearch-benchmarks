@@ -14,6 +14,7 @@ base:
   cleanIndexDirectory: true
   saveResultsOnDisk: false
   hasColNames: true
+  vectorColName: "vector"
   cuvsIndexDirPath: "cuvsIndex"
   hnswIndexDirPath: "hnswIndex"
 
@@ -22,6 +23,7 @@ matrix:
   cagraGraphDegree: [32, 48]
   cagraIntermediateGraphDegree: [64, 96]
   cuvsWriterThreads: [4, 8]
-  hnswMaxConn: [24, 32]
-  hnswBeamWidth: [128, 256]
-  numIndexThreads: [2, 4, 8]
+  hnswMaxConn: [32]
+  hnswBeamWidth: [256]
+  numIndexThreads: [8]
+  efSearch: [150]

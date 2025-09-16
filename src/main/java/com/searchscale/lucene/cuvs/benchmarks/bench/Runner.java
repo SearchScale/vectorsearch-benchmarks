@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks;
 
 import java.io.IOException;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -38,9 +39,10 @@ public class Runner {
     Map<String, Object> meta;
 
     if (rawConfig.containsKey("base") && rawConfig.containsKey("matrix")) {
-      // This is a sweep configuration - use the base configuration
-      Map<String, Object> baseConfig = (Map<String, Object>) rawConfig.get("base");
-      Map<String, Object> matrixConfig = (Map<String, Object>) rawConfig.get("matrix");
+      // This is a sweep configuration - load it properly to get dataset info
+      SweepLoader.SweepConfig sweepConfig = loader.loadSweep(configFile);
+      Map<String, Object> baseConfig = sweepConfig.base;
+      Map<String, Object> matrixConfig = sweepConfig.matrix;
 
       // For single run, take first value from matrix
       config = new LinkedHashMap<>(baseConfig);
@@ -53,7 +55,7 @@ public class Runner {
         }
       }
 
-      meta = (Map<String, Object>) rawConfig.getOrDefault("meta", Map.of());
+      meta = sweepConfig.meta;
       System.out.println("DEBUG: Using sweep config, topK = " + config.get("topK"));
     } else {
       // This is a simple configuration
@@ -153,15 +155,37 @@ public class Runner {
         run.getParams(),
         run.createdAt
         );
-    catalog.addRun(catalogEntry);
+    catalog.updateRun(catalogEntry);
 
     System.out.printf("Starting run: %s (%s)%n", run.runId, run.friendlyName);
 
-    // Execute the benchmark
+    // Start metrics sampling with 2-second interval
+    Sampler sampler = new Sampler();
+    sampler.startSampling(2);
+
+    // Execute the benchmark with log capture
     long startTime = System.currentTimeMillis();
     try {
-      LuceneCuvsBenchmarks.main(new String[]{configPath.toString()});
+      // Capture stdout and stderr for this run
+      captureRunLogs(run.runId, runDir, () -> {
+        try {
+          LuceneCuvsBenchmarks.main(new String[]{configPath.toString()});
+        } catch (Throwable e) {
+          throw new RuntimeException(e);
+        }
+      });
+      
       long endTime = System.currentTimeMillis();
+
+      // Stop metrics sampling and generate metrics files
+      try {
+        sampler.stopSampling(runDir);
+        sampler.generateMemoryPlot(runDir);
+        sampler.generateCpuPlot(runDir);
+        System.out.println("Metrics files generated for run: " + run.runId);
+      } catch (IOException e) {
+        System.err.println("Failed to generate metrics files: " + e.getMessage());
+      }
 
       // Update catalog with results
       updateRunResults(run.runId, endTime - startTime);
@@ -173,12 +197,56 @@ public class Runner {
       System.err.printf("Run failed: %s - %s%n", run.runId, e.getMessage());
       e.printStackTrace();
 
+      // Stop metrics sampling even on failure
+      try {
+        sampler.stopSampling(runDir);
+        sampler.generateMemoryPlot(runDir);
+        sampler.generateCpuPlot(runDir);
+        System.out.println("Metrics files generated for failed run: " + run.runId);
+      } catch (IOException metricsError) {
+        System.err.println("Failed to generate metrics files: " + metricsError.getMessage());
+      }
+
       // Write error log
       Path errorLog = runDir.resolve("error.log");
       Files.writeString(errorLog, "Run failed: " + e.getMessage() + "\n", 
           StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 
       return 1;
+    }
+  }
+
+  /**
+   * Capture stdout and stderr for a run and save to files with run ID in filename
+   */
+  private void captureRunLogs(String runId, Path runDir, Runnable benchmarkExecution) throws Exception {
+    // Create log files with run ID in filename
+    Path stdoutLog = runDir.resolve(runId + "_stdout.log");
+    Path stderrLog = runDir.resolve(runId + "_stderr.log");
+    
+    // Save original streams
+    PrintStream originalOut = System.out;
+    PrintStream originalErr = System.err;
+    
+    try {
+      // Redirect stdout and stderr to files
+      PrintStream outStream = new PrintStream(Files.newOutputStream(stdoutLog, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING));
+      PrintStream errStream = new PrintStream(Files.newOutputStream(stderrLog, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING));
+      
+      System.setOut(outStream);
+      System.setErr(errStream);
+      
+      // Execute the benchmark
+      benchmarkExecution.run();
+      
+      // Flush streams
+      outStream.flush();
+      errStream.flush();
+      
+    } finally {
+      // Restore original streams
+      System.setOut(originalOut);
+      System.setErr(originalErr);
     }
   }
 
@@ -259,7 +327,9 @@ public class Runner {
             // Extract key metrics
             entry.indexingTime = getDoubleValue(metrics, "hnsw-indexing-time", "cuvs-indexing-time");
             entry.queryTime = getDoubleValue(metrics, "hnsw-query-time", "cuvs-query-time");
-            entry.recall = getDoubleValue(metrics, "hnsw-recall-accuracy", "cuvs-recall-accuracy");
+            double recallValue = getDoubleValue(metrics, "hnsw-recall-accuracy", "cuvs-recall-accuracy");
+            // Convert percentage to decimal if needed
+            entry.recall = recallValue > 1.0 ? recallValue / 100.0 : recallValue;
             entry.qps = getDoubleValue(metrics, "hnsw-query-throughput", "cuvs-query-throughput");
             entry.meanLatency = getDoubleValue(metrics, "hnsw-mean-latency", "cuvs-mean-latency");
             entry.indexSize = getDoubleValue(metrics, "hnsw-index-size", "cuvs-index-size");

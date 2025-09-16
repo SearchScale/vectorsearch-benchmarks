@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sweep Details - Vector Search Benchmark Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <style>
+        .back-button {
+            margin-bottom: 1rem;
+        }
+        
+        .sweep-header {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .sweep-title {
+            font-size: 1.5rem;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+        
+        .sweep-info {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .pareto-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .pareto-section h2 {
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        
+        .pareto-chart-container {
+            position: relative;
+            height: 400px;
+        }
+        
+        .results-section {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .results-section h2 {
+            margin-bottom: 1rem;
+            color: #2c3e50;
+        }
+        
+        .results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        
+        .results-table th,
+        .results-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .results-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .results-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .algorithm-badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        .algorithm-cagra {
+            background-color: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .algorithm-lucene {
+            background-color: #fff3e0;
+            color: #f57c00;
+        }
+        
+        .btn-small {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Vector Search Benchmark Dashboard</h1>
+        <p class="subtitle">Sweep Details</p>
+    </header>
+
+    <div class="main-content">
+        <button class="btn btn-secondary back-button" onclick="goBack()">← Back to Dashboard</button>
+        
+        <div class="sweep-header">
+            <div class="sweep-title" id="sweep-title">Loading...</div>
+            <div class="sweep-info" id="sweep-info">Loading...</div>
+        </div>
+
+        <div class="pareto-section">
+            <h2>Conclusion</h2>
+            <p style="color: #666; margin-bottom: 1rem; font-style: italic;">SIFT-1M Dataset - Indexing Time Comparison</p>
+            <div class="pareto-chart-container">
+                <canvas id="pareto-chart"></canvas>
+            </div>
+            <div id="speedup-summary" style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+                <!-- Speedup summary will be displayed here -->
+            </div>
+        </div>
+
+        <div class="results-section">
+            <h2>Results Table</h2>
+            <table class="results-table" id="results-table">
+                <thead>
+                    <tr>
+                        <th>Run ID</th>
+                        <th>Algorithm</th>
+                        <th>Indexing Time (s)</th>
+                        <th>Query Time (s)</th>
+                        <th>Recall (%)</th>
+                        <th>QPS</th>
+                        <th>Mean Latency (ms)</th>
+                        <th>Index Size (MB)</th>
+                        <th>Commit ID</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="results-tbody">
+                    <!-- Results will be loaded here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="js/data-loader.js"></script>
+    <script>
+        class SweepDetails {
+            constructor() {
+                this.sweepData = null;
+                this.paretoChart = null;
+            }
+
+            init() {
+                this.loadSweepData();
+                this.renderSweepInfo();
+                this.generateParetoChart();
+                this.generateResultsTable();
+            }
+
+            loadSweepData() {
+                const storedData = sessionStorage.getItem('selectedSweep');
+                if (!storedData) {
+                    this.showError('No sweep data found. Please go back to the dashboard and select a sweep.');
+                    return;
+                }
+                
+                this.sweepData = JSON.parse(storedData);
+                console.log('Loaded sweep data:', this.sweepData);
+            }
+
+            renderSweepInfo() {
+                if (!this.sweepData) return;
+                
+                const date = new Date(this.sweepData.date).toLocaleDateString();
+                const runCount = this.sweepData.runs.length;
+                
+                document.getElementById('sweep-title').textContent = `Sweep: ${date}`;
+                document.getElementById('sweep-info').textContent = `${runCount} runs`;
+            }
+
+            generateParetoChart() {
+                if (!this.sweepData) return;
+                
+                const ctx = document.getElementById('pareto-chart');
+                const runs = this.sweepData.runs.filter(run => run.indexingTime > 0 && run.queryTime > 0 && run.recall > 0);
+                
+                if (runs.length === 0) {
+                    ctx.parentElement.innerHTML = '<div class="no-data">No valid data for Pareto analysis</div>';
+                    return;
+                }
+                
+                // Group runs by algorithm
+                const cagraRuns = runs.filter(run => run.algo === 'CAGRA_HNSW');
+                const luceneRuns = runs.filter(run => run.algo === 'LUCENE_HNSW');
+                
+                // Find available recall levels for both algorithms
+                const cagraRecalls = cagraRuns.map(run => run.recall).sort((a, b) => a - b);
+                const luceneRecalls = luceneRuns.map(run => run.recall).sort((a, b) => a - b);
+                
+                // Find common recall levels (where both algorithms have data)
+                const commonRecalls = [];
+                const tolerance = 0.01; // 1% tolerance for recall matching
+                
+                cagraRecalls.forEach(cagraRecall => {
+                    const matchingLucene = luceneRecalls.find(luceneRecall => 
+                        Math.abs(cagraRecall - luceneRecall) <= tolerance
+                    );
+                    if (matchingLucene && !commonRecalls.some(r => Math.abs(r - cagraRecall) <= tolerance)) {
+                        commonRecalls.push(cagraRecall);
+                    }
+                });
+                
+                // Sort by recall level
+                commonRecalls.sort((a, b) => a - b);
+                
+                // console.log('Available CAGRA recalls:', cagraRecalls);
+                // console.log('Available Lucene recalls:', luceneRecalls);
+                // console.log('Common recall levels found:', commonRecalls);
+                
+                const comparisonData = [];
+                
+                commonRecalls.forEach(recall => {
+                    // Find best CAGRA run at this recall level
+                    const cagraAtRecall = cagraRuns
+                        .filter(run => Math.abs(run.recall - recall) <= tolerance)
+                        .sort((a, b) => a.indexingTime - b.indexingTime)[0];
+                    
+                    // Find best Lucene run at this recall level
+                    const luceneAtRecall = luceneRuns
+                        .filter(run => Math.abs(run.recall - recall) <= tolerance)
+                        .sort((a, b) => a.indexingTime - b.indexingTime)[0];
+                    
+                    if (cagraAtRecall && luceneAtRecall) {
+                        const speedup = luceneAtRecall.indexingTime / cagraAtRecall.indexingTime;
+                        comparisonData.push({
+                            threshold: recall,
+                            label: `${(recall * 100).toFixed(1)}%`,
+                            cagraTime: cagraAtRecall.indexingTime / 1000,
+                            luceneTime: luceneAtRecall.indexingTime / 1000,
+                            speedup: speedup,
+                            speedupLabel: `${Math.round(speedup)}X`,
+                            cagraRun: cagraAtRecall,
+                            luceneRun: luceneAtRecall
+                        });
+                    }
+                });
+                
+                if (comparisonData.length === 0) {
+                    ctx.parentElement.innerHTML = '<div class="no-data">No comparable runs found between CAGRA and Lucene</div>';
+                    return;
+                }
+                
+                // Hide the speedup summary as we'll show it in the chart
+                document.getElementById('speedup-summary').style.display = 'none';
+                
+                const labels = comparisonData.map(item => item.label);
+                const cagraTimes = comparisonData.map(item => item.cagraTime);
+                const luceneTimes = comparisonData.map(item => item.luceneTime);
+                
+                this.paretoChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'CAGRA',
+                            data: cagraTimes,
+                            backgroundColor: '#4CAF50',
+                            borderColor: '#4CAF50',
+                            borderWidth: 1
+                        }, {
+                            label: 'Lucene',
+                            data: luceneTimes,
+                            backgroundColor: '#666666',
+                            borderColor: '#666666',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Indexing Time (seconds)'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Recall'
+                                }
+                            }
+                        },
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'SIFT-1M (128 Dim) Build Time',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                },
+                                padding: {
+                                    bottom: 20
+                                }
+                            },
+                            legend: {
+                                display: true,
+                                position: 'top'
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: function(context) {
+                                        const dataIndex = context.dataIndex;
+                                        const data = comparisonData[dataIndex];
+                                        const speedupLabel = data.speedupLabel;
+                                        return [
+                                            `CAGRA is ${speedupLabel} faster than Lucene`,
+                                            `Actual CAGRA recall: ${(data.cagraRun.recall * 100).toFixed(2)}%`,
+                                            `Actual Lucene recall: ${(data.luceneRun.recall * 100).toFixed(2)}%`
+                                        ];
+                                    }
+                                }
+                            }
+                        },
+                        // Add custom plugin to display speedup labels
+                        onHover: (event, activeElements) => {
+                            event.native.target.style.cursor = activeElements.length > 0 ? 'pointer' : 'default';
+                        }
+                    },
+                    plugins: [{
+                        afterDatasetsDraw: function(chart) {
+                            const ctx = chart.ctx;
+                            chart.data.datasets[0].data.forEach((value, index) => {
+                                const meta = chart.getDatasetMeta(0);
+                                const bar = meta.data[index];
+                                const speedupLabel = comparisonData[index].speedupLabel;
+                                
+                                // Position the speedup label above the bars
+                                const x = bar.x;
+                                const y = Math.min(meta.data[index].y, chart.getDatasetMeta(1).data[index].y) - 10;
+                                
+                                ctx.fillStyle = '#4CAF50';
+                                ctx.font = 'bold 14px Arial';
+                                ctx.textAlign = 'center';
+                                ctx.fillText(speedupLabel, x, y);
+                            });
+                        }
+                    }]
+                });
+            }
+
+            displaySpeedupSummary(speedupData) {
+                const summaryDiv = document.getElementById('speedup-summary');
+                
+                if (speedupData.length === 0) {
+                    summaryDiv.innerHTML = '<p>No speedup data available</p>';
+                    return;
+                }
+                
+                let summaryHTML = '<h3>🚀 CAGRA Speedup vs Lucene</h3>';
+                summaryHTML += '<div style="display: flex; gap: 1rem; flex-wrap: wrap;">';
+                
+                speedupData.forEach(item => {
+                    const color = item.speedup > 10 ? '#4caf50' : item.speedup > 5 ? '#ff9800' : '#f44336';
+                    summaryHTML += `
+                        <div style="padding: 0.5rem; background: white; border-radius: 4px; border-left: 4px solid ${color};">
+                            <strong>${item.threshold}</strong><br>
+                            <span style="font-size: 1.2em; color: ${color}; font-weight: bold;">${item.speedup.toFixed(1)}x faster</span>
+                        </div>
+                    `;
+                });
+                
+                summaryHTML += '</div>';
+                summaryDiv.innerHTML = summaryHTML;
+            }
+
+            generateResultsTable() {
+                if (!this.sweepData) return;
+                
+                const tbody = document.getElementById('results-tbody');
+                tbody.innerHTML = '';
+                
+                this.sweepData.runs.forEach(run => {
+                    const row = document.createElement('tr');
+                    
+                    const indexTime = run.indexingTime > 0 ? (run.indexingTime / 1000).toFixed(2) : 'Failed';
+                    const queryTime = run.queryTime > 0 ? (run.queryTime / 1000).toFixed(2) : 'Failed';
+                    const recall = run.recall > 0 ? (run.recall * 100).toFixed(1) : 'Failed';
+                    const qps = run.qps > 0 ? run.qps.toFixed(1) : 'Failed';
+                    const meanLatency = run.meanLatency > 0 ? run.meanLatency.toFixed(1) : 'Failed';
+                    const indexSize = run.indexSize > 0 ? (run.indexSize / 1024 / 1024).toFixed(1) : 'Failed';
+                    
+                    const algoClass = run.algo === 'CAGRA_HNSW' ? 'algorithm-cagra' : 'algorithm-lucene';
+                    const algoDisplay = run.algo.replace('_HNSW', '');
+                    
+                    row.innerHTML = `
+                        <td>${run.runId.substring(0, 8)}</td>
+                        <td><span class="algorithm-badge ${algoClass}">${algoDisplay}</span></td>
+                        <td>${indexTime}</td>
+                        <td>${queryTime}</td>
+                        <td>${recall}</td>
+                        <td>${qps}</td>
+                        <td>${meanLatency}</td>
+                        <td>${indexSize}</td>
+                        <td><code>${run.commitId ? run.commitId.substring(0, 8) : 'N/A'}</code></td>
+                        <td>
+                            <button class="btn btn-small btn-primary" onclick="viewRunConfig('${run.runId}')">
+                                Config
+                            </button>
+                            <button class="btn btn-small btn-secondary" onclick="viewRunMetrics('${run.runId}')">
+                                Metrics
+                            </button>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+            }
+
+            getParameterSummary(run) {
+                const params = [];
+                
+                if (run.cagraGraphDegree) {
+                    params.push(`G:${run.cagraGraphDegree}`);
+                }
+                if (run.cagraIntermediateGraphDegree) {
+                    params.push(`IG:${run.cagraIntermediateGraphDegree}`);
+                }
+                if (run.cuvsWriterThreads) {
+                    params.push(`T:${run.cuvsWriterThreads}`);
+                }
+                if (run.hnswMaxConn) {
+                    params.push(`MC:${run.hnswMaxConn}`);
+                }
+                if (run.hnswBeamWidth) {
+                    params.push(`BW:${run.hnswBeamWidth}`);
+                }
+                
+                return params.length > 0 ? `(${params.join(',')})` : '';
+            }
+
+            showError(message) {
+                document.querySelector('.main-content').innerHTML = `
+                    <div class="error">${message}</div>
+                    <button class="btn btn-secondary" onclick="goBack()">← Back to Dashboard</button>
+                `;
+            }
+        }
+
+        function goBack() {
+            window.location.href = 'index.html';
+        }
+
+        function viewRunConfig(runId) {
+            // TODO: Implement run config viewer
+            alert(`View config for run ${runId}`);
+        }
+
+        function viewRunMetrics(runId) {
+            // TODO: Implement run metrics viewer
+            alert(`View metrics for run ${runId}`);
+        }
+
+        // Initialize the sweep details when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const sweepDetails = new SweepDetails();
+            sweepDetails.init();
+        });
+    </script>
+</body>
+</html>

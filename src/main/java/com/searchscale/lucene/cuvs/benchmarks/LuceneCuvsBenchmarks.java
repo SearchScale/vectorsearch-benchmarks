@@ -381,6 +381,7 @@ public class LuceneCuvsBenchmarks {
 
     for (int i = 0; i < threads; i++) {
       pool.submit(() -> {
+        int localCount = 0;
         while (true) {
           int id = numDocsIndexed.getAndIncrement();
           if (id >= numDocsToIndex) {
@@ -389,6 +390,7 @@ public class LuceneCuvsBenchmarks {
           float[] vector;
           try {
             vector = Objects.requireNonNull(vectorProvider.get(id));
+            localCount++;
           } catch (IOException e) {
             throw new UncheckedIOException("Failed to read vector at index " + id, e);
           }

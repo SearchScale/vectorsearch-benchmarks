@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vector Search Benchmark Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+    <header class="header">
+        <h1>Vector Search Benchmark Dashboard</h1>
+        <p class="subtitle">SIFT-1M Dataset - Performance Analysis by Parameter Configuration</p>
+    </header>
+
+    <div class="dashboard-container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar">
+            <h2>Sweeps</h2>
+            <div class="sidebar-header">
+                <span id="total-sweeps">Loading...</span>
+            </div>
+            <div class="sweep-list" id="sweep-list">
+                <!-- Sweeps will be loaded here -->
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Overview Section (shown when no sweep is selected) -->
+            <div id="overview-section">
+                <!-- Filters -->
+                <div class="filters">
+                    <h3>Filters</h3>
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label for="metric-filter">Metric</label>
+                            <select id="metric-filter">
+                                <option value="indexingTime">Indexing Time</option>
+                                <option value="queryTime">Query Time</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label for="algo-filter">Algorithm</label>
+                            <select id="algo-filter">
+                                <option value="all">All Algorithms</option>
+                                <option value="CAGRA_HNSW">CAGRA</option>
+                                <option value="LUCENE_HNSW">Lucene</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Section -->
+                <div class="charts-section">
+                    <h2 id="charts-title">Indexing Time by Parameter Configuration</h2>
+                    <div class="charts-grid" id="charts-grid">
+                        <!-- Charts will be loaded here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sweep Details Section (shown when a sweep is selected) -->
+            <div id="sweep-details-section" style="display: none;">
+                <div class="sweep-header">
+                    <h1 id="page-title">Select a sweep from the sidebar</h1>
+                    <div class="sweep-actions">
+                        <button class="btn btn-secondary" id="back-to-dashboard">← Back to Dashboard</button>
+                        <button class="btn btn-primary" id="export-sweep">Export CSV</button>
+                        <button class="btn btn-secondary" id="download-logs">Download Logs</button>
+                        <button class="btn btn-secondary" id="view-config">View Config</button>
+                        <button class="btn btn-secondary" id="refresh-data">Refresh</button>
+                    </div>
+                </div>
+
+                <!-- Sweep Info Cards -->
+                <div class="info-section" id="sweep-info">
+                    <p>Select a sweep from the sidebar to view details</p>
+                </div>
+
+                <!-- Pareto Analysis Section -->
+                <div class="pareto-section" id="pareto-section" style="display: none;">
+                    <h2>Performance Analysis</h2>
+                    <div class="pareto-chart-container">
+                        <canvas id="pareto-chart"></canvas>
+                    </div>
+                    <div id="speedup-summary" style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+                        <!-- Speedup summary will be displayed here -->
+                    </div>
+                </div>
+
+                <!-- Results Table Section -->
+                <div class="results-section">
+                    <h2>Detailed Results</h2>
+                    <table class="results-table" id="results-table">
+                        <thead>
+                            <tr>
+                                <th>Run ID</th>
+                                <th>Algorithm</th>
+                                <th>Indexing Time (s)</th>
+                                <th>Query Time (s)</th>
+                                <th>Recall (%)</th>
+                                <th>QPS</th>
+                                <th>Mean Latency (ms)</th>
+                                <th>Index Size (MB)</th>
+                                <th>Commit ID</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-table-body">
+                            <tr><td colspan="10" class="empty-state">Select a sweep to view detailed results</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner">
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <!-- Config Modal -->
+    <div id="config-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="config-modal-title">Run Configuration</h2>
+                <span class="close" id="config-modal-close">&times;</span>
+            </div>
+            <div id="config-content">
+                <div class="config-json" id="config-json-display"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Metrics Modal -->
+    <div id="metrics-modal" class="modal">
+        <div class="modal-content" style="width: 90%; max-width: 1200px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h2 id="metrics-modal-title">Run Metrics</h2>
+                <span class="close" id="metrics-modal-close">&times;</span>
+            </div>
+            <div id="metrics-content">
+                <div id="metrics-container">
+                    <p>Loading metrics...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/data-loader.js"></script>
+    <script src="js/sweep-manager.js"></script>
+    <script src="js/metrics-manager.js"></script>
+    <script src="js/pareto-manager.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

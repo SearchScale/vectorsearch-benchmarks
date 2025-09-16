@@ -50,9 +50,12 @@ public class SweepLoader {
                     if (!config.base.containsKey("vectorDimension")) {
                         config.base.put("vectorDimension", dataset.vector_dimension);
                     }
+                } else {
+                    System.err.println("WARNING: Dataset '" + datasetId + "' is not available or not found");
                 }
             } catch (IOException e) {
                 System.err.println("Warning: Could not load dataset configuration: " + e.getMessage());
+                e.printStackTrace();
             }
         }
         

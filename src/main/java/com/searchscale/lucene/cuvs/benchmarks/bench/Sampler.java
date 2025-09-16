@@ -25,9 +25,16 @@ public class Sampler {
     private volatile boolean sampling = false;
     
     /**
-     * Start sampling metrics
+     * Start sampling metrics with default 5-second interval
      */
     public void startSampling() {
+        startSampling(5);
+    }
+    
+    /**
+     * Start sampling metrics with configurable interval
+     */
+    public void startSampling(int intervalSeconds) {
         if (sampling) {
             return;
         }
@@ -35,10 +42,10 @@ public class Sampler {
         sampling = true;
         samples.clear();
         
-        // Sample every 5 seconds
-        scheduler.scheduleAtFixedRate(this::sampleMetrics, 0, 5, TimeUnit.SECONDS);
+        // Sample at specified interval
+        scheduler.scheduleAtFixedRate(this::sampleMetrics, 0, intervalSeconds, TimeUnit.SECONDS);
         
-        System.out.println("Started metrics sampling");
+        System.out.println("Started metrics sampling with " + intervalSeconds + " second interval");
     }
     
     /**
@@ -66,6 +73,13 @@ public class Sampler {
     }
     
     /**
+     * Get collected samples
+     */
+    public List<MetricSample> getSamples() {
+        return new ArrayList<>(samples);
+    }
+    
+    /**
      * Sample current metrics
      */
     private void sampleMetrics() {
@@ -81,8 +95,14 @@ public class Sampler {
             
             // CPU metrics
             OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
-            sample.cpuLoad = -1.0; // CPU load not available
-            sample.systemCpuLoad = -1.0; // System CPU load not available
+            if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
+                com.sun.management.OperatingSystemMXBean sunOsBean = (com.sun.management.OperatingSystemMXBean) osBean;
+                sample.cpuLoad = sunOsBean.getProcessCpuLoad();
+                sample.systemCpuLoad = sunOsBean.getSystemCpuLoad();
+            } else {
+                sample.cpuLoad = -1.0;
+                sample.systemCpuLoad = -1.0;
+            }
             sample.availableProcessors = osBean.getAvailableProcessors();
             
             // Thread metrics
@@ -118,8 +138,14 @@ public class Sampler {
     public CpuUsage getCurrentCpuUsage() {
         OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
         CpuUsage usage = new CpuUsage();
-        usage.processCpuLoad = -1.0; // CPU load not available
-        usage.systemCpuLoad = -1.0; // System CPU load not available
+        if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
+            com.sun.management.OperatingSystemMXBean sunOsBean = (com.sun.management.OperatingSystemMXBean) osBean;
+            usage.processCpuLoad = sunOsBean.getProcessCpuLoad();
+            usage.systemCpuLoad = sunOsBean.getSystemCpuLoad();
+        } else {
+            usage.processCpuLoad = -1.0;
+            usage.systemCpuLoad = -1.0;
+        }
         usage.availableProcessors = osBean.getAvailableProcessors();
         return usage;
     }
@@ -132,8 +158,30 @@ public class Sampler {
             return;
         }
         
-        // TODO: Implement memory plot generation when XChart is properly configured
-        System.out.println("Memory plot generation not yet implemented - requires XChart configuration");
+        // Generate JSON data for web UI charts
+        Path jsonFile = outputDir.resolve("memory_metrics.json");
+        Map<String, Object> chartData = new HashMap<>();
+        
+        List<String> timestamps = new ArrayList<>();
+        List<Double> heapUsedMB = new ArrayList<>();
+        List<Double> heapMaxMB = new ArrayList<>();
+        List<Double> nonHeapUsedMB = new ArrayList<>();
+        
+        for (MetricSample sample : samples) {
+            timestamps.add(sample.timestamp);
+            heapUsedMB.add(sample.heapUsed / (1024.0 * 1024.0));
+            heapMaxMB.add(sample.heapMax / (1024.0 * 1024.0));
+            nonHeapUsedMB.add(sample.nonHeapUsed / (1024.0 * 1024.0));
+        }
+        
+        chartData.put("timestamps", timestamps);
+        chartData.put("heapUsedMB", heapUsedMB);
+        chartData.put("heapMaxMB", heapMaxMB);
+        chartData.put("nonHeapUsedMB", nonHeapUsedMB);
+        
+        json.writerWithDefaultPrettyPrinter().writeValue(jsonFile.toFile(), chartData);
+        
+        System.out.println("Memory metrics JSON generated: " + jsonFile);
     }
     
     /**
@@ -144,8 +192,36 @@ public class Sampler {
             return;
         }
         
-        // TODO: Implement CPU plot generation when XChart is properly configured
-        System.out.println("CPU plot generation not yet implemented - requires XChart configuration");
+        // Generate JSON data for web UI charts
+        Path jsonFile = outputDir.resolve("cpu_metrics.json");
+        Map<String, Object> chartData = new HashMap<>();
+        
+        List<String> timestamps = new ArrayList<>();
+        List<Double> processCpuLoad = new ArrayList<>();
+        List<Double> systemCpuLoad = new ArrayList<>();
+        List<Integer> threadCounts = new ArrayList<>();
+        List<Long> gcCounts = new ArrayList<>();
+        List<Integer> availableProcessors = new ArrayList<>();
+        
+        for (MetricSample sample : samples) {
+            timestamps.add(sample.timestamp);
+            processCpuLoad.add(sample.cpuLoad >= 0 ? sample.cpuLoad * 100.0 : 0.0); // Convert to percentage
+            systemCpuLoad.add(sample.systemCpuLoad >= 0 ? sample.systemCpuLoad * 100.0 : 0.0); // Convert to percentage
+            threadCounts.add(sample.threadCount);
+            gcCounts.add(sample.gcCount);
+            availableProcessors.add(sample.availableProcessors);
+        }
+        
+        chartData.put("timestamps", timestamps);
+        chartData.put("processCpuLoad", processCpuLoad);
+        chartData.put("systemCpuLoad", systemCpuLoad);
+        chartData.put("threadCounts", threadCounts);
+        chartData.put("gcCounts", gcCounts);
+        chartData.put("availableProcessors", availableProcessors);
+        
+        json.writerWithDefaultPrettyPrinter().writeValue(jsonFile.toFile(), chartData);
+        
+        System.out.println("CPU metrics JSON generated: " + jsonFile);
     }
     
     /**

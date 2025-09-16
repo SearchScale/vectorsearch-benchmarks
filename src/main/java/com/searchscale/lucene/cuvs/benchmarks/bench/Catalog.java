@@ -1,6 +1,5 @@
 package com.searchscale.lucene.cuvs.benchmarks.bench;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -86,20 +85,11 @@ public class Catalog {
     public void updateRun(RunEntry updatedRun) throws IOException {
         List<RunEntry> runs = loadRuns();
         
-        // Find and replace the existing entry
-        boolean found = false;
-        for (int i = 0; i < runs.size(); i++) {
-            if (runs.get(i).runId.equals(updatedRun.runId)) {
-                runs.set(i, updatedRun);
-                found = true;
-                break;
-            }
-        }
+        // Remove all existing entries with the same runId (to handle duplicates)
+        runs.removeIf(run -> run.runId.equals(updatedRun.runId));
         
-        if (!found) {
-            // If not found, add as new entry
-            runs.add(updatedRun);
-        }
+        // Add the updated entry
+        runs.add(updatedRun);
         
         // Rewrite the entire catalog file
         ensureCatalogExists();
@@ -242,6 +232,8 @@ public class Catalog {
         public String algo;
         public Map<String, Object> params;
         public String createdAt;
+        public String sweepId;
+        public String commitId;
         
         // Metrics (populated after run completion)
         public double indexingTime = -1;
@@ -264,6 +256,36 @@ public class Catalog {
             this.algo = algo;
             this.params = params;
             this.createdAt = createdAt;
+            this.sweepId = generateSweepId(dataset, createdAt, params);
+            this.commitId = getCurrentCommitId();
+        }
+        
+        private String generateSweepId(String dataset, String createdAt, Map<String, Object> params) {
+            // Check if there's a unique sweep ID in the params (set by SweepRunner)
+            if (params != null && params.containsKey("unique_sweep_id")) {
+                return (String) params.get("unique_sweep_id");
+            }
+            
+            // Fallback: Use dataset, date, and time to create unique sweep IDs
+            // This allows multiple sweeps on the same day to have different IDs
+            String dateTime = createdAt.substring(0, 16); // YYYY-MM-DDTHH:MM
+            return dataset + "_" + dateTime.replace(":", "").replace("-", "").replace("T", "_");
+        }
+        
+        private String getCurrentCommitId() {
+            // Try to get current git commit ID
+            try {
+                ProcessBuilder pb = new ProcessBuilder("git", "rev-parse", "HEAD");
+                Process process = pb.start();
+                java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(process.getInputStream()));
+                String commitId = reader.readLine();
+                reader.close();
+                process.waitFor();
+                return commitId != null ? commitId.substring(0, 8) : "unknown";
+            } catch (Exception e) {
+                return "unknown";
+            }
         }
     }
 }
