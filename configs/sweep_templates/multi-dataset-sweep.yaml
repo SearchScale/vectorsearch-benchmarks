@@ -1,0 +1,25 @@
+---
+datasets:
+  - sift-1m
+  - wiki-all-1m
+common_params:
+  numQueriesToRun: 1000
+  numWarmUpQueries: 20
+  topK: 100
+  efSearch: 150
+  queryThreads: 1
+  flushFreq: 500000
+  numIndexThreads: 16
+  samplingRate: 2
+
+algorithms:
+  CAGRA_HNSW:
+    cuvsIndexDirPath: "cuvsIndex"
+    cagraGraphDegree: [64]
+    cagraIntermediateGraphDegree: [128]
+    cuvsWriterThreads: [16]
+
+  LUCENE_HNSW:
+    hnswIndexDirPath: "hnswIndex"
+    hnswMaxConn: [64]
+    hnswBeamWidth: [128]

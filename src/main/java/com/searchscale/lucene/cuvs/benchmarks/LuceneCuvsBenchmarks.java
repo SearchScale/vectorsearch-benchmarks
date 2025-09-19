@@ -593,11 +593,14 @@ public class LuceneCuvsBenchmarks {
 
   private static Codec getCuVSCodec(BenchmarkConfiguration config) {
     // Use Lucene101AcceleratedHNSWCodec with configurable parameters
+    // Constructor signature: (cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth)
     return new Lucene101AcceleratedHNSWCodec(
         config.cuvsWriterThreads,
         config.cagraIntermediateGraphDegree,
         config.cagraGraphDegree,
-        config.cagraHnswLayers);
+        config.cagraHnswLayers,
+        config.hnswMaxConn,
+        config.hnswBeamWidth);
   }
 
   // Removed ConfigurableCuVSCodec - using CuVSCPUSearchCodec directly with better error handling

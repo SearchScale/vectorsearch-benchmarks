@@ -1,0 +1,28 @@
+---
+datasets:
+  - sift-1m
+common_params:
+  numQueriesToRun: 1000
+  numWarmUpQueries: 20
+  samplingRate: 2
+  flushFreq: 500000
+  topK: 100
+  efSearch: 150
+  queryThreads: 1
+  createIndexInMemory: false
+  cleanIndexDirectory: true
+  saveResultsOnDisk: true
+
+algorithms:
+  CAGRA_HNSW:
+    cuvsIndexDirPath: "cuvsIndex"
+    cagraGraphDegree: [64, 128]
+    cagraIntermediateGraphDegree: [128, 256]
+    cuvsWriterThreads: [16]
+    numIndexThreads: [16]
+
+  LUCENE_HNSW:
+    hnswIndexDirPath: "hnswIndex"
+    hnswMaxConn: [64]
+    hnswBeamWidth: [128]
+    numIndexThreads: [16]

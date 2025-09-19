@@ -40,7 +40,7 @@
 	<dependency>
 		  <groupId>com.nvidia.cuvs.lucene</groupId>
 		    <artifactId>cuvs-lucene</artifactId>
-		      <version>0.0.1-5553e-SNAPSHOT</version>
+		      <version>25.10.0-33318-SNAPSHOT</version>
 		      </dependency>
         <dependency>
             <groupId>com.nvidia.cuvs</groupId>
@@ -166,7 +166,7 @@
                     <archive>
                         <manifest>
                             <mainClass>
-                                com.searchscale.lucene.cuvs.benchmarks.bench.BenchCLI</mainClass>
+                                com.searchscale.lucene.cuvs.benchmarks.BenchmarkRunner</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -189,7 +189,7 @@
                         <manifest>
                             <addClasspath>true</addClasspath>
                             <mainClass>
-                                com.searchscale.lucene.cuvs.benchmarks.bench.BenchCLI</mainClass>
+                                com.searchscale.lucene.cuvs.benchmarks.BenchmarkRunner</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

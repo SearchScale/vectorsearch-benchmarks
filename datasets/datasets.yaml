@@ -1,0 +1,65 @@
+datasets:
+  sift-1m:
+    name: SIFT 1M
+    description: 1 million 128-dimensional SIFT vectors
+    base_file: datasets/sift-1m/sift/sift_base.fvecs
+    query_file: datasets/sift-1m/sift/sift_query.fvecs
+    ground_truth_file: datasets/sift-1m/sift/sift_groundtruth.ivecs
+    download_url: ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz
+    extract_commands: tar -xf dataset.tar.gz && rm -f dataset.tar.gz
+    target_directory: datasets/sift-1m
+    expected_base_file: datasets/sift-1m/sift/sift_base.fvecs
+    expected_query_file: datasets/sift-1m/sift/sift_query.fvecs
+    expected_ground_truth_file: datasets/sift-1m/sift/sift_groundtruth.ivecs
+    num_docs: 1000000
+    vector_dimension: 128
+    top_k_ground_truth: 1000
+    available: true
+  sift-10m:
+    name: SIFT 10M
+    description: 10 million 128-dimensional SIFT vectors
+    base_file: /home/puneet/datasetwiki/sift1B/extracted/sift_10M_base.fvecs
+    query_file: /home/puneet/datasetwiki/sift1B/extracted/sift_10M_query.fvecs
+    ground_truth_file: /home/puneet/datasetwiki/sift1B/gnd/idx_10M.ivecs
+    download_url: https://data.rapids.ai/raft/datasets/sift10M/sift10M.tar
+    extract_commands: tar -xf dataset.tar.gz && rm dataset.tar.gz
+    target_directory: datasets/sift-10m
+    expected_base_file: datasets/sift-10m/sift/sift_base.fvecs
+    expected_query_file: datasets/sift-10m/sift/sift_query.fvecs
+    expected_ground_truth_file: datasets/sift-10m/sift/sift_groundtruth.ivecs
+    num_docs: 10000000
+    vector_dimension: 128
+    top_k_ground_truth: 1000
+    available: false
+  wiki-all-1m:
+    name: Wiki All 1M
+    description: 1 million Wikipedia article embeddings
+    base_file: datasets/wiki-all-1m/wiki_all_1M/base.1M.fbin
+    query_file: datasets/wiki-all-1m/wiki_all_1M/queries.fbin
+    ground_truth_file: datasets/wiki-all-1m/wiki_all_1M/groundtruth.1M.neighbors.ibin
+    download_url: https://data.rapids.ai/raft/datasets/wiki_all_1M/wiki_all_1M.tar
+    extract_commands: tar -xf dataset.tar.gz && rm dataset.tar.gz
+    target_directory: datasets/wiki-all-1m
+    expected_base_file: datasets/wiki-all-1m/wiki_all_1M/base.1M.fbin
+    expected_query_file: datasets/wiki-all-1m/wiki_all_1M/queries.fbin
+    expected_ground_truth_file: datasets/wiki-all-1m/wiki_all_1M/groundtruth.1M.neighbors.ibin
+    num_docs: 1000000
+    vector_dimension: 768
+    top_k_ground_truth: 1000
+    available: true
+  wiki-all-10m:
+    name: Wiki All 10M
+    description: 10 million Wikipedia article embeddings
+    base_file: datasets/wiki_all_10M/base.10M.fbin
+    query_file: datasets/wiki_all_10M/queries.fbin
+    ground_truth_file: datasets/wiki_all_10M/groundtruth.10M.neighbors.ibin
+    download_url: https://data.rapids.ai/raft/datasets/wiki_all_10M/wiki_all_10M.tar
+    extract_commands: tar -xf dataset.tar.gz && rm dataset.tar.gz
+    target_directory: datasets/wiki-all-10m
+    expected_base_file: datasets/wiki-all-10m/base.10M.fbin
+    expected_query_file: datasets/wiki-all-10m/queries.fbin
+    expected_ground_truth_file: datasets/wiki-all-10m/groundtruth.10M.neighbors.ibin
+    num_docs: 10000000
+    vector_dimension: 768
+    top_k_ground_truth: 1000
+    available: false
