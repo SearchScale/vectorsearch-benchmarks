@@ -8,6 +8,7 @@ Benchmark system for comparing CAGRA (GPU) vs Lucene HNSW (CPU) vector search al
    - JDK 22+
    - CUDA libraries
    - Python 3.7+
+   - pip install pyyaml
 
 2. **Set library paths:**
    ```bash
@@ -43,7 +44,7 @@ datasets:
     available: true
 ```
 
-**If files are not found, the system will auto-download (add these fields):**
+**If files are not found, the system will auto-download (add these fields and set avaliable = true for download to start):**
 ```yaml
     download_url: "https://example.com/dataset.tar"
     extract_commands: "tar -xf dataset.tar"
