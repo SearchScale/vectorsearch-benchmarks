@@ -1,0 +1,63 @@
+{
+  "wiki88m": {
+    "dataset": "wiki-88m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 1000,
+      "numWarmUpQueries": 20,
+      "Sampling-rate": 2,
+      "flushFreq": [250000, 500000],
+      "topK": 100,
+      "efSearch": 150,
+      "queryThreads": 1,
+      "createIndexInMemory": false,
+      "cleanIndexDirectory": true,
+      "saveResultsOnDisk": true
+    },
+    "algorithms": {
+      "CAGRA_HNSW": {
+        "cuvsIndexDirPath": "cuvsIndex",
+        "cagraGraphDegree": [32, 64],
+        "cagraIntermediateGraphDegree": [64, 128],
+        "cuvsWriterThreads": [16, 32],
+        "numIndexThreads": [16, 32]
+      },
+      "LUCENE_HNSW": {
+        "hnswIndexDirPath": "hnswIndex",
+        "hnswMaxConn": [32, 64, 96, 128],
+        "hnswBeamWidth": [128, 256],
+        "numIndexThreads": [16, 32]
+      }
+    }
+  },
+  "sift-1m": {
+    "dataset": "sift-1m",
+    "common-params": {
+      "numDocs": 1000000,
+      "numQueriesToRun": 10000,
+      "numWarmUpQueries": 50,
+      "flushFreq": 100000,
+      "topK": 100,
+      "efSearch": 150,
+      "queryThreads": 1,
+      "createIndexInMemory": false,
+      "cleanIndexDirectory": true,
+      "saveResultsOnDisk": true
+    },
+    "algorithms": {
+      "CAGRA_HNSW": {
+        "cuvsIndexDirPath": "cuvsIndex",
+        "cagraGraphDegree": [32, 64],
+        "cagraIntermediateGraphDegree": [64, 128],
+        "cuvsWriterThreads": [16, 32],
+        "numIndexThreads": [16, 32]
+      },
+      "LUCENE_HNSW": {
+        "hnswIndexDirPath": "hnswIndex",
+        "hnswMaxConn": [32, 64, 96, 128],
+        "hnswBeamWidth": [128, 256],
+        "numIndexThreads": [16, 32]
+      }
+    }
+  }
+}
