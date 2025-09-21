@@ -1,6 +1,6 @@
 {
   "datasets": {
-    "wiki-88m": {
+    "wiki-10m": {
       "description": "Wikipedia 768-dimensions, ~87.5 million vectors",
       "download-url": "https://data.rapids.ai/raft/datasets/wiki_all_10M/wiki_all_10M.tar",
       "preparation-commands": "tar -xvf wiki_all_10M.tar",

@@ -40,9 +40,6 @@ for sweep in sweeps:
     invariants["queryFile"] = f"{args.data_dir}/{dataset_info['query_file']}"
     invariants["groundTruthFile"] = f"{args.data_dir}/{dataset_info['ground_truth_file']}"
     invariants["vectorDimension"] = dataset_info["vector_dimension"]
-    invariants["indexOfVector"] = 3
-    invariants["vectorColName"] = "article_vector"
-    invariants["hasColNames"] = True
     print("sweep: " + sweep)
     for param, value in sweeps[sweep].get("common-params", {}).items():
         if not isinstance(value, list):
