@@ -36,9 +36,9 @@ for sweep in sweeps:
     invariants={}
 
     # Add dataset-specific parameters to invariants
-    invariants["datasetFile"] = f"{args.data_dir}/{dataset_info['base_file']}"
-    invariants["queryFile"] = f"{args.data_dir}/{dataset_info['query_file']}"
-    invariants["groundTruthFile"] = f"{args.data_dir}/{dataset_info['ground_truth_file']}"
+    invariants["datasetFile"] = f"{args.data_dir}/{dataset_name}/{dataset_info['base_file']}"
+    invariants["queryFile"] = f"{args.data_dir}/{dataset_name}/{dataset_info['query_file']}"
+    invariants["groundTruthFile"] = f"{args.data_dir}/{dataset_name}/{dataset_info['ground_truth_file']}"
     invariants["vectorDimension"] = dataset_info["vector_dimension"]
     print("sweep: " + sweep)
     for param, value in sweeps[sweep].get("common-params", {}).items():
@@ -50,6 +50,7 @@ for sweep in sweeps:
         algorithms = sweeps[sweep].get("algorithms", [])
         algo_variants = variants.copy()
         algo_invariants = invariants.copy()
+        algo_invariants["algoToRun"] = algo
 
         for param, value in algorithms[algo].items():
             if param not in ["params"]:
