@@ -17,7 +17,7 @@ Benchmark system for comparing CAGRA (GPU) vs Lucene HNSW (CPU) vector search al
 
 3. **Run benchmark:**
 
-    ./run_sweep.sh --data-dir datasets --datasets datasets.json --sweeps sweeps.json --configs-dir datasets/configs
+    ./run_sweep.sh --data-dir /data2/vsbench-datasets --datasets datasets.json --sweeps sweeps.json --configs-dir configs --results-dir results --run-benchmarks
 
 ## Adding Datasets
 
