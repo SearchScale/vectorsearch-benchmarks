@@ -118,12 +118,22 @@ public class LuceneCuvsBenchmarks {
   @SuppressWarnings("resource")
   public static void main(String[] args) throws Throwable {
 
-    if (args.length != 1) {
-      System.err.println("Usage: ./benchmarks.sh <jobs-file>");
+    if (args.length < 1 || args.length > 3) {
+      System.err.println("Usage: ./benchmarks.sh <jobs-file> [benchmarkID] [resultsDir]");
       return;
     }
 
     BenchmarkConfiguration config = Util.newObjectMapper().readValue(new File(args[0]), BenchmarkConfiguration.class);
+    
+    // Override benchmarkID if provided as command line argument
+    if (args.length >= 2) {
+      config.benchmarkID = args[1];
+    }
+    
+    // Override resultsDirectory if provided as command line argument
+    if (args.length >= 3) {
+      config.resultsDirectory = args[2];
+    }
     Map<String, Object> metrics = new LinkedHashMap<String, Object>();
     List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
     config.debugPrintArguments();
@@ -339,25 +349,22 @@ public class LuceneCuvsBenchmarks {
           .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
 
       if (config.saveResultsOnDisk) {
-        String timeStamp = new SimpleDateFormat("yyyy-MM-dd_HHmmss").format(Calendar.getInstance().getTime());
-        
-        // Use custom results directory if provided, otherwise use default "results" directory
+        // Use the resultsDirectory directly if provided
         String resultsDir = config.resultsDirectory != null ? config.resultsDirectory : "results";
         File results = new File(resultsDir);
         if (!results.exists()) {
           results.mkdirs();
         }
 
-        Util.writeCSV(queryResults, results.toString() + "/" + config.benchmarkID + "_neighbors_" + timeStamp + ".csv");
-
-        FileUtils.write(
-            new File(results.toString() + "/" + config.benchmarkID + "_benchmark_results_" + timeStamp + ".json"),
-            resultsJson, Charset.forName("UTF-8"));
-            
-        // Also save a simple results.json for easy parsing
+        // Save results.json directly to the specified directory
         FileUtils.write(
             new File(results.toString() + "/results.json"),
             resultsJson, Charset.forName("UTF-8"));
+            
+        // Save CSV with neighbors data  
+        Util.writeCSV(queryResults, results.toString() + "/neighbors.csv");
+        
+        log.info("Results saved to directory: {}", resultsDir);
       }
 
       log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");

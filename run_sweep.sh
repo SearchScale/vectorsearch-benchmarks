@@ -31,8 +31,11 @@ DATASETS_FILE=${DATASETS_FILE:-datasets.json}
 SWEEPS_FILE=${SWEEPS_FILE:-sweeps.json}
 CONFIGS_DIR=${CONFIGS_DIR:-configs}
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-RESULTS_DIR=${RESULTS_DIR:-results/sweep_${TIMESTAMP}}
+RESULTS_DIR=${RESULTS_DIR:-results}
 RUN_BENCHMARKS=${RUN_BENCHMARKS:-false}
+
+BENCHMARKID=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 6)
+RESULTS_DIR=${RESULTS_DIR}/$BENCHMARKID
 
 echo "Configuration:"
 echo "  Data directory: $DATA_DIR"
@@ -41,6 +44,7 @@ echo "  Sweeps file: $SWEEPS_FILE"
 echo "  Configs directory: $CONFIGS_DIR"
 echo "  Results directory: $RESULTS_DIR"
 echo "  Run benchmarks: $RUN_BENCHMARKS"
+echo "  BenchmarkID: $BENCHMARKID"
 echo ""
 
 # Prepare datasets
@@ -113,23 +117,17 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                     echo "Starting benchmark at $(date)" > "$LOG_FILE"
                     
                     # Run benchmark with Maven, redirecting output to log file
+                    # Pass CONFIG_RESULTS_DIR as third argument to Java program
                     if mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
-                        -Dexec.args="$CONFIG_FILE" \
+                        -Dexec.args="$CONFIG_FILE $BENCHMARKID $CONFIG_RESULTS_DIR" \
                         -Dexec.jvmArgs="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED" \
                         >> "$LOG_FILE" 2>&1; then
                         
                         echo "✓ Benchmark completed successfully"
                         echo "$SWEEP_NAME/$CONFIG_NAME: SUCCESS" >> "$SUMMARY_FILE"
                         
-                        # Copy the results.json if it exists
-                        if [ -f "results/results.json" ]; then
-                            cp "results/results.json" "$CONFIG_RESULTS_DIR/results.json"
-                        fi
-                        
-                        # Copy any CSV files generated
-                        if ls results/*.csv 1> /dev/null 2>&1; then
-                            cp results/*.csv "$CONFIG_RESULTS_DIR/" 2>/dev/null || true
-                        fi
+                        # Results are now written directly to CONFIG_RESULTS_DIR by the Java program
+                        echo "Results saved directly to: $CONFIG_RESULTS_DIR"
                     else
                         echo "✗ Benchmark failed (check log for details)"
                         echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
@@ -149,42 +147,6 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
     echo "Finished at: $(date)"
     echo "========================================="
     
-    # Add completion timestamp to summary
-    echo "" >> "$SUMMARY_FILE"
-    echo "Completed at: $(date)" >> "$SUMMARY_FILE"
-    
-    # Generate a consolidated results JSON if possible
-    echo ""
-    echo "Generating consolidated results..."
-    python3 - << 'EOF' "$RESULTS_DIR"
-import json
-import os
-import sys
-from pathlib import Path
-
-results_dir = Path(sys.argv[1])
-consolidated = {"sweeps": {}}
-
-for sweep_dir in results_dir.iterdir():
-    if sweep_dir.is_dir() and sweep_dir.name not in ['summary.txt']:
-        sweep_name = sweep_dir.name
-        consolidated["sweeps"][sweep_name] = {}
-        
-        for config_dir in sweep_dir.iterdir():
-            if config_dir.is_dir():
-                config_name = config_dir.name
-                results_file = config_dir / "results.json"
-                
-                if results_file.exists():
-                    with open(results_file) as f:
-                        consolidated["sweeps"][sweep_name][config_name] = json.load(f)
-
-# Save consolidated results
-with open(results_dir / "consolidated_results.json", "w") as f:
-    json.dump(consolidated, f, indent=2)
-
-print(f"Consolidated results saved to: {results_dir}/consolidated_results.json")
-EOF
 else
     echo ""
     echo "Configurations generated successfully in: $CONFIGS_DIR"

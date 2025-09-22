@@ -5,7 +5,7 @@
       "numDocs": 10000000,
       "numQueriesToRun": 500,
       "numWarmUpQueries": 20,
-      "flushFreq": [250000, 500000],
+      "flushFreq": 500000,
       "topK": 100,
       "efSearch": 150,
       "queryThreads": 1,
@@ -15,18 +15,18 @@
       "saveResultsOnDisk": true
     },
     "algorithms": {
-      "CAGRA_HNSW": {
-        "cuvsIndexDirPath": "cuvsIndex",
-        "cagraGraphDegree": [32, 64],
-        "cagraIntermediateGraphDegree": [64, 128],
-        "cuvsWriterThreads": [16, 32],
-        "numIndexThreads": [16, 32]
-      },
       "LUCENE_HNSW": {
         "hnswIndexDirPath": "hnswIndex",
-        "hnswMaxConn": [32, 64, 96, 128],
-        "hnswBeamWidth": [128, 256],
-        "numIndexThreads": [16, 32]
+        "hnswMaxConn": [16, 32, 64, 96, 128],
+        "hnswBeamWidth": [64, 128, 256],
+        "numIndexThreads": 32
+      },
+      "CAGRA_HNSW": {
+        "cuvsIndexDirPath": "cuvsIndex",
+        "cagraGraphDegree": [16, 32, 64],
+        "cagraIntermediateGraphDegree": [64, 128],
+        "cuvsWriterThreads": 32,
+        "numIndexThreads": 32
       }
     }
   },
@@ -36,7 +36,7 @@
       "numDocs": 1000000,
       "numQueriesToRun": 500,
       "numWarmUpQueries": 50,
-      "flushFreq": 100000,
+      "flushFreq": 500000,
       "topK": 100,
       "efSearch": 150,
       "queryThreads": 1,
@@ -50,14 +50,14 @@
         "cuvsIndexDirPath": "cuvsIndex",
         "cagraGraphDegree": [32, 64],
         "cagraIntermediateGraphDegree": [64, 128],
-        "cuvsWriterThreads": [16, 32],
-        "numIndexThreads": [16, 32]
+        "cuvsWriterThreads": 32,
+        "numIndexThreads": 32
       },
       "LUCENE_HNSW": {
         "hnswIndexDirPath": "hnswIndex",
         "hnswMaxConn": [32, 64, 96, 128],
         "hnswBeamWidth": [128, 256],
-        "numIndexThreads": [16, 32]
+        "numIndexThreads": 32
       }
     }
   }
