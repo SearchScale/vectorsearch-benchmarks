@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Prevent caching -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Vector Search Benchmark Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
@@ -33,7 +37,7 @@
         }
 
         .left-panel {
-            width: 320px;
+            width: 240px;
             background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
             border-right: 1px solid rgba(226, 232, 240, 0.8);
             overflow-y: auto;
@@ -523,12 +527,12 @@
                         <table class="runs-table" id="runs-table">
                             <thead>
                                 <tr>
-                                    <th>Run ID</th>
+                                    <th>Dataset</th>
                                     <th>Algorithm</th>
                                     <th>Recall (%)</th>
                                     <th>Index Time (s)</th>
                                     <th>Parameters</th>
-                                    <th>Query Latency (ms)</th>
+                                    <th>Query (ms)</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -578,6 +582,6 @@
         </div>
     </div>
 
-    <script src="js/dashboard.js?v=13"></script>
+    <script src="js/dashboard.js"></script>
 </body>
 </html>

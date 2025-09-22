@@ -256,6 +256,27 @@ class BenchmarkDashboard {
         return extractedRun;
     }
 
+    calculateTotalIndexingTime(sweep) {
+        let totalSeconds = 0;
+        sweep.runs.forEach(run => {
+            totalSeconds += parseFloat(run.indexingTime || 0);
+        });
+        return totalSeconds;
+    }
+    
+    formatDuration(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        
+        if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        } else if (minutes > 0) {
+            return `${minutes}m`;
+        } else {
+            return `${Math.round(seconds)}s`;
+        }
+    }
+
     renderSweepList() {
         const container = document.getElementById('sweep-list');
         container.innerHTML = '';
@@ -265,11 +286,15 @@ class BenchmarkDashboard {
             item.className = 'sweep-item';
             item.onclick = () => this.showSweepAnalysis(sweep);
             
+            const totalIndexingTime = this.calculateTotalIndexingTime(sweep);
+            const formattedDuration = this.formatDuration(totalIndexingTime);
+            
             item.innerHTML = `
                 <div class="sweep-title">${sweep.id}</div>
                 <div class="sweep-info">
                     ${sweep.totalRuns} runs • ${sweep.algorithms.join(', ')}<br>
                     <strong>Datasets:</strong> ${sweep.datasets.join(', ')}<br>
+                    <strong>Total Indexing Time:</strong> ${formattedDuration}<br>
                     <strong>Commit:</strong> ${sweep.commit_id}<br>
                     ${sweep.date}
                 </div>
@@ -758,10 +783,22 @@ class BenchmarkDashboard {
         sortedRuns.forEach(run => {
             const row = document.createElement('tr');
             
+            // Add color coding based on recall accuracy
+            const recall = parseFloat(run.recall || 0);
+            if (recall >= 95) {
+                row.style.backgroundColor = '#d4edda'; // Light green for > 95%
+            } else if (recall >= 90) {
+                row.style.backgroundColor = '#fff3cd'; // Light yellow for 90-95%
+            } else if (recall >= 85) {
+                row.style.backgroundColor = '#e9ecef'; // Light grey for 85-90%
+            } else {
+                row.style.backgroundColor = '#f8d7da'; // Light red for < 85%
+            }
+            
             row.innerHTML = `
-                <td>${this.formatRunId(run.run_id)}</td>
+                <td>${run.dataset || 'N/A'}</td>
                 <td>${run.algorithm.replace('_HNSW', '')}</td>
-                <td>${parseFloat(run.recall || 0).toFixed(2)}</td>
+                <td>${recall.toFixed(2)}</td>
                 <td>${parseFloat(run.indexingTime || 0).toFixed(2)}</td>
                 <td>${this.formatParameters(run)}</td>
                 <td>${parseFloat(run.meanLatency || 0).toFixed(2)}</td>
@@ -778,7 +815,7 @@ class BenchmarkDashboard {
     
     setupTableSorting() {
         const headers = document.querySelectorAll('#runs-table th');
-        const sortableColumns = ['run_id', 'algorithm', 'recall', 'indexTime', 'parameters', 'meanLatency'];
+        const sortableColumns = ['dataset', 'algorithm', 'recall', 'indexTime', 'parameters', 'meanLatency'];
         
         headers.forEach((header, index) => {
             if (index < sortableColumns.length) { // Skip the Actions column
@@ -841,9 +878,9 @@ class BenchmarkDashboard {
             let valueA, valueB;
             
             switch (columnKey) {
-                case 'run_id':
-                    valueA = this.formatRunId(a.run_id || '');
-                    valueB = this.formatRunId(b.run_id || '');
+                case 'dataset':
+                    valueA = a.dataset || '';
+                    valueB = b.dataset || '';
                     break;
                 case 'algorithm':
                     valueA = a.algorithm || '';
@@ -882,12 +919,9 @@ class BenchmarkDashboard {
     }
     
     formatRunId(runId) {
-        // Extract only the hash part after the last dash
-        // e.g., "CAGRA_HNSW-edee9e87" -> "edee9e87"
+        // Return the full run ID
         if (!runId) return 'N/A';
-        
-        const parts = runId.split('-');
-        return parts.length > 1 ? parts[parts.length - 1] : runId;
+        return runId;
     }
     
     formatParameters(run) {
