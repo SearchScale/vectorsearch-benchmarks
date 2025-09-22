@@ -147,6 +147,21 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
     echo "Finished at: $(date)"
     echo "========================================="
     
+    # Update sweeps-list.json in the parent results directory
+    PARENT_RESULTS_DIR=$(dirname "$RESULTS_DIR")
+    SWEEPS_LIST_FILE="$PARENT_RESULTS_DIR/sweeps-list.json"
+    
+    if [ -f "$SWEEPS_LIST_FILE" ]; then
+        # File exists, append the benchmark ID
+        # Remove the closing brace and bracket, add the new ID, then close
+        sed -i 's/]$/,"'$BENCHMARKID'"]/' "$SWEEPS_LIST_FILE"
+        echo "Updated sweeps-list.json with benchmark ID: $BENCHMARKID"
+    else
+        # File doesn't exist, create it with the current benchmark ID
+        echo '{"sweeps": ["'$BENCHMARKID'"]}' > "$SWEEPS_LIST_FILE"
+        echo "Created sweeps-list.json with benchmark ID: $BENCHMARKID"
+    fi
+    
 else
     echo ""
     echo "Configurations generated successfully in: $CONFIGS_DIR"

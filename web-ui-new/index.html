@@ -258,6 +258,33 @@
             font-size: 14px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .runs-table th:hover {
+            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+            transform: translateY(-1px);
+        }
+        
+        .runs-table th.sortable::after {
+            content: ' ↕';
+            opacity: 0.5;
+            font-size: 12px;
+        }
+        
+        .runs-table th.sorted-asc::after {
+            content: ' ↑';
+            opacity: 1;
+            color: #ffeb3b;
+        }
+        
+        .runs-table th.sorted-desc::after {
+            content: ' ↓';
+            opacity: 1;
+            color: #ffeb3b;
         }
 
         .runs-table tr {
@@ -454,7 +481,10 @@
                 <div class="analysis-section">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                         <div class="analysis-title">Sweep Analysis</div>
-                        <button class="btn btn-secondary" onclick="dashboard.goBackToDashboard()">Back to Dashboard</button>
+                        <div style="display: flex; gap: 10px;">
+                            <button class="btn btn-primary" onclick="dashboard.showConfiguration()">Show Configuration</button>
+                            <button class="btn btn-secondary" onclick="dashboard.goBackToDashboard()">Back to Dashboard</button>
+                        </div>
                     </div>
                     
                     <!-- Filter section for sweep analysis -->
@@ -478,8 +508,15 @@
                         </div>
                     </div>
                     <div class="speedup-chart">
-                        <div class="chart-title">Speedup Comparison - Best Indexing Times by Recall Level</div>
+                        <div class="chart-title">Pareto Analysis - Best Indexing Times by Recall Level</div>
                         <canvas id="speedup-chart" width="400" height="200"></canvas>
+                    </div>
+                    <div class="pareto-message" id="pareto-message" style="display: none; text-align: center; padding: 40px; color: #666; font-style: italic;">
+                        <p>Pareto analysis is only shown when:</p>
+                        <ul style="list-style: none; margin-top: 10px;">
+                            <li>• A single dataset is selected, and</li>
+                            <li>• "All Algorithms" filter is selected</li>
+                        </ul>
                     </div>
                     <div>
                         <div class="chart-title">Run Details</div>
@@ -490,8 +527,8 @@
                                     <th>Algorithm</th>
                                     <th>Recall (%)</th>
                                     <th>Index Time (s)</th>
-                                    <th>Index Size</th>
-                                    <th>Mean Latency (ms)</th>
+                                    <th>Parameters</th>
+                                    <th>Query Latency (ms)</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -532,6 +569,15 @@
         </div>
     </div>
 
-    <script src="js/dashboard.js?v=5"></script>
+    <!-- Modal for sweep configuration -->
+    <div id="config-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="config-title">Sweep Configuration</h2>
+            <div class="json-viewer" id="config-viewer"></div>
+        </div>
+    </div>
+
+    <script src="js/dashboard.js?v=13"></script>
 </body>
 </html>

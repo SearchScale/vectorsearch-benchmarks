@@ -27,3 +27,8 @@ Edit `datasets.json`:
 
 Edit (or copy+edit) `sweep.json`:
 
+## Visualization
+
+Serve the webui on port 8000:
+
+    cd web-ui-new; python3 -m http.server
