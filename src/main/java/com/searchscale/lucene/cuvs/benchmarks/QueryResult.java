@@ -38,6 +38,15 @@ public class QueryResult {
 
   private void calculateRecallAccuracy() {
 
+    // Validate that ground truth has enough elements for the requested topK
+    if (groundTruth.length < docs.size()) {
+      System.err.println("WARNING: Ground truth contains only " + groundTruth.length + 
+                        " elements, but topK=" + docs.size() + " was requested.");
+      System.err.println("Cannot calculate accurate recall with insufficient ground truth data.");
+      System.err.println("Please reduce topK to " + groundTruth.length + " or less, or use ground truth with more elements.");
+      System.exit(1);
+    }
+
     ArrayList<Integer> topKGroundtruthValues = new ArrayList<Integer>();
     for (int i = 0; i < docs.size(); i++) {
       topKGroundtruthValues.add(groundTruth[i]);

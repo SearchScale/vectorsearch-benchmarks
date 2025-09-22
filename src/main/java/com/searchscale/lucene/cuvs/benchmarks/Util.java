@@ -125,6 +125,9 @@ public class Util {
     } else if (groundTruthFile.endsWith("ivecs")) {
       log.info("Seems like a ivecs groundtruth file. Reading ...");
       rst = FBIvecsReader.readIvecs(groundTruthFile, -1);
+    } else if (groundTruthFile.endsWith("ibin")) {
+      log.info("Seems like a ibin groundtruth file. Reading ...");
+      rst = FBIvecsReader.readIbin(groundTruthFile, -1);
     } else {
       throw new RuntimeException("Not parsing groundtruth file and stopping. Are you passing the correct file path?");
     }
@@ -136,6 +139,9 @@ public class Util {
     if (config.datasetFile.contains("fvecs")) {
       log.info("Seems like an fvecs base file. Reading ...");
       FBIvecsReader.readFvecs(config.datasetFile, config.numDocs, vectors);
+    } else if (config.datasetFile.contains("fbin")) {
+      log.info("Seems like an fbin base file. Reading ...");
+      FBIvecsReader.readFbin(config.datasetFile, config.numDocs, vectors);
     } else if (config.datasetFile.contains("bvecs")) {
       log.info("Seems like an bvecs base file. Reading ...");
       FBIvecsReader.readBvecs(config.datasetFile, config.numDocs, vectors);

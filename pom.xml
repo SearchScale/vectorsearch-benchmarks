@@ -16,6 +16,14 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
   </properties>
 
+  <repositories>
+    <repository>
+      <id>searchscale-maven</id>
+      <name>SearchScale Maven</name>
+      <url>https://maven.searchscale.com/snapshots</url>
+    </repository>
+  </repositories>
+
   <dependencyManagement>
     <dependencies>
       <dependency>
@@ -29,27 +37,32 @@
   </dependencyManagement>
 
     <dependencies>
+	<dependency>
+		  <groupId>com.nvidia.cuvs.lucene</groupId>
+		    <artifactId>cuvs-lucene</artifactId>
+		      <version>25.10.0-33318-SNAPSHOT</version>
+		      </dependency>
         <dependency>
-            <groupId>org.apache.lucene</groupId>
-            <artifactId>lucene-sandbox</artifactId>
-            <version>11.0.0-SNAPSHOT</version>
+            <groupId>com.nvidia.cuvs</groupId>
+            <artifactId>cuvs-java</artifactId>
+            <version>25.10.0-55985-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-core</artifactId>
-            <version>11.0.0-SNAPSHOT</version>
+            <version>10.2.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-codecs</artifactId>
-            <version>11.0.0-SNAPSHOT</version>
+            <version>10.2.0</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-test-framework</artifactId>
-            <version>9.11.0</version>
+            <version>10.2.0</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -110,6 +123,21 @@
             <artifactId>commons-math3</artifactId>
             <version>3.5</version>
         </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>2.17.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.knowm.xchart</groupId>
+            <artifactId>xchart</artifactId>
+            <version>3.8.8</version>
+        </dependency>
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+            <version>4.7.5</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -138,7 +166,7 @@
                     <archive>
                         <manifest>
                             <mainClass>
-                                com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks</mainClass>
+                                com.searchscale.lucene.cuvs.benchmarks.BenchmarkRunner</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -161,10 +189,15 @@
                         <manifest>
                             <addClasspath>true</addClasspath>
                             <mainClass>
-                                com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks</mainClass>
+                                com.searchscale.lucene.cuvs.benchmarks.BenchmarkRunner</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
             </plugin>
         </plugins>
     </build>
