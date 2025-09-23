@@ -505,6 +505,14 @@ class BenchmarkDashboard {
         document.getElementById('home-view').style.display = 'none';
         document.getElementById('sweep-analysis').style.display = 'block';
         
+        // Set default sorting: Algorithm ascending, then Recall descending
+        this.sortState.column = 'algorithm';
+        this.sortState.direction = 'asc';
+        this.sortState.secondary = {
+            column: 'recall',
+            direction: 'desc'
+        };
+        
         // Populate sweep analysis filters
         this.populateSweepAnalysisFilters(sweep);
         
@@ -917,7 +925,43 @@ class BenchmarkDashboard {
                 comparison = valueA - valueB;
             }
             
-            return direction === 'asc' ? comparison : -comparison;
+            // Apply primary sort direction
+            comparison = direction === 'asc' ? comparison : -comparison;
+            
+            // If primary sort values are equal and secondary sort is defined
+            if (comparison === 0 && this.sortState.secondary) {
+                const secCol = this.sortState.secondary.column;
+                const secDir = this.sortState.secondary.direction;
+                
+                let secValueA, secValueB;
+                switch (secCol) {
+                    case 'recall':
+                        secValueA = parseFloat(a.recall || 0);
+                        secValueB = parseFloat(b.recall || 0);
+                        break;
+                    case 'algorithm':
+                        secValueA = a.algorithm || '';
+                        secValueB = b.algorithm || '';
+                        break;
+                    case 'indexTime':
+                        secValueA = parseFloat(a.indexingTime || 0);
+                        secValueB = parseFloat(b.indexingTime || 0);
+                        break;
+                    default:
+                        return 0;
+                }
+                
+                let secComparison = 0;
+                if (typeof secValueA === 'string' && typeof secValueB === 'string') {
+                    secComparison = secValueA.localeCompare(secValueB);
+                } else {
+                    secComparison = secValueA - secValueB;
+                }
+                
+                return secDir === 'asc' ? secComparison : -secComparison;
+            }
+            
+            return comparison;
         });
     }
     
