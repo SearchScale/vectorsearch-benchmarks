@@ -498,7 +498,6 @@
                             <div class="filter-group">
                                 <label for="sweep-dataset-filter">Dataset</label>
                                 <select id="sweep-dataset-filter">
-                                    <option value="all">All Datasets</option>
                                 </select>
                             </div>
                             <div class="filter-group">
@@ -582,6 +581,9 @@
         </div>
     </div>
 
-    <script src="js/dashboard.js"></script>
+    <script>
+        // Add dashboard.js with timestamp to prevent caching
+        document.write('<script src="js/dashboard.js?t=' + new Date().getTime() + '"><\/script>');
+    </script>
 </body>
 </html>

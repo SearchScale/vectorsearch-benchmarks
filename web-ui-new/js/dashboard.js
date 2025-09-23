@@ -8,6 +8,9 @@ class BenchmarkDashboard {
             direction: 'asc' // 'asc' or 'desc'
         };
         
+        // Tolerance for recall threshold comparisons
+        this.RECALL_TOLERANCE = 0.01;
+        
         // Register Chart.js plugins
         Chart.register(ChartDataLabels);
         
@@ -505,11 +508,17 @@ class BenchmarkDashboard {
         // Populate sweep analysis filters
         this.populateSweepAnalysisFilters(sweep);
         
-        // Render speedup analysis
-        this.renderSpeedupAnalysis(sweep);
+        // Apply initial filter with the first dataset
+        const firstDataset = [...new Set(sweep.runs.map(run => run.dataset))][0];
+        const filteredRuns = firstDataset ? 
+            sweep.runs.filter(run => run.dataset === firstDataset) : 
+            sweep.runs;
         
-        // Render runs table
-        this.renderRunsTable(sweep);
+        // Render speedup analysis with filtered data
+        this.renderSpeedupAnalysis({...sweep, runs: filteredRuns});
+        
+        // Render runs table with filtered data
+        this.renderRunsTable({...sweep, runs: filteredRuns});
     }
 
     populateSweepAnalysisFilters(sweep) {
@@ -517,15 +526,20 @@ class BenchmarkDashboard {
         const datasetFilter = document.getElementById('sweep-dataset-filter');
         const algorithmFilter = document.getElementById('sweep-algorithm-filter');
         
-        datasetFilter.innerHTML = '<option value="all">All Datasets</option>';
+        datasetFilter.innerHTML = '';
         
         const uniqueDatasets = [...new Set(sweep.runs.map(run => run.dataset))];
-        uniqueDatasets.forEach(dataset => {
+        uniqueDatasets.forEach((dataset, index) => {
             const option = document.createElement('option');
             option.value = dataset;
             option.textContent = dataset;
             datasetFilter.appendChild(option);
         });
+        
+        // Default to first dataset if available
+        if (uniqueDatasets.length > 0) {
+            datasetFilter.value = uniqueDatasets[0];
+        }
         
         // Remove existing event listeners and add new ones
         datasetFilter.removeEventListener('change', this.sweepFilterHandler);
@@ -542,7 +556,7 @@ class BenchmarkDashboard {
         
         // Filter runs based on selected criteria
         const filteredRuns = this.currentSweep.runs.filter(run => {
-            const datasetMatch = selectedDataset === 'all' || run.dataset === selectedDataset;
+            const datasetMatch = run.dataset === selectedDataset;
             const algorithmMatch = selectedAlgorithm === 'all' || run.algorithm === selectedAlgorithm;
             return datasetMatch && algorithmMatch;
         });
@@ -710,9 +724,10 @@ class BenchmarkDashboard {
             
             algorithms.forEach(algo => {
                 // Find all runs for this algorithm that meet or exceed the recall threshold
+                // Using tolerance to match row color coding
                 const eligibleRuns = runs.filter(run => 
                     run.algorithm === algo && 
-                    parseFloat(run.recall) >= level
+                    parseFloat(run.recall) >= (level - this.RECALL_TOLERANCE)
                 );
                 
                 if (eligibleRuns.length > 0) {
@@ -740,7 +755,7 @@ class BenchmarkDashboard {
     
     shouldShowParetoAnalysis(sweep) {
         // Check filter selections
-        const selectedDataset = document.getElementById('sweep-dataset-filter')?.value || 'all';
+        const selectedDataset = document.getElementById('sweep-dataset-filter')?.value;
         const selectedAlgorithm = document.getElementById('sweep-algorithm-filter')?.value || 'all';
         
         // Only show when "all algorithms" is selected
@@ -749,22 +764,10 @@ class BenchmarkDashboard {
             return false;
         }
         
-        // Check if we have a single dataset (either naturally or by filter)
-        const uniqueDatasets = [...new Set(sweep.runs.map(run => run.dataset))];
-        
-        if (selectedDataset !== 'all') {
-            // A specific dataset is selected, so we effectively have a single dataset
-            console.log('Showing pareto analysis: specific dataset selected');
-            return true;
-        } else if (uniqueDatasets.length === 1) {
-            // Only one dataset present in the sweep
-            console.log('Showing pareto analysis: only one dataset present');
-            return true;
-        } else {
-            // Multiple datasets present and "all" selected
-            console.log('Hiding pareto analysis: multiple datasets present and "all" selected');
-            return false;
-        }
+        // Since we always have a specific dataset selected (no "all" option), 
+        // we can always show the pareto analysis when all algorithms are selected
+        console.log('Showing pareto analysis: specific dataset selected and all algorithms');
+        return true;
     }
 
     renderRunsTable(sweep) {
@@ -783,16 +786,16 @@ class BenchmarkDashboard {
         sortedRuns.forEach(run => {
             const row = document.createElement('tr');
             
-            // Add color coding based on recall accuracy
+            // Add color coding based on recall accuracy using tolerance
             const recall = parseFloat(run.recall || 0);
-            if (recall >= 95) {
-                row.style.backgroundColor = '#d4edda'; // Light green for > 95%
-            } else if (recall >= 90) {
-                row.style.backgroundColor = '#fff3cd'; // Light yellow for 90-95%
-            } else if (recall >= 85) {
-                row.style.backgroundColor = '#e9ecef'; // Light grey for 85-90%
+            if (recall >= (95 - this.RECALL_TOLERANCE)) {
+                row.style.backgroundColor = '#d4edda'; // Light green for >= 95% (with tolerance)
+            } else if (recall >= (90 - this.RECALL_TOLERANCE)) {
+                row.style.backgroundColor = '#fff3cd'; // Light yellow for 90-95% (with tolerance)
+            } else if (recall >= (85 - this.RECALL_TOLERANCE)) {
+                row.style.backgroundColor = '#e9ecef'; // Light grey for 85-90% (with tolerance)
             } else {
-                row.style.backgroundColor = '#f8d7da'; // Light red for < 85%
+                row.style.backgroundColor = '#f8d7da'; // Light red for < 85% (with tolerance)
             }
             
             row.innerHTML = `
@@ -850,11 +853,11 @@ class BenchmarkDashboard {
         // Re-render the table with current sweep data
         if (this.currentSweep) {
             // Apply current filters
-            const selectedDataset = document.getElementById('sweep-dataset-filter')?.value || 'all';
+            const selectedDataset = document.getElementById('sweep-dataset-filter')?.value;
             const selectedAlgorithm = document.getElementById('sweep-algorithm-filter')?.value || 'all';
             
             const filteredRuns = this.currentSweep.runs.filter(run => {
-                const datasetMatch = selectedDataset === 'all' || run.dataset === selectedDataset;
+                const datasetMatch = run.dataset === selectedDataset;
                 const algorithmMatch = selectedAlgorithm === 'all' || run.algorithm === selectedAlgorithm;
                 return datasetMatch && algorithmMatch;
             });
