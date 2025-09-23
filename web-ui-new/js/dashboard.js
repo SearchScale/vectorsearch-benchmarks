@@ -8,6 +8,9 @@ class BenchmarkDashboard {
             direction: 'asc' // 'asc' or 'desc'
         };
         
+        // Tolerance for recall threshold comparisons
+        this.RECALL_TOLERANCE = 0.01;
+        
         // Register Chart.js plugins
         Chart.register(ChartDataLabels);
         
@@ -27,9 +30,9 @@ class BenchmarkDashboard {
 
     async loadSweeps() {
         try {
-            // Load sweeps list from sweeps-list.json
+            // Load sweeps list from sweeps-list.json with cache busting
             console.log('Loading sweeps list...');
-            const response = await fetch('results/sweeps-list.json');
+            const response = await fetch(`results/sweeps-list.json?t=${Date.now()}`);
             if (!response.ok) {
                 throw new Error(`Failed to load sweeps list: ${response.status}`);
             }
@@ -120,9 +123,9 @@ class BenchmarkDashboard {
     }
 
     async loadSweepData(sweepId) {
-        // Load summary.txt to get the list of configs
+        // Load summary.txt to get the list of configs with cache busting
         console.log(`Fetching summary for ${sweepId}...`);
-        const summaryResponse = await fetch(`/results/${sweepId}/summary.txt`);
+        const summaryResponse = await fetch(`/results/${sweepId}/summary.txt?t=${Date.now()}`);
         if (!summaryResponse.ok) {
             throw new Error(`Failed to load summary for sweep ${sweepId}`);
         }
@@ -256,6 +259,27 @@ class BenchmarkDashboard {
         return extractedRun;
     }
 
+    calculateTotalIndexingTime(sweep) {
+        let totalSeconds = 0;
+        sweep.runs.forEach(run => {
+            totalSeconds += parseFloat(run.indexingTime || 0);
+        });
+        return totalSeconds;
+    }
+    
+    formatDuration(seconds) {
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        
+        if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        } else if (minutes > 0) {
+            return `${minutes}m`;
+        } else {
+            return `${Math.round(seconds)}s`;
+        }
+    }
+
     renderSweepList() {
         const container = document.getElementById('sweep-list');
         container.innerHTML = '';
@@ -265,11 +289,15 @@ class BenchmarkDashboard {
             item.className = 'sweep-item';
             item.onclick = () => this.showSweepAnalysis(sweep);
             
+            const totalIndexingTime = this.calculateTotalIndexingTime(sweep);
+            const formattedDuration = this.formatDuration(totalIndexingTime);
+            
             item.innerHTML = `
                 <div class="sweep-title">${sweep.id}</div>
                 <div class="sweep-info">
                     ${sweep.totalRuns} runs • ${sweep.algorithms.join(', ')}<br>
                     <strong>Datasets:</strong> ${sweep.datasets.join(', ')}<br>
+                    <strong>Total Indexing Time:</strong> ${formattedDuration}<br>
                     <strong>Commit:</strong> ${sweep.commit_id}<br>
                     ${sweep.date}
                 </div>
@@ -477,14 +505,28 @@ class BenchmarkDashboard {
         document.getElementById('home-view').style.display = 'none';
         document.getElementById('sweep-analysis').style.display = 'block';
         
+        // Set default sorting: Algorithm ascending, then Recall descending
+        this.sortState.column = 'algorithm';
+        this.sortState.direction = 'asc';
+        this.sortState.secondary = {
+            column: 'recall',
+            direction: 'desc'
+        };
+        
         // Populate sweep analysis filters
         this.populateSweepAnalysisFilters(sweep);
         
-        // Render speedup analysis
-        this.renderSpeedupAnalysis(sweep);
+        // Apply initial filter with the first dataset
+        const firstDataset = [...new Set(sweep.runs.map(run => run.dataset))][0];
+        const filteredRuns = firstDataset ? 
+            sweep.runs.filter(run => run.dataset === firstDataset) : 
+            sweep.runs;
         
-        // Render runs table
-        this.renderRunsTable(sweep);
+        // Render speedup analysis with filtered data
+        this.renderSpeedupAnalysis({...sweep, runs: filteredRuns});
+        
+        // Render runs table with filtered data
+        this.renderRunsTable({...sweep, runs: filteredRuns});
     }
 
     populateSweepAnalysisFilters(sweep) {
@@ -492,15 +534,20 @@ class BenchmarkDashboard {
         const datasetFilter = document.getElementById('sweep-dataset-filter');
         const algorithmFilter = document.getElementById('sweep-algorithm-filter');
         
-        datasetFilter.innerHTML = '<option value="all">All Datasets</option>';
+        datasetFilter.innerHTML = '';
         
         const uniqueDatasets = [...new Set(sweep.runs.map(run => run.dataset))];
-        uniqueDatasets.forEach(dataset => {
+        uniqueDatasets.forEach((dataset, index) => {
             const option = document.createElement('option');
             option.value = dataset;
             option.textContent = dataset;
             datasetFilter.appendChild(option);
         });
+        
+        // Default to first dataset if available
+        if (uniqueDatasets.length > 0) {
+            datasetFilter.value = uniqueDatasets[0];
+        }
         
         // Remove existing event listeners and add new ones
         datasetFilter.removeEventListener('change', this.sweepFilterHandler);
@@ -517,7 +564,7 @@ class BenchmarkDashboard {
         
         // Filter runs based on selected criteria
         const filteredRuns = this.currentSweep.runs.filter(run => {
-            const datasetMatch = selectedDataset === 'all' || run.dataset === selectedDataset;
+            const datasetMatch = run.dataset === selectedDataset;
             const algorithmMatch = selectedAlgorithm === 'all' || run.algorithm === selectedAlgorithm;
             return datasetMatch && algorithmMatch;
         });
@@ -685,9 +732,10 @@ class BenchmarkDashboard {
             
             algorithms.forEach(algo => {
                 // Find all runs for this algorithm that meet or exceed the recall threshold
+                // Using tolerance to match row color coding
                 const eligibleRuns = runs.filter(run => 
                     run.algorithm === algo && 
-                    parseFloat(run.recall) >= level
+                    parseFloat(run.recall) >= (level - this.RECALL_TOLERANCE)
                 );
                 
                 if (eligibleRuns.length > 0) {
@@ -715,7 +763,7 @@ class BenchmarkDashboard {
     
     shouldShowParetoAnalysis(sweep) {
         // Check filter selections
-        const selectedDataset = document.getElementById('sweep-dataset-filter')?.value || 'all';
+        const selectedDataset = document.getElementById('sweep-dataset-filter')?.value;
         const selectedAlgorithm = document.getElementById('sweep-algorithm-filter')?.value || 'all';
         
         // Only show when "all algorithms" is selected
@@ -724,22 +772,10 @@ class BenchmarkDashboard {
             return false;
         }
         
-        // Check if we have a single dataset (either naturally or by filter)
-        const uniqueDatasets = [...new Set(sweep.runs.map(run => run.dataset))];
-        
-        if (selectedDataset !== 'all') {
-            // A specific dataset is selected, so we effectively have a single dataset
-            console.log('Showing pareto analysis: specific dataset selected');
-            return true;
-        } else if (uniqueDatasets.length === 1) {
-            // Only one dataset present in the sweep
-            console.log('Showing pareto analysis: only one dataset present');
-            return true;
-        } else {
-            // Multiple datasets present and "all" selected
-            console.log('Hiding pareto analysis: multiple datasets present and "all" selected');
-            return false;
-        }
+        // Since we always have a specific dataset selected (no "all" option), 
+        // we can always show the pareto analysis when all algorithms are selected
+        console.log('Showing pareto analysis: specific dataset selected and all algorithms');
+        return true;
     }
 
     renderRunsTable(sweep) {
@@ -758,10 +794,22 @@ class BenchmarkDashboard {
         sortedRuns.forEach(run => {
             const row = document.createElement('tr');
             
+            // Add color coding based on recall accuracy using tolerance
+            const recall = parseFloat(run.recall || 0);
+            if (recall >= (95 - this.RECALL_TOLERANCE)) {
+                row.style.backgroundColor = '#d4edda'; // Light green for >= 95% (with tolerance)
+            } else if (recall >= (90 - this.RECALL_TOLERANCE)) {
+                row.style.backgroundColor = '#fff3cd'; // Light yellow for 90-95% (with tolerance)
+            } else if (recall >= (85 - this.RECALL_TOLERANCE)) {
+                row.style.backgroundColor = '#e9ecef'; // Light grey for 85-90% (with tolerance)
+            } else {
+                row.style.backgroundColor = '#f8d7da'; // Light red for < 85% (with tolerance)
+            }
+            
             row.innerHTML = `
-                <td>${this.formatRunId(run.run_id)}</td>
+                <td>${run.dataset || 'N/A'}</td>
                 <td>${run.algorithm.replace('_HNSW', '')}</td>
-                <td>${parseFloat(run.recall || 0).toFixed(2)}</td>
+                <td>${recall.toFixed(2)}</td>
                 <td>${parseFloat(run.indexingTime || 0).toFixed(2)}</td>
                 <td>${this.formatParameters(run)}</td>
                 <td>${parseFloat(run.meanLatency || 0).toFixed(2)}</td>
@@ -778,7 +826,7 @@ class BenchmarkDashboard {
     
     setupTableSorting() {
         const headers = document.querySelectorAll('#runs-table th');
-        const sortableColumns = ['run_id', 'algorithm', 'recall', 'indexTime', 'parameters', 'meanLatency'];
+        const sortableColumns = ['dataset', 'algorithm', 'recall', 'indexTime', 'parameters', 'meanLatency'];
         
         headers.forEach((header, index) => {
             if (index < sortableColumns.length) { // Skip the Actions column
@@ -813,11 +861,11 @@ class BenchmarkDashboard {
         // Re-render the table with current sweep data
         if (this.currentSweep) {
             // Apply current filters
-            const selectedDataset = document.getElementById('sweep-dataset-filter')?.value || 'all';
+            const selectedDataset = document.getElementById('sweep-dataset-filter')?.value;
             const selectedAlgorithm = document.getElementById('sweep-algorithm-filter')?.value || 'all';
             
             const filteredRuns = this.currentSweep.runs.filter(run => {
-                const datasetMatch = selectedDataset === 'all' || run.dataset === selectedDataset;
+                const datasetMatch = run.dataset === selectedDataset;
                 const algorithmMatch = selectedAlgorithm === 'all' || run.algorithm === selectedAlgorithm;
                 return datasetMatch && algorithmMatch;
             });
@@ -841,9 +889,9 @@ class BenchmarkDashboard {
             let valueA, valueB;
             
             switch (columnKey) {
-                case 'run_id':
-                    valueA = this.formatRunId(a.run_id || '');
-                    valueB = this.formatRunId(b.run_id || '');
+                case 'dataset':
+                    valueA = a.dataset || '';
+                    valueB = b.dataset || '';
                     break;
                 case 'algorithm':
                     valueA = a.algorithm || '';
@@ -877,17 +925,50 @@ class BenchmarkDashboard {
                 comparison = valueA - valueB;
             }
             
-            return direction === 'asc' ? comparison : -comparison;
+            // Apply primary sort direction
+            comparison = direction === 'asc' ? comparison : -comparison;
+            
+            // If primary sort values are equal and secondary sort is defined
+            if (comparison === 0 && this.sortState.secondary) {
+                const secCol = this.sortState.secondary.column;
+                const secDir = this.sortState.secondary.direction;
+                
+                let secValueA, secValueB;
+                switch (secCol) {
+                    case 'recall':
+                        secValueA = parseFloat(a.recall || 0);
+                        secValueB = parseFloat(b.recall || 0);
+                        break;
+                    case 'algorithm':
+                        secValueA = a.algorithm || '';
+                        secValueB = b.algorithm || '';
+                        break;
+                    case 'indexTime':
+                        secValueA = parseFloat(a.indexingTime || 0);
+                        secValueB = parseFloat(b.indexingTime || 0);
+                        break;
+                    default:
+                        return 0;
+                }
+                
+                let secComparison = 0;
+                if (typeof secValueA === 'string' && typeof secValueB === 'string') {
+                    secComparison = secValueA.localeCompare(secValueB);
+                } else {
+                    secComparison = secValueA - secValueB;
+                }
+                
+                return secDir === 'asc' ? secComparison : -secComparison;
+            }
+            
+            return comparison;
         });
     }
     
     formatRunId(runId) {
-        // Extract only the hash part after the last dash
-        // e.g., "CAGRA_HNSW-edee9e87" -> "edee9e87"
+        // Return the full run ID
         if (!runId) return 'N/A';
-        
-        const parts = runId.split('-');
-        return parts.length > 1 ? parts[parts.length - 1] : runId;
+        return runId;
     }
     
     formatParameters(run) {
