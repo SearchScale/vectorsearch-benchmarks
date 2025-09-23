@@ -30,9 +30,9 @@ class BenchmarkDashboard {
 
     async loadSweeps() {
         try {
-            // Load sweeps list from sweeps-list.json
+            // Load sweeps list from sweeps-list.json with cache busting
             console.log('Loading sweeps list...');
-            const response = await fetch('results/sweeps-list.json');
+            const response = await fetch(`results/sweeps-list.json?t=${Date.now()}`);
             if (!response.ok) {
                 throw new Error(`Failed to load sweeps list: ${response.status}`);
             }
@@ -123,9 +123,9 @@ class BenchmarkDashboard {
     }
 
     async loadSweepData(sweepId) {
-        // Load summary.txt to get the list of configs
+        // Load summary.txt to get the list of configs with cache busting
         console.log(`Fetching summary for ${sweepId}...`);
-        const summaryResponse = await fetch(`/results/${sweepId}/summary.txt`);
+        const summaryResponse = await fetch(`/results/${sweepId}/summary.txt?t=${Date.now()}`);
         if (!summaryResponse.ok) {
             throw new Error(`Failed to load summary for sweep ${sweepId}`);
         }
