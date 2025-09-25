@@ -95,8 +95,8 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
             SWEEP_RESULTS_DIR="$RESULTS_DIR/$SWEEP_NAME"
             mkdir -p "$SWEEP_RESULTS_DIR"
             
-            # Run each configuration in the sweep
-            for CONFIG_FILE in "$SWEEP_DIR"/*.json; do
+            # Run each configuration in the sweep in creation time order (oldest first)
+	    for CONFIG_FILE in $(find configs/wiki10m -name "*.json" | awk -F'[/-]' '{split($NF, a, "."); gsub("ef", "", a[1]); print $(NF-2)"-"$(NF-1), a[1], $0}' | sort -k1,1 -k2,2nr | cut -d' ' -f3); do
                 if [ -f "$CONFIG_FILE" ]; then
                     CURRENT_CONFIG=$((CURRENT_CONFIG + 1))
                     CONFIG_NAME=$(basename "$CONFIG_FILE" .json)
@@ -128,6 +128,40 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                         
                         # Results are now written directly to CONFIG_RESULTS_DIR by the Java program
                         echo "Results saved directly to: $CONFIG_RESULTS_DIR"
+                        
+                        # Backfill indexing metrics if needed for this specific run
+                        results_file="$CONFIG_RESULTS_DIR/results.json"
+                        if [ -f "$results_file" ] && grep -q '"skipIndexing" : true' "$results_file"; then
+                            index_hash=$(echo "$CONFIG_NAME" | sed -E 's/.*-([a-f0-9]{8})(-.+)?$/\1/')
+                            if [ ${#index_hash} -eq 8 ]; then
+                                algo=$(jq -r '.configuration.algoToRun' "$results_file")
+                                if [ "$algo" = "LUCENE_HNSW" ] && ! jq -e '.metrics["hnsw-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                    metric_type="hnsw"
+                                elif [ "$algo" = "CAGRA_HNSW" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                    metric_type="cuvs"
+                                else
+                                    metric_type=""
+                                fi
+                                
+                                if [ -n "$metric_type" ]; then
+                                    source_file=""
+                                    for candidate_dir in $(find "$RESULTS_DIR" -name "*$index_hash*" -type d); do
+                                        if [ -f "$candidate_dir/results.json" ] && grep -q '"skipIndexing" : false' "$candidate_dir/results.json" && grep -q "${metric_type}-indexing-time" "$candidate_dir/results.json"; then
+                                            source_file="$candidate_dir/results.json"
+                                            break
+                                        fi
+                                    done
+                                    if [ -n "$source_file" ]; then
+                                        indexing_time=$(jq -r ".metrics[\"${metric_type}-indexing-time\"]" "$source_file")
+                                        index_size=$(jq -r ".metrics[\"${metric_type}-index-size\"]" "$source_file")
+                                        jq --argjson time "$indexing_time" --argjson size "$index_size" \
+                                           ".metrics[\"${metric_type}-indexing-time\"] = \$time | .metrics[\"${metric_type}-index-size\"] = \$size" \
+                                           "$results_file" > "${results_file}.tmp" && mv "${results_file}.tmp" "$results_file"
+                                        echo "  Backfilled $CONFIG_NAME ($metric_type) from $(basename $(dirname "$source_file"))"
+                                    fi
+                                fi
+                            fi
+                        fi
                     else
                         echo "✗ Benchmark failed (check log for details)"
                         echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
@@ -138,6 +172,7 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
             done
         fi
     done
+    
     
     echo ""
     echo "========================================="
@@ -152,13 +187,12 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
     SWEEPS_LIST_FILE="$PARENT_RESULTS_DIR/sweeps-list.json"
     
     if [ -f "$SWEEPS_LIST_FILE" ]; then
-        # File exists, append the benchmark ID
-        # Remove the closing brace and bracket, add the new ID, then close
-        sed -i 's/]$/,"'$BENCHMARKID'"]/' "$SWEEPS_LIST_FILE"
+        # File exists, append the benchmark ID using jq
+        jq --arg id "$BENCHMARKID" '.sweeps += [$id]' "$SWEEPS_LIST_FILE" > "${SWEEPS_LIST_FILE}.tmp" && mv "${SWEEPS_LIST_FILE}.tmp" "$SWEEPS_LIST_FILE"
         echo "Updated sweeps-list.json with benchmark ID: $BENCHMARKID"
     else
         # File doesn't exist, create it with the current benchmark ID
-        echo '{"sweeps": ["'$BENCHMARKID'"]}' > "$SWEEPS_LIST_FILE"
+        jq -n --arg id "$BENCHMARKID" '{sweeps: [$id]}' > "$SWEEPS_LIST_FILE"
         echo "Created sweeps-list.json with benchmark ID: $BENCHMARKID"
     fi
     

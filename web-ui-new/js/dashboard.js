@@ -597,7 +597,7 @@ class BenchmarkDashboard {
         messageContainer.style.display = 'none';
 
         // Pareto analysis: Find best runs at specific recall levels
-        const recallLevels = [90, 95];
+        const recallLevels = [90, 95, 99];
         const algorithms = ['CAGRA_HNSW', 'LUCENE_HNSW'];
         
         // For each recall level and algorithm, find the run with best indexing time
@@ -796,7 +796,9 @@ class BenchmarkDashboard {
             
             // Add color coding based on recall accuracy using tolerance
             const recall = parseFloat(run.recall || 0);
-            if (recall >= (95 - this.RECALL_TOLERANCE)) {
+            if (recall >= (99 - this.RECALL_TOLERANCE)) {
+                row.style.backgroundColor = '#c3e6cb'; // Darker green for >= 99% (with tolerance)
+            } else if (recall >= (95 - this.RECALL_TOLERANCE)) {
                 row.style.backgroundColor = '#d4edda'; // Light green for >= 95% (with tolerance)
             } else if (recall >= (90 - this.RECALL_TOLERANCE)) {
                 row.style.backgroundColor = '#fff3cd'; // Light yellow for 90-95% (with tolerance)
@@ -973,17 +975,18 @@ class BenchmarkDashboard {
     
     formatParameters(run) {
         const algorithm = run.algorithm;
+        const efSearch = run.efSearch || 'N/A';
         
         if (algorithm === 'CAGRA_HNSW') {
             const graphDegree = run.cagraGraphDegree || 'N/A';
             const intermediateDegree = run.cagraIntermediateGraphDegree || 'N/A';
-            return `graphDegree: ${graphDegree}, intermediateDegree: ${intermediateDegree}`;
+            return `graphDegree: ${graphDegree}, intermediateDegree: ${intermediateDegree}, efSearch: ${efSearch}`;
         } else if (algorithm === 'LUCENE_HNSW') {
             const maxConn = run.hnswMaxConn || 'N/A';
             const beamWidth = run.hnswBeamWidth || 'N/A';
-            return `m: ${maxConn}, efConstruction: ${beamWidth}`;
+            return `m: ${maxConn}, efConstruction: ${beamWidth}, efSearch: ${efSearch}`;
         } else {
-            return 'N/A';
+            return `efSearch: ${efSearch}`;
         }
     }
 

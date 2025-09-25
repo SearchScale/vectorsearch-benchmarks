@@ -222,8 +222,8 @@ public class LuceneCuvsBenchmarks {
       // Configure to flush based on document count only
       // For 4M docs with 768-dim float vectors, we need approximately:
       // 4M * 768 * 4 bytes = ~12GB just for vectors, plus overhead
-      // Set RAM buffer to 20GB to ensure doc count triggers flush first
-      luceneHNSWWriterConfig.setRAMBufferSizeMB(20000); // 20GB RAM buffer
+      // Set RAM buffer to 32GB to ensure doc count triggers flush first
+      luceneHNSWWriterConfig.setRAMBufferSizeMB(32768); // 32GB RAM buffer
       luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq);
       luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
@@ -238,8 +238,8 @@ public class LuceneCuvsBenchmarks {
       // Configure to flush based on document count only
       // For 4M docs with 768-dim float vectors, we need approximately:
       // 4M * 768 * 4 bytes = ~12GB just for vectors, plus overhead
-      // Set RAM buffer to 20GB to ensure doc count triggers flush first
-      cuvsIndexWriterConfig.setRAMBufferSizeMB(20000); // 20GB RAM buffer
+      // Set RAM buffer to 32GB to ensure doc count triggers flush first
+      cuvsIndexWriterConfig.setRAMBufferSizeMB(32768); // 32GB RAM buffer
       cuvsIndexWriterConfig.setMaxBufferedDocs(config.flushFreq);
       cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
@@ -264,9 +264,6 @@ public class LuceneCuvsBenchmarks {
       if (config.algoToRun.equalsIgnoreCase("LUCENE_HNSW")) {
         if (!config.createIndexInMemory) {
           Path hnswIndex = Path.of(config.hnswIndexDirPath);
-          if (config.cleanIndexDirectory) {
-            FileUtils.deleteDirectory(hnswIndex.toFile());
-          }
           luceneHnswIndexWriter = new IndexWriter(FSDirectory.open(hnswIndex), luceneHNSWWriterConfig);
         } else {
           luceneHnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), luceneHNSWWriterConfig);
@@ -274,9 +271,6 @@ public class LuceneCuvsBenchmarks {
       } else if (config.algoToRun.equalsIgnoreCase("CAGRA_HNSW")) {
         if (!config.createIndexInMemory) {
           Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
-          if (config.cleanIndexDirectory) {
-            FileUtils.deleteDirectory(cuvsIndex.toFile());
-          }
           cuvsIndexWriter = new IndexWriter(FSDirectory.open(cuvsIndex), cuvsIndexWriterConfig);
         } else {
           cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
@@ -368,6 +362,29 @@ public class LuceneCuvsBenchmarks {
       }
 
       log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
+      
+      // Close the index directory before cleaning
+      indexDir.close();
+      
+      // Clean index directory after benchmarks complete if requested
+      if (config.cleanIndexDirectory && !config.createIndexInMemory) {
+        Path indexPath = null;
+        if (config.algoToRun.equalsIgnoreCase("LUCENE_HNSW")) {
+          indexPath = Path.of(config.hnswIndexDirPath);
+        } else if (config.algoToRun.equalsIgnoreCase("CAGRA_HNSW")) {
+          indexPath = Path.of(config.cuvsIndexDirPath);
+        }
+        
+        if (indexPath != null) {
+          try {
+            log.info("Cleaning index directory: {}", indexPath);
+            FileUtils.deleteDirectory(indexPath.toFile());
+            log.info("Successfully cleaned index directory: {}", indexPath);
+          } catch (IOException e) {
+            log.error("Failed to clean index directory: {}", indexPath, e);
+          }
+        }
+      }
     } finally {
       if (vectorProvider != null) {
         vectorProvider.close();

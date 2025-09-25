@@ -15,11 +15,11 @@ then
         if [ -n "$BENCHMARK_ID" ]; then
             mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
             -Dexec.args="$config_file $BENCHMARK_ID" \
-            -Dexec.jvmArgs="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
+            -Dexec.jvmArgs="-Xmx192G --add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
         else
             mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
             -Dexec.args="$config_file" \
-            -Dexec.jvmArgs="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
+            -Dexec.jvmArgs="-Xmx192G --add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
         fi
     done
 elif [ -f "${PASSED_ARGUMENT}" ]
@@ -28,10 +28,10 @@ then
     if [ -n "$BENCHMARK_ID" ]; then
         mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
         -Dexec.args="$PASSED_ARGUMENT $BENCHMARK_ID" \
-        -Dexec.jvmArgs="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
+        -Dexec.jvmArgs="-Xmx192G --add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
     else
         mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
         -Dexec.args="$PASSED_ARGUMENT" \
-        -Dexec.jvmArgs="--add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
+        -Dexec.jvmArgs="-Xmx192G --add-modules=jdk.incubator.vector --enable-native-access=ALL-UNNAMED"
     fi
 fi
