@@ -33,12 +33,5 @@
       </mergePolicyFactory>
     </indexConfig>
 
-    <codecFactory name="CodecFactory" class="org.apache.solr.cuvs.CuvsCodecFactory">
-      <str name="cuvsWriterThreads">32</str>
-      <str name="intGraphDegree">129</str>
-      <str name="graphDegree">63</str>
-      <str name="hnswLayers">1</str>
-    </codecFactory>
-
     <requestHandler name="/select" class="solr.SearchHandler"></requestHandler>
 </config>
