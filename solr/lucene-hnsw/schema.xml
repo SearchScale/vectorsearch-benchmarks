@@ -20,7 +20,7 @@
 
 <schema name="schema-densevector" version="1.7">
     <fieldType name="string" class="solr.StrField" multiValued="true"/>
-    <fieldType name="knn_vector" class="solr.DenseVectorField" vectorDimension="768" similarityFunction="cosine" knnAlgorithm="hnsw" hnswMaxConnections="128" hnswBeamWidth="128"/>
+    <fieldType name="knn_vector" class="solr.DenseVectorField" vectorDimension="768" similarityFunction="cosine" knnAlgorithm="hnsw" hnswMaxConnections="128" hnswBeamWidth="256"/>
 
     <fieldType name="plong" class="solr.LongPointField" useDocValuesAsStored="false"/>
 
