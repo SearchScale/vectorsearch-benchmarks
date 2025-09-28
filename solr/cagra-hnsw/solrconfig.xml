@@ -28,11 +28,6 @@
     <dataDir>${solr.data.dir:}</dataDir>
     <directoryFactory name="DirectoryFactory" class="${solr.directoryFactory:solr.NRTCachingDirectoryFactory}"/>
 
-    <indexConfig>
-      <mergePolicyFactory class="org.apache.solr.index.NoMergePolicyFactory">
-      </mergePolicyFactory>
-    </indexConfig>
-
     <codecFactory name="CodecFactory" class="org.apache.solr.cuvs.CuVSCodecFactory">
       <str name="cuvsWriterThreads">32</str>
       <str name="intGraphDegree">129</str>

@@ -9,8 +9,8 @@ DATA_DIR="data"
 if [ ! -d "$DATA_DIR" ]; then
   mkdir $DATA_DIR
 fi
-DATASET_FILENAME="wiki_all_10M.tar"
-DATASET_ENDPOINT="https://data.rapids.ai/raft/datasets/wiki_all_10M/$DATASET_FILENAME"
+DATASET_FILENAME="wiki_all_1M.tar"
+DATASET_ENDPOINT="https://data.rapids.ai/raft/datasets/wiki_all_1M/$DATASET_FILENAME"
 if [ ! -f "$DATA_DIR/$DATASET_FILENAME" ]; then
   echo "==> File '$DATASET_FILENAME' does not exist in the $DATA_DIR dir, downloading..."
   cd $DATA_DIR
@@ -66,10 +66,10 @@ curl "$SOLR_URL/solr/admin/collections?action=CREATE&name=test&numShards=1&colle
 
 # Use the javabin file generator to generate javabin files
 JAVABIN_FILES_DIR="wiki_batches"
-DOCS_COUNT=10000000
+DOCS_COUNT=1000000
 BATCH_SIZE=500000
 if [ ! -d "$JAVABIN_FILES_DIR" ]; then
-  time java -jar $JFG_DIR/target/javabin-generator-1.0-SNAPSHOT-jar-with-dependencies.jar data_file=$DATA_DIR/base.10M.fbin output_dir=$JAVABIN_FILES_DIR batch_size=$BATCH_SIZE docs_count=$DOCS_COUNT threads=all
+  time java -jar $JFG_DIR/target/javabin-generator-1.0-SNAPSHOT-jar-with-dependencies.jar data_file=$DATA_DIR/base.1M.fbin output_dir=$JAVABIN_FILES_DIR batch_size=$BATCH_SIZE docs_count=$DOCS_COUNT threads=all
 fi
 
 URL="$SOLR_URL/solr/test/update?commit=true&overwrite=false"
