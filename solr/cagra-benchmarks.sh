@@ -64,6 +64,8 @@ SOLR_URL="http://localhost:8983"
 (cd cagra-hnsw && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs"
 curl "$SOLR_URL/solr/admin/collections?action=CREATE&name=test&numShards=1&collection.configName=cuvs"
 
+start_time=$(date +%s%N) # Record start time in nanoseconds
+
 # Use the javabin file generator to generate javabin files
 JAVABIN_FILES_DIR="wiki_batches"
 DOCS_COUNT=1000000
@@ -83,6 +85,10 @@ done
 
 # Wait for all background processes to finish
 wait
+end_time=$(date +%s%N)   # Record end time in nanoseconds
+
+duration=$(( (end_time - start_time) / 1000000 )) # Calculate duration in milliseconds
+echo "Execution time: $duration ms"
 echo "Done!"
 
 # Cleanup
