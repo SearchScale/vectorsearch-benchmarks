@@ -13,9 +13,9 @@
     </indexConfig>
 
     <updateHandler class="solr.DirectUpdateHandler2">
-        <updateLog>
+        <!--updateLog>
             <str name="dir">${solr.ulog.dir:}</str>
-        </updateLog>
+        </updateLog-->
         <autoCommit>
             <maxTime>${solr.autoCommit.maxTime:1500000}</maxTime>
             <openSearcher>false</openSearcher>

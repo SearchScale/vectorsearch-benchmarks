@@ -8,7 +8,7 @@
     <fieldType name="plong" class="solr.LongPointField" useDocValuesAsStored="false"/>
 
     <field name="id" type="string" indexed="true" stored="true" multiValued="false" required="false"/>
-    <field name="article_vector" type="knn_vector" indexed="false" stored="false"/>
+    <field name="article_vector" type="knn_vector" indexed="true" stored="false"/>
     <field name="_version_" type="plong" indexed="true" stored="true" multiValued="false" />
 
     <uniqueKey>id</uniqueKey>
