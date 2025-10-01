@@ -78,11 +78,22 @@ def extract_metrics_from_json(json_file: str, datasets_config: Dict = None) -> O
 
 
 def create_index_name(config: Dict) -> str:
-    ef_construction = config.get('efConstruction', 150)
-    m = config.get('m', 32)
-    max_candidates = config.get('maxCandidates', 128)
+    algorithm = config.get('algoToRun', 'UNKNOWN')
     
-    return f"ef{ef_construction}-deg{m}-ideg{max_candidates}"
+    if algorithm == 'LUCENE_HNSW':
+        ef_construction = config.get('efConstruction', 150)
+        beam_width = config.get('hnswBeamWidth', 32)
+        return f"ef{ef_construction}-beam{beam_width}"
+    elif algorithm == 'CAGRA_HNSW':
+        ef_construction = config.get('efConstruction', 150)
+        graph_degree = config.get('cagraGraphDegree', 32)
+        intermediate_degree = config.get('cagraIntermediateGraphDegree', 32)
+        return f"ef{ef_construction}-deg{graph_degree}-ideg{intermediate_degree}"
+    else:
+        ef_construction = config.get('efConstruction', 150)
+        m = config.get('m', 32)
+        max_candidates = config.get('maxCandidates', 128)
+        return f"ef{ef_construction}-deg{m}-ideg{max_candidates}"
 
 
 def convert_results(input_dir: str, output_dir: str, dataset_name: str, 
@@ -150,8 +161,8 @@ def convert_results(input_dir: str, output_dir: str, dataset_name: str,
                     print("  Using the first file's parameters")
     
     # Create output directories
-    search_dir = os.path.join(output_dir, dataset_name, "result", "search")
-    build_dir = os.path.join(output_dir, dataset_name, "result", "build")
+    search_dir = os.path.join(output_dir, "result", "search")
+    build_dir = os.path.join(output_dir, "result", "build")
     
     os.makedirs(search_dir, exist_ok=True)
     os.makedirs(build_dir, exist_ok=True)

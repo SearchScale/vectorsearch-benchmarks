@@ -216,18 +216,14 @@ def create_plot_build(
     build_results, search_results, linestyles, fn_out, dataset, k, batch_size
 ):
     bt_80 = [0] * len(linestyles)
-
     bt_90 = [0] * len(linestyles)
-
     bt_95 = [0] * len(linestyles)
-
     bt_99 = [0] * len(linestyles)
 
     data = OrderedDict()
     colors = OrderedDict()
 
     # Sorting by mean y-value helps aligning plots with labels
-
     def mean_y(algo):
         points = np.array(search_results[algo], dtype=object)
         return -np.log(np.array(points[:, 3], dtype=np.float32)).mean()
@@ -270,10 +266,10 @@ def create_plot_build(
         colors[algo] = linestyles[algo][0]
 
     index = [
-        "80-89% Recall",
-        "90-94% Recall", 
-        "95-98% Recall",
-        "99%+ Recall",
+        "@80% Recall",
+        "@90% Recall",
+        "@95% Recall",
+        "@99% Recall",
     ]
 
     df = pd.DataFrame(data, index=index)
@@ -293,9 +289,10 @@ def create_plot_build(
             
             if pd.notna(lucene_time) and pd.notna(cagra_time) and lucene_time > 0 and cagra_time > 0:
                 speedup = lucene_time / cagra_time
-                ax.text(i, y_max * 0.95, f'{speedup:.1f}x', 
-                       ha='center', va='center', fontsize=11, fontweight='bold',
-                       bbox=dict(boxstyle='round,pad=0.4', facecolor='white', alpha=0.9, edgecolor='black'))
+                # Position annotations just above the bars, below subtitle
+                ax.text(i, y_max * 0.98, f'{speedup:.1f}x', 
+                       ha='center', va='bottom', fontsize=9, fontweight='bold',
+                       bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.9, edgecolor='gray'))
     
     print(f"writing build output to {fn_out}")
     plt.title(
