@@ -96,7 +96,7 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
             mkdir -p "$SWEEP_RESULTS_DIR"
             
             # Run each configuration in the sweep in creation time order (oldest first)
-	    for CONFIG_FILE in $(find configs/wiki10m -name "*.json" | awk -F'[/-]' '{split($NF, a, "."); gsub("ef", "", a[1]); print $(NF-2)"-"$(NF-1), a[1], $0}' | sort -k1,1 -k2,2nr | cut -d' ' -f3); do
+	    for CONFIG_FILE in $(find "$SWEEP_DIR" -name "*.json" | awk -F'[/-]' '{split($NF, a, "."); gsub("ef", "", a[1]); print $(NF-2)"-"$(NF-1), a[1], $0}' | sort -k1,1 -k2,2nr | cut -d' ' -f3); do
                 if [ -f "$CONFIG_FILE" ]; then
                     CURRENT_CONFIG=$((CURRENT_CONFIG + 1))
                     CONFIG_NAME=$(basename "$CONFIG_FILE" .json)
@@ -181,6 +181,19 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
     echo "Summary saved to: $SUMMARY_FILE"
     echo "Finished at: $(date)"
     echo "========================================="
+    
+    # Generate Pareto analysis plots
+    echo ""
+    echo "========================================="
+    echo "Generating Pareto analysis plots"
+    echo "========================================="
+    
+    if ./generate_pareto_analysis.sh --benchmark-id "$BENCHMARKID" --results-dir "$(dirname "$RESULTS_DIR")" --datasets-file "$DATASETS_FILE"; then
+        echo "✓ Pareto analysis completed successfully"
+        echo "Plots saved to: $(dirname "$RESULTS_DIR")/plots/$BENCHMARKID"
+    else
+        echo "✗ Pareto analysis failed (check logs above)"
+    fi
     
     # Update sweeps-list.json in the parent results directory
     PARENT_RESULTS_DIR=$(dirname "$RESULTS_DIR")

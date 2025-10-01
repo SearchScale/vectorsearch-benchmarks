@@ -8,7 +8,7 @@ Benchmark system for comparing CAGRA (GPU) vs Lucene HNSW (CPU) vector search al
    - JDK 22+
    - CUDA libraries
    - Python 3.7+
-   - pip install pyyaml
+   - pip install pyyaml matplotlib numpy click pandas
 
 2. **Set library paths:**
    ```bash
