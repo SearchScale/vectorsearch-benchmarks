@@ -79,16 +79,25 @@ if [ ! -d "$JAVABIN_FILES_DIR" ]; then
 fi
 
 URL="$SOLR_URL/solr/test/update?commit=true&overwrite=false"
-# Loop through each file in the directory and post it in the background
-for FILE in "$JAVABIN_FILES_DIR"/*; do
-    if [ -f "$FILE" ]; then  # Check if it's a file
-        echo "Uploading $FILE..."
-        time http --ignore-stdin POST "$URL" Content-Type:application/javabin @"$FILE"
-    fi
-done
+NPARALLEL=2
 
-# Wait for all background processes to finish
-wait
+# Loop through each file in the directory and post it in batches using Python
+python3 << EOF
+import subprocess
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+
+files = sorted(Path("$JAVABIN_FILES_DIR").glob("*"))
+def upload(f):
+    print(f"Uploading {f}...")
+    subprocess.run(["http", "--ignore-stdin", "POST", "$URL", "Content-Type:application/javabin", f"@{f}"])
+    print(f"Completed {f}")
+
+print(f"Starting batch upload with {$NPARALLEL} parallel workers")
+with ThreadPoolExecutor(max_workers=$NPARALLEL) as ex:
+    list(ex.map(upload, files))
+print("All uploads completed")
+EOF
 end_time=$(date +%s%N)   # Record end time in nanoseconds
 
 duration=$(( (end_time - start_time) / 1000000 )) # Calculate duration in milliseconds
