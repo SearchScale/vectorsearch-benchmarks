@@ -542,11 +542,19 @@ public class LuceneCuvsBenchmarks {
           long retrievalStartTime = System.nanoTime();
           for (int i = 0; i < numResultsToTake; i++) {
             ScoreDoc hit = hits[i];
+            String idString = null;
             try {
               Document d = indexReader.storedFields().document(hit.doc);
-              neighbors.add(Integer.parseInt(d.get("id")));
+              idString = d.get("id");
+              if (idString == null || idString.isEmpty()) {
+                throw new RuntimeException("Document " + hit.doc + " has null or empty 'id' field");
+              }
+              int docId = Integer.parseInt(idString);
+              neighbors.add(docId);
             } catch (IOException e) {
-              e.printStackTrace();
+              throw new RuntimeException("Failed to retrieve stored fields for document " + hit.doc, e);
+            } catch (NumberFormatException e) {
+              throw new RuntimeException("Failed to parse 'id' field as integer for document " + hit.doc + ", value: " + idString, e);
             }
             scores.add(hit.score);
           }

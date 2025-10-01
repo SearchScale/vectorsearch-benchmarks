@@ -5,7 +5,6 @@
       "download-url": "https://data.rapids.ai/raft/datasets/wiki_all_10M/wiki_all_10M.tar",
       "preparation-commands": "tar -xvf wiki_all_10M.tar",
       "base_file": "base.10M.fbin",
-      "base_checksum": "8a0154c198592dfe096b0a94cfc89424abb1b64720bf9e10b3dad353e09d1fb9",
       "query_file": "queries.fbin",
       "query_checksum": "57c88c301a6ba032855af3a54bdb847a972004e1ab671ce1bff790ee9c39c855",
       "ground_truth_file": "groundtruth.10M.neighbors.ibin",
@@ -27,6 +26,20 @@
       "num_docs": 1000000,
       "vector_dimension": 128,
       "top_k_ground_truth": 1000
+    },
+    "wiki10m-2048": {
+      "description": "Wikipedia 10 million vectors with 2048 dimensions",
+      "download-url": "",
+      "preparation-commands": "",
+      "base_file": "wiki10m-2048_base.fvecs",
+      "base_checksum": "",
+      "query_file": "query_vectors.fvecs",
+      "query_checksum": "",
+      "ground_truth_file": "ground_truth_indices_top100_new.ivecs",
+      "ground_truth_checksum": "",
+      "num_docs": 10331142,
+      "vector_dimension": 2048,
+      "top_k_ground_truth": 100
     }
   }
 }

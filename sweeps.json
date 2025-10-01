@@ -1,44 +1,13 @@
 {
-  "wiki10m": {
-    "dataset": "wiki-10m",
+  "wiki10m-2048": {
+    "dataset": "wiki10m-2048",
     "common-params": {
-      "numDocs": 10000000,
+      "numDocs": 10331142,
       "numQueriesToRun": 500,
       "numWarmUpQueries": 20,
-      "flushFreq": 500000,
+      "flushFreq": 250000,
       "topK": 100,
-      "efSearch": 150,
-      "queryThreads": 1,
-      "vectorColName": "vector",
-      "createIndexInMemory": false,
-      "cleanIndexDirectory": true,
-      "saveResultsOnDisk": true
-    },
-    "algorithms": {
-      "LUCENE_HNSW": {
-        "hnswIndexDirPath": "hnswIndex",
-        "hnswMaxConn": [16, 32, 64, 96, 128],
-        "hnswBeamWidth": [64, 128, 256],
-        "numIndexThreads": 32
-      },
-      "CAGRA_HNSW": {
-        "cuvsIndexDirPath": "cuvsIndex",
-        "cagraGraphDegree": [16, 32, 64],
-        "cagraIntermediateGraphDegree": [64, 128],
-        "cuvsWriterThreads": 32,
-        "numIndexThreads": 32
-      }
-    }
-  },
-  "sift-1m": {
-    "dataset": "sift-1m",
-    "common-params": {
-      "numDocs": 1000000,
-      "numQueriesToRun": 500,
-      "numWarmUpQueries": 50,
-      "flushFreq": 500000,
-      "topK": 100,
-      "efSearch": 150,
+      "efSearch": [800, 600, 400, 200],
       "queryThreads": 1,
       "vectorColName": "vector",
       "createIndexInMemory": false,
@@ -48,16 +17,17 @@
     "algorithms": {
       "CAGRA_HNSW": {
         "cuvsIndexDirPath": "cuvsIndex",
-        "cagraGraphDegree": [32, 64],
-        "cagraIntermediateGraphDegree": [64, 128],
-        "cuvsWriterThreads": 32,
-        "numIndexThreads": 32
+        "cagraGraphDegree": [8, 16, 32, 64],
+        "cagraIntermediateGraphDegree": [16, 32, 64, 128],
+        "cuvsWriterThreads": 8,
+        "numIndexThreads": 8,
+	"cagraHnswLayers": 1
       },
       "LUCENE_HNSW": {
         "hnswIndexDirPath": "hnswIndex",
-        "hnswMaxConn": [32, 64, 96, 128],
-        "hnswBeamWidth": [128, 256],
-        "numIndexThreads": 32
+        "hnswMaxConn": [16, 32, 64, 128],
+        "hnswBeamWidth": [32, 64, 128, 256],
+        "numIndexThreads": 8
       }
     }
   }

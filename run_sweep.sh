@@ -96,7 +96,7 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
             mkdir -p "$SWEEP_RESULTS_DIR"
             
             # Run each configuration in the sweep in creation time order (oldest first)
-	    for CONFIG_FILE in $(find configs/wiki10m -name "*.json" | awk -F'[/-]' '{split($NF, a, "."); gsub("ef", "", a[1]); print $(NF-2)"-"$(NF-1), a[1], $0}' | sort -k1,1 -k2,2nr | cut -d' ' -f3); do
+	    for CONFIG_FILE in $(find "$SWEEP_DIR" -name "*.json" | awk -F'[/-]' '{split($NF, a, "."); gsub("ef", "", a[1]); print $(NF-2)"-"$(NF-1), a[1], $0}' | sort -k1,1 -k2,2nr | cut -d' ' -f3); do
                 if [ -f "$CONFIG_FILE" ]; then
                     CURRENT_CONFIG=$((CURRENT_CONFIG + 1))
                     CONFIG_NAME=$(basename "$CONFIG_FILE" .json)
