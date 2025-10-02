@@ -29,6 +29,8 @@ Edit (or copy+edit) `sweep.json`:
 
 ## Visualization
 
+./generate_pareto_analysis.sh --benchmark-id <benchmark-id or sweep-id> (already called in run_sweep.sh)
+
 Serve the webui on port 8000:
 
     cd web-ui-new; python3 -m http.server

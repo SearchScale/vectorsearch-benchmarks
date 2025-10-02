@@ -3,21 +3,13 @@
 set -e
 
 BENCHMARK_ID=""
-RESULTS_DIR=""
-DATASETS_FILE=""
+RESULTS_DIR="results"
+DATASETS_FILE="datasets.json"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --benchmark-id)
             BENCHMARK_ID="$2"
-            shift 2
-            ;;
-        --results-dir)
-            RESULTS_DIR="$2"
-            shift 2
-            ;;
-        --datasets-file)
-            DATASETS_FILE="$2"
             shift 2
             ;;
         *)
@@ -27,8 +19,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ -z "$BENCHMARK_ID" ] || [ -z "$RESULTS_DIR" ] || [ -z "$DATASETS_FILE" ]; then
-    echo "Usage: $0 --benchmark-id <id> --results-dir <dir> --datasets-file <file>"
+if [ -z "$BENCHMARK_ID" ]; then
+    echo "Usage: $0 --benchmark-id <id>"
     exit 1
 fi
 
@@ -36,8 +28,13 @@ SWEEP_RESULTS_DIR="$RESULTS_DIR/$BENCHMARK_ID"
 PARETO_DATA_DIR="$RESULTS_DIR/pareto_data/$BENCHMARK_ID"
 PLOTS_DIR="$RESULTS_DIR/plots/$BENCHMARK_ID"
 
-if [ ! -d "$SWEEP_RESULTS_DIR" ] || [ ! -f "$DATASETS_FILE" ]; then
-    echo "Error: Required directories/files not found"
+if [ ! -d "$SWEEP_RESULTS_DIR" ]; then
+    echo "Error: Sweep results directory not found: $SWEEP_RESULTS_DIR"
+    exit 1
+fi
+
+if [ ! -f "$DATASETS_FILE" ]; then
+    echo "Error: Datasets file not found: $DATASETS_FILE"
     exit 1
 fi
 
@@ -61,12 +58,9 @@ mkdir -p "$PLOTS_DIR"
 for dataset_dir in $DETECTED_DATASETS; do
     echo "Processing dataset: $dataset_dir"
     
-    # Map dataset names
-    case "$dataset_dir" in
-        "wiki10m") dataset_name="wiki-10m" ;;
-        "sift-1m") dataset_name="sift-1m" ;;
-        *) dataset_name="$dataset_dir" ;;
-    esac
+    # Use datasets.json to map dataset directory names to canonical names
+    dataset_name=$(jq -r --arg dir "$dataset_dir" '.datasets | to_entries[] | select(.key == $dir or (.key | gsub("-"; "") == ($dir | gsub("-"; "")))) | .key' "$DATASETS_FILE" 2>/dev/null)
+    dataset_name=${dataset_name:-$dataset_dir}
     
     dataset_results_dir="$SWEEP_RESULTS_DIR/$dataset_dir"
     if [ ! -d "$dataset_results_dir" ]; then
@@ -108,7 +102,7 @@ for dataset_dir in $DETECTED_DATASETS; do
             echo "  Parameters: k=$k, n_queries=$n_queries"
             
             # Save metadata
-            jq -n --arg k "$k" --arg n_queries "$n_queries" --arg dataset "$dataset" --arg dataset_dir "$dataset_dir" \
+            jq -n --arg k "$k" --arg n_queries "$n_queries" --arg dataset "$dataset_name" --arg dataset_dir "$dataset_dir" \
                 '{dataset: $dataset, dataset_dir: $dataset_dir, k: ($k | tonumber), n_queries: ($n_queries | tonumber), generated_at: now}' \
                 > "$dataset_pareto_dir/metadata.json"
             

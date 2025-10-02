@@ -619,18 +619,38 @@ class BenchmarkDashboard {
         // Convert dataset name to directory format
         let datasetDir = selectedDataset.toLowerCase().replace(/\s+/g, '-');
         
-        // Handle special dataset name mappings
-        if (datasetDir === 'wiki-10m') {
-            datasetDir = 'wiki10m';
-        }
+        // Use datasets.json to map dataset names to directory names
+        // This will be handled dynamically when loading metadata
         
         this.loadParetoMetadata(sweep.id, datasetDir, selectedDataset, chartContainer);
     }
 
     async loadParetoMetadata(sweepId, datasetDir, selectedDataset, chartContainer) {
         try {
-            const metadataPath = 'results/pareto_data/' + sweepId + '/' + datasetDir + '/metadata.json';
-            const response = await fetch(metadataPath);
+            // Try to find metadata.json by checking both datasetDir and canonical dataset name
+            let metadataPath = 'results/pareto_data/' + sweepId + '/' + datasetDir + '/metadata.json';
+            let response = await fetch(metadataPath);
+            
+            // If not found, try with canonical dataset name from datasets.json
+            if (!response.ok) {
+                try {
+                    const datasetsResponse = await fetch('datasets.json');
+                    if (datasetsResponse.ok) {
+                        const datasets = await datasetsResponse.json();
+                        const canonicalName = Object.keys(datasets.datasets).find(name => 
+                            name === datasetDir || 
+                            name.replace(/-/g, '') === datasetDir.replace(/-/g, '') ||
+                            datasetDir.replace(/-/g, '') === name.replace(/-/g, '')
+                        );
+                        if (canonicalName) {
+                            metadataPath = 'results/pareto_data/' + sweepId + '/' + canonicalName + '/metadata.json';
+                            response = await fetch(metadataPath);
+                        }
+                    }
+                } catch (e) {
+                    // Ignore datasets.json fetch errors
+                }
+            }
             
             if (!response.ok) {
                 throw new Error('Metadata not found');

@@ -188,11 +188,11 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
     echo "Generating Pareto analysis plots"
     echo "========================================="
     
-    if ./generate_pareto_analysis.sh --benchmark-id "$BENCHMARKID" --results-dir "$(dirname "$RESULTS_DIR")" --datasets-file "$DATASETS_FILE"; then
-        echo "✓ Pareto analysis completed successfully"
-        echo "Plots saved to: $(dirname "$RESULTS_DIR")/plots/$BENCHMARKID"
+    if ./generate_pareto_analysis.sh --benchmark-id "$BENCHMARKID"; then
+        echo "Pareto analysis completed successfully"
+        echo "Plots saved to: results/plots/$BENCHMARKID"
     else
-        echo "✗ Pareto analysis failed (check logs above)"
+        echo "Pareto analysis failed (check logs above)"
     fi
     
     # Update sweeps-list.json in the parent results directory
