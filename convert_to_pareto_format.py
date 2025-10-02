@@ -135,7 +135,7 @@ def create_index_name(config: Dict) -> str:
 
 def convert_results(input_dir: str, output_dir: str, dataset_name: str, 
                    json_filename: str = "detailed_results.json", 
-                   k: int = None, batch_size: int = None,
+                   k: int = None, n_queries: int = None,
                    datasets_file: str = "datasets.json") -> Tuple[List[str], List[str]]:
     
     # Load datasets configuration
@@ -170,18 +170,18 @@ def convert_results(input_dir: str, output_dir: str, dataset_name: str,
     if algorithms_found:
         print(f"Algorithms found: {', '.join(sorted(algorithms_found))}")
     
-    # Extract k and batch_size from the first file if not provided
-    if k is None or batch_size is None:
+    # Extract k and n_queries from the first file if not provided
+    if k is None or n_queries is None:
         first_file = json_files[0]
         sample_metrics = extract_metrics_from_json(first_file, datasets_config)
         if sample_metrics and 'config' in sample_metrics:
             config = sample_metrics['config']
             if k is None:
                 k = config.get('topK', 10)
-            if batch_size is None:
-                batch_size = config.get('numQueriesToRun', 10000)
+            if n_queries is None:
+                n_queries = config.get('numQueriesToRun', 10000)
 
-        print(f"Using k={k}, batch_size={batch_size} from data")
+        print(f"Using k={k}, n_queries={n_queries} from data")
         
         # Validate that all files have the same parameters
         for json_file in json_files[1:]:
@@ -189,12 +189,12 @@ def convert_results(input_dir: str, output_dir: str, dataset_name: str,
             if metrics and 'config' in metrics:
                 config = metrics['config']
                 file_k = config.get('topK', 10)
-                file_batch_size = config.get('numQueriesToRun', 10000)
+                file_n_queries = config.get('numQueriesToRun', 10000)
                 
-                if file_k != k or file_batch_size != batch_size:
+                if file_k != k or file_n_queries != n_queries:
                     print(f"Warning: Parameter mismatch in {json_file}")
-                    print(f"  Expected: k={k}, batch_size={batch_size}")
-                    print(f"  Found: k={file_k}, batch_size={file_batch_size}")
+                    print(f"  Expected: k={k}, n_queries={n_queries}")
+                    print(f"  Found: k={file_k}, n_queries={file_n_queries}")
                     print("  Using the first file's parameters")
     
     # Create output directories
@@ -257,7 +257,7 @@ def convert_results(input_dir: str, output_dir: str, dataset_name: str,
             
             # Generate frontier for throughput
             throughput_frontier = get_frontier(df, 'throughput')
-            filename = f"{algorithm},base,k{k},bs{batch_size},throughput.csv"
+            filename = f"{algorithm},base,k{k},bs{n_queries},throughput.csv"
             filepath = os.path.join(search_dir, filename)
             throughput_frontier.to_csv(filepath, index=False)
             search_files.append(filename)
@@ -265,7 +265,7 @@ def convert_results(input_dir: str, output_dir: str, dataset_name: str,
             
             # Generate frontier for latency
             latency_frontier = get_frontier(df, 'latency')
-            latency_filename = f"{algorithm},base,k{k},bs{batch_size},latency.csv"
+            latency_filename = f"{algorithm},base,k{k},bs{n_queries},latency.csv"
             latency_filepath = os.path.join(search_dir, latency_filename)
             latency_frontier.to_csv(latency_filepath, index=False)
             search_files.append(latency_filename)
@@ -305,7 +305,7 @@ def main():
     parser.add_argument('--dataset-name', required=True, help='Dataset name')
     parser.add_argument('--json-filename', default='results.json', help='JSON filename to look for')
     parser.add_argument('--k', type=int, help='Top-K value (auto-detected if not provided)')
-    parser.add_argument('--batch-size', type=int, help='Batch size (auto-detected if not provided)')
+    parser.add_argument('--n-queries', type=int, help='Number of queries (auto-detected if not provided)')
     parser.add_argument('--datasets-file', default='datasets.json', help='Path to datasets.json file')
     
     args = parser.parse_args()
@@ -320,7 +320,7 @@ def main():
         args.dataset_name, 
         args.json_filename,
         args.k,
-        args.batch_size,
+        args.n_queries,
         args.datasets_file
     )
     

@@ -110,7 +110,7 @@ def create_plot_search(
     linestyles,
     dataset,
     k,
-    batch_size,
+    n_queries,
     mode,
     time_unit,
     x_start,
@@ -182,7 +182,7 @@ def create_plot_search(
     else:
         ax.set_xscale(x_scale)
     ax.set_yscale(y_scale)
-    ax.set_title(f"{dataset} k={k} batch_size={batch_size}")
+    ax.set_title(f"{dataset} k={k} n_queries={n_queries}")
     plt.gca().get_position()
     # plt.gca().set_position([box.x0, box.y0, box.width * 0.8, box.height])
     ax.legend(
@@ -213,7 +213,7 @@ def create_plot_search(
 
 
 def create_plot_build(
-    build_results, search_results, linestyles, fn_out, dataset, k, batch_size
+    build_results, search_results, linestyles, fn_out, dataset, k, n_queries
 ):
     bt_80 = [0] * len(linestyles)
     bt_90 = [0] * len(linestyles)
@@ -297,7 +297,7 @@ def create_plot_build(
     print(f"writing build output to {fn_out}")
     plt.title(
         "Average Build Time within Recall Range "
-        f"for k={k} batch_size={batch_size}"
+        f"for k={k} n_queries={n_queries}"
     )
     plt.suptitle(f"{dataset}")
     plt.ylabel("Build Time (s)")
@@ -360,7 +360,7 @@ def load_all_results(
     groups,
     algo_groups,
     k,
-    batch_size,
+    n_queries,
     method,
     index_key,
     raw,
@@ -394,7 +394,7 @@ def load_all_results(
             filename_split = result_filename.split(",")
             if (
                 int(filename_split[-3][1:]) == k
-                and int(filename_split[-2][2:]) == batch_size
+                and int(filename_split[-2][2:]) == n_queries
             ):
                 filter_k_bs.append(result_filename)
         result_files = filter_k_bs
@@ -480,7 +480,7 @@ def load_all_results(
 )
 @click.option(
     "-bs",
-    "--batch-size",
+    "--n-queries",
     default=10000,
     type=positive_int,
     help="Number of query vectors to use in each query trial.",
@@ -533,7 +533,7 @@ def main(
     groups: str,
     algo_groups: str,
     count: int,
-    batch_size: int,
+    n_queries: int,
     build: bool,
     search: bool,
     x_scale: str,
@@ -556,7 +556,7 @@ def main(
     else:
         algo_groups = []
     k = args["count"]
-    batch_size = args["batch_size"]
+    n_queries = args["n_queries"]
     if not args["build"] and not args["search"]:
         build = True
         search = True
@@ -566,11 +566,11 @@ def main(
 
     search_output_filepath = os.path.join(
         args["output_filepath"],
-        f"search-{args['dataset']}-k{k}-batch_size{batch_size}.png",
+        f"search-{args['dataset']}-k{k}-n_queries{n_queries}.png",
     )
     build_output_filepath = os.path.join(
         args["output_filepath"],
-        f"build-{args['dataset']}-k{k}-batch_size{batch_size}.png",
+        f"build-{args['dataset']}-k{k}-n_queries{n_queries}.png",
     )
 
     search_results = load_all_results(
@@ -579,7 +579,7 @@ def main(
         groups,
         algo_groups,
         k,
-        batch_size,
+        n_queries,
         "search",
         "algo",
         args["raw"],
@@ -596,7 +596,7 @@ def main(
             linestyles,
             args["dataset"],
             k,
-            batch_size,
+            n_queries,
             args["mode"],
             args["time_unit"],
             args["x_start"],
@@ -608,7 +608,7 @@ def main(
             groups,
             algo_groups,
             k,
-            batch_size,
+            n_queries,
             "build",
             "index",
             args["raw"],
@@ -622,7 +622,7 @@ def main(
             build_output_filepath,
             args["dataset"],
             k,
-            batch_size,
+            n_queries,
         )
 
 

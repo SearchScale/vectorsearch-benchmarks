@@ -103,13 +103,13 @@ for dataset_dir in $DETECTED_DATASETS; do
         first_result=$(find "$dataset_results_dir" -name "results.json" | head -1)
         if [ -f "$first_result" ]; then
             k=$(jq -r '.configuration.topK' "$first_result")
-            batch_size=$(jq -r '.configuration.numQueriesToRun' "$first_result")
+            n_queries=$(jq -r '.configuration.numQueriesToRun' "$first_result")
             
-            echo "  Parameters: k=$k, batch_size=$batch_size"
+            echo "  Parameters: k=$k, n_queries=$n_queries"
             
             # Save metadata
-            jq -n --arg k "$k" --arg batch_size "$batch_size" --arg dataset "$dataset" --arg dataset_dir "$dataset_dir" \
-                '{dataset: $dataset, dataset_dir: $dataset_dir, k: ($k | tonumber), batch_size: ($batch_size | tonumber), generated_at: now}' \
+            jq -n --arg k "$k" --arg n_queries "$n_queries" --arg dataset "$dataset" --arg dataset_dir "$dataset_dir" \
+                '{dataset: $dataset, dataset_dir: $dataset_dir, k: ($k | tonumber), n_queries: ($n_queries | tonumber), generated_at: now}' \
                 > "$dataset_pareto_dir/metadata.json"
             
             echo "  Generating Pareto plots..."
@@ -117,15 +117,15 @@ for dataset_dir in $DETECTED_DATASETS; do
             # Generate plots
             python3 plot_pareto.py --dataset "$dataset_dir" --dataset-path "$PARETO_DATA_DIR" \
                 --output-filepath "$dataset_plots_dir/latency" --mode latency --time-unit ms \
-                --search --count "$k" --batch-size "$batch_size" --x-start 0.8 && echo "  Latency plot generated"
+                --search --count "$k" --n-queries "$n_queries" --x-start 0.8 && echo "  Latency plot generated"
             
             python3 plot_pareto.py --dataset "$dataset_dir" --dataset-path "$PARETO_DATA_DIR" \
                 --output-filepath "$dataset_plots_dir/throughput" --mode throughput \
-                --search --count "$k" --batch-size "$batch_size" --x-start 0.8 && echo "  Throughput plot generated"
+                --search --count "$k" --n-queries "$n_queries" --x-start 0.8 && echo "  Throughput plot generated"
             
             python3 plot_pareto.py --dataset "$dataset_dir" --dataset-path "$PARETO_DATA_DIR" \
                 --output-filepath "$dataset_plots_dir/build_time" --build \
-                --count "$k" --batch-size "$batch_size" && echo "  Build time plot generated"
+                --count "$k" --n-queries "$n_queries" && echo "  Build time plot generated"
             
         else
             echo "  No result files found for parameter extraction"

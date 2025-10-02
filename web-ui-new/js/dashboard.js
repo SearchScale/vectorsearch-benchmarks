@@ -643,7 +643,7 @@ class BenchmarkDashboard {
             console.warn('Could not load metadata, using fallback:', error);
             this.renderParetoPlotsWithMetadata(sweepId, datasetDir, selectedDataset, {
                 k: 100,
-                batch_size: 500
+                n_queries: 500
             }, chartContainer);
         }
     }
@@ -651,13 +651,13 @@ class BenchmarkDashboard {
     renderParetoPlotsWithMetadata(sweepId, datasetDir, selectedDataset, metadata, chartContainer) {
         const plotsPath = 'results/plots/' + sweepId;
         const k = metadata.k || 100;
-        const batchSize = metadata.batch_size || 500;
+        const n_queries = metadata.n_queries || 500;
         
         
         // Create plot display HTML
         let plotsHtml = '<div style="margin-bottom: 20px;">';
         plotsHtml += '<h3 style="color: #2c3e50; margin-bottom: 15px;">Pareto Analysis Plots - ' + selectedDataset + '</h3>';
-        plotsHtml += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Parameters: k=' + k + ', batch_size=' + batchSize + '</p>';
+        plotsHtml += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Parameters: k=' + k + ', n_queries=' + n_queries + '</p>';
         plotsHtml += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">';
         
         const plotTypes = [
@@ -674,8 +674,8 @@ class BenchmarkDashboard {
             plotsHtml += '<div style="margin-bottom: 10px;">';
             
             var filename = plotType.file === 'build_time' ? 
-                'build-' + datasetDir + '-k' + k + '-batch_size' + batchSize + '.png' : 
-                'search-' + datasetDir + '-k' + k + '-batch_size' + batchSize + '.png';
+                'build-' + datasetDir + '-k' + k + '-n_queries' + n_queries + '.png' : 
+                'search-' + datasetDir + '-k' + k + '-n_queries' + n_queries + '.png';
             
             plotsHtml += '<img src="' + plotsPath + '/' + plotType.file + '/' + filename + '?v=' + Date.now() + '" ';
             plotsHtml += 'alt="' + plotType.name + '" ';
