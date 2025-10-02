@@ -677,7 +677,7 @@ class BenchmarkDashboard {
                 'build-' + datasetDir + '-k' + k + '-batch_size' + batchSize + '.png' : 
                 'search-' + datasetDir + '-k' + k + '-batch_size' + batchSize + '.png';
             
-            plotsHtml += '<img src="' + plotsPath + '/' + plotType.file + '/' + filename + '" ';
+            plotsHtml += '<img src="' + plotsPath + '/' + plotType.file + '/' + filename + '?v=' + Date.now() + '" ';
             plotsHtml += 'alt="' + plotType.name + '" ';
             plotsHtml += 'style="max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px;" ';
             plotsHtml += 'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';">';

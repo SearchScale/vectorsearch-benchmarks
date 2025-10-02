@@ -85,6 +85,7 @@ for dataset_dir in $DETECTED_DATASETS; do
     
     dataset_pareto_dir="$PARETO_DATA_DIR/$dataset_dir"
     dataset_plots_dir="$PLOTS_DIR"
+    mkdir -p "$dataset_plots_dir/latency" "$dataset_plots_dir/throughput" "$dataset_plots_dir/build_time"
     
     echo "  Converting JSON results to CSV format..."
     
@@ -114,15 +115,15 @@ for dataset_dir in $DETECTED_DATASETS; do
             echo "  Generating Pareto plots..."
             
             # Generate plots
-            python3 plot_pareto.py --dataset "$dataset_dir" --dataset-path "$dataset_pareto_dir" \
+            python3 plot_pareto.py --dataset "$dataset_dir" --dataset-path "$PARETO_DATA_DIR" \
                 --output-filepath "$dataset_plots_dir/latency" --mode latency --time-unit ms \
                 --search --count "$k" --batch-size "$batch_size" --x-start 0.8 && echo "  Latency plot generated"
             
-            python3 plot_pareto.py --dataset "$dataset_dir" --dataset-path "$dataset_pareto_dir" \
+            python3 plot_pareto.py --dataset "$dataset_dir" --dataset-path "$PARETO_DATA_DIR" \
                 --output-filepath "$dataset_plots_dir/throughput" --mode throughput \
                 --search --count "$k" --batch-size "$batch_size" --x-start 0.8 && echo "  Throughput plot generated"
             
-            python3 plot_pareto.py --dataset "$dataset_dir" --dataset-path "$dataset_pareto_dir" \
+            python3 plot_pareto.py --dataset "$dataset_dir" --dataset-path "$PARETO_DATA_DIR" \
                 --output-filepath "$dataset_plots_dir/build_time" --build \
                 --count "$k" --batch-size "$batch_size" && echo "  Build time plot generated"
             

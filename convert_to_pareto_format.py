@@ -4,7 +4,44 @@ import os
 import json
 import csv
 import argparse
+import pandas as pd
 from typing import List, Dict, Optional, Tuple
+
+metrics = {
+    "k-nn": {"worst": float("-inf")},
+    "throughput": {"worst": float("-inf")},
+    "latency": {"worst": float("inf")},
+}
+
+
+def create_pointset(data, xn, yn):
+    xm, ym = metrics[xn], metrics[yn]
+    y_col = 4 if yn == "latency" else 3
+
+    rev_x = -1 if xm["worst"] < 0 else 1
+    rev_y = -1 if ym["worst"] < 0 else 1
+
+    data.sort(key=lambda t: (rev_y * t[y_col], rev_x * t[2]))
+    lines = []
+    last_x = xm["worst"]
+    comparator = (lambda xv, lx: xv > lx) if last_x < 0 else (lambda xv, lx: xv < lx)
+
+    for d in data:
+        if comparator(d[2], last_x):
+            last_x = d[2]
+            lines.append(d)
+    return lines
+
+
+def get_frontier(df, metric):
+    lines = create_pointset(df.values.tolist(), "k-nn", metric)
+    frontier_indices = []
+    for line in lines:
+        for i, row in enumerate(df.values.tolist()):
+            if row == line:
+                frontier_indices.append(i)
+                break
+    return df.iloc[frontier_indices]
 
 
 def find_json_files(input_dir: str, json_filename: str = "detailed_results.json") -> List[str]:
@@ -202,7 +239,7 @@ def convert_results(input_dir: str, output_dir: str, dataset_name: str,
                     'build_time': metrics['build_time']
                 })
     
-    # Write search CSV files
+    # Write search CSV files with frontier filtering
     search_files = []
     if search_data:
         algorithms = list(set(item['algorithm'] for item in search_data))
@@ -210,33 +247,29 @@ def convert_results(input_dir: str, output_dir: str, dataset_name: str,
         for algorithm in algorithms:
             algorithm_data = [item for item in search_data if item['algorithm'] == algorithm]
             
-            # Write throughput file
+            # Convert to DataFrame for frontier calculation
+            df_data = []
+            for item in algorithm_data:
+                df_data.append([item['algorithm'], item['index_name'], 
+                               item['recall'], item['throughput'], item['latency']])
+            
+            df = pd.DataFrame(df_data, columns=['algorithm', 'index_name', 'recall', 'throughput', 'latency'])
+            
+            # Generate frontier for throughput
+            throughput_frontier = get_frontier(df, 'throughput')
             filename = f"{algorithm},base,k{k},bs{batch_size},throughput.csv"
             filepath = os.path.join(search_dir, filename)
-            
-            with open(filepath, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['algorithm', 'index_name', 'recall', 'throughput', 'latency'])
-                for item in algorithm_data:
-                    writer.writerow([item['algorithm'], item['index_name'], 
-                                   f"{item['recall']:.6f}", f"{item['throughput']:.6f}", f"{item['latency']:.6f}"])
-            
+            throughput_frontier.to_csv(filepath, index=False)
             search_files.append(filename)
-            print(f"Created search file: {filepath}")
+            print(f"Created throughput frontier: {filepath}")
             
-            # Write latency file (with same 5-column format as throughput)
+            # Generate frontier for latency
+            latency_frontier = get_frontier(df, 'latency')
             latency_filename = f"{algorithm},base,k{k},bs{batch_size},latency.csv"
             latency_filepath = os.path.join(search_dir, latency_filename)
-            
-            with open(latency_filepath, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(['algorithm', 'index_name', 'recall', 'throughput', 'latency'])
-                for item in algorithm_data:
-                    writer.writerow([item['algorithm'], item['index_name'], 
-                                   f"{item['recall']:.6f}", f"{item['throughput']:.6f}", f"{item['latency']:.6f}"])
-            
+            latency_frontier.to_csv(latency_filepath, index=False)
             search_files.append(latency_filename)
-            print(f"Created search file: {latency_filepath}")
+            print(f"Created latency frontier: {latency_filepath}")
     
     # Write build CSV files
     build_files = []
