@@ -35,13 +35,7 @@ def create_pointset(data, xn, yn):
 
 def get_frontier(df, metric):
     lines = create_pointset(df.values.tolist(), "k-nn", metric)
-    frontier_indices = []
-    for line in lines:
-        for i, row in enumerate(df.values.tolist()):
-            if row == line:
-                frontier_indices.append(i)
-                break
-    return df.iloc[frontier_indices]
+    return pd.DataFrame(lines, columns=df.columns)
 
 
 def find_json_files(input_dir: str, json_filename: str = "detailed_results.json") -> List[str]:
