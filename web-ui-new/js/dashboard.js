@@ -139,7 +139,14 @@ class BenchmarkDashboard {
         const runs = [];
         for (const config of configs) {
             try {
-                const resultsResponse = await fetch(`/results/${sweepId}/${config}/results.json`);
+                // Try the config path as-is first (for sweeps like AzSZGn)
+                let resultsResponse = await fetch(`/results/${sweepId}/${config}/results.json`);
+                
+                // If that fails, try with dataset prefix (for sweeps like 3cNWY5)
+                if (!resultsResponse.ok) {
+                    resultsResponse = await fetch(`/results/${sweepId}/${config}/results.json`);
+                }
+                
                 if (!resultsResponse.ok) {
                     console.warn(`Failed to load results for ${config}`);
                     continue;
@@ -575,7 +582,6 @@ class BenchmarkDashboard {
     }
 
     renderSpeedupAnalysis(sweep) {
-        const ctx = document.getElementById('speedup-chart').getContext('2d');
         const chartContainer = document.querySelector('.speedup-chart');
         const messageContainer = document.getElementById('pareto-message');
         
@@ -596,134 +602,118 @@ class BenchmarkDashboard {
         chartContainer.style.display = 'block';
         messageContainer.style.display = 'none';
 
-        // Pareto analysis: Find best runs at specific recall levels
-        const recallLevels = [90, 95, 99];
-        const algorithms = ['CAGRA_HNSW', 'LUCENE_HNSW'];
+        this.renderNewParetoPlots(sweep);
+    }
+
+    renderNewParetoPlots(sweep) {
+        const chartContainer = document.querySelector('.speedup-chart');
         
-        // For each recall level and algorithm, find the run with best indexing time
-        // that meets the recall threshold
-        const paretoData = this.calculateParetoData(sweep.runs, recallLevels, algorithms);
-        console.log('Pareto data calculated:', paretoData);
-        
-        // Only show recall levels where at least one algorithm has data
-        const validRecallLevels = [];
-        const validLabels = [];
-        const validData = algorithms.map(algo => []);
-        const multipliers = [];
-        
-        recallLevels.forEach(level => {
-            const levelData = paretoData[level];
-            const hasData = algorithms.some(algo => levelData[algo] !== null);
-            
-            if (hasData) {
-                validRecallLevels.push(level);
-                validLabels.push(`${level}% Recall`);
-                
-                algorithms.forEach((algo, algoIndex) => {
-                    const runData = levelData[algo];
-                    validData[algoIndex].push(runData ? runData.indexingTime : null);
-                });
-                
-                // Calculate multiplier improvement (LUCENE time / CAGRA time)
-                const cagraTime = levelData['CAGRA_HNSW']?.indexingTime;
-                const luceneTime = levelData['LUCENE_HNSW']?.indexingTime;
-                if (cagraTime && luceneTime) {
-                    multipliers.push((luceneTime / cagraTime).toFixed(1));
-                } else {
-                    multipliers.push(null);
-                }
-            }
-        });
-        
-        // If no valid recall levels, show empty chart
-        if (validRecallLevels.length === 0) {
-            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-            ctx.font = '16px Arial';
-            ctx.fillStyle = '#666';
-            ctx.textAlign = 'center';
-            ctx.fillText('No comparable data available', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        // Get selected dataset
+        const datasetFilter = document.getElementById('sweep-dataset-filter');
+        const selectedDataset = datasetFilter ? datasetFilter.value : null;
+        if (!selectedDataset) {
+            chartContainer.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">No dataset selected</div>';
             return;
         }
-        
-        const data = {
-            labels: validLabels,
-            datasets: algorithms.map((algo, index) => ({
-                label: algo.replace('_HNSW', ''),
-                data: validData[index],
-                backgroundColor: algo === 'CAGRA_HNSW' ? '#4caf50' : '#ff9800',
-                borderColor: algo === 'CAGRA_HNSW' ? '#388e3c' : '#f57c00',
-                borderWidth: 2
-            }))
-        };
 
-        this.charts.speedup = new Chart(ctx, {
-            type: 'bar',
-            data: data,
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Best Indexing Times by Recall Level (Pareto Analysis)'
-                    },
-                    legend: {
-                        display: true,
-                        position: 'top'
-                    },
-                    tooltip: {
-                        callbacks: {
-                            afterLabel: function(context) {
-                                const multiplier = multipliers[context.dataIndex];
-                                if (multiplier && context.datasetIndex === 0) { // Show on CAGRA bars
-                                    return `Speedup: ${multiplier}x`;
-                                }
-                                return '';
-                            }
-                        }
-                    },
-                    datalabels: {
-                        display: function(context) {
-                            // Only show speedup labels on CAGRA bars when both algorithms have data
-                            if (context.datasetIndex === 0) { // CAGRA dataset
-                                const multiplier = multipliers[context.dataIndex];
-                                return multiplier !== null;
-                            }
-                            return false;
-                        },
-                        anchor: 'end',
-                        align: 'top',
-                        color: '#333',
-                        backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                        borderColor: '#333',
-                        borderWidth: 1,
-                        borderRadius: 4,
-                        padding: 4,
-                        font: {
-                            weight: 'bold',
-                            size: 11
-                        },
-                        formatter: function(value, context) {
-                            const multiplier = multipliers[context.dataIndex];
-                            if (multiplier) {
-                                return `${multiplier}x faster`;
-                            }
-                            return '';
+        // Convert dataset name to directory format
+        let datasetDir = selectedDataset.toLowerCase().replace(/\s+/g, '-');
+        
+        // Use datasets.json to map dataset names to directory names
+        // This will be handled dynamically when loading metadata
+        
+        this.loadParetoMetadata(sweep.id, datasetDir, selectedDataset, chartContainer);
+    }
+
+    async loadParetoMetadata(sweepId, datasetDir, selectedDataset, chartContainer) {
+        try {
+            // Try to find metadata.json by checking both datasetDir and canonical dataset name
+            let metadataPath = 'results/pareto_data/' + sweepId + '/' + datasetDir + '/metadata.json';
+            let response = await fetch(metadataPath);
+            
+            // If not found, try with canonical dataset name from datasets.json
+            if (!response.ok) {
+                try {
+                    const datasetsResponse = await fetch('datasets.json');
+                    if (datasetsResponse.ok) {
+                        const datasets = await datasetsResponse.json();
+                        const canonicalName = Object.keys(datasets.datasets).find(name => 
+                            name === datasetDir || 
+                            name.replace(/-/g, '') === datasetDir.replace(/-/g, '') ||
+                            datasetDir.replace(/-/g, '') === name.replace(/-/g, '')
+                        );
+                        if (canonicalName) {
+                            metadataPath = 'results/pareto_data/' + sweepId + '/' + canonicalName + '/metadata.json';
+                            response = await fetch(metadataPath);
                         }
                     }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: 'Indexing Time (seconds)'
-                        }
-                    }
+                } catch (e) {
+                    // Ignore datasets.json fetch errors
                 }
             }
-        });
+            
+            if (!response.ok) {
+                throw new Error('Metadata not found');
+            }
+            
+            const metadata = await response.json();
+            this.renderParetoPlotsWithMetadata(sweepId, datasetDir, selectedDataset, metadata, chartContainer);
+            
+        } catch (error) {
+            console.warn('Could not load metadata, using fallback:', error);
+            this.renderParetoPlotsWithMetadata(sweepId, datasetDir, selectedDataset, {
+                k: 100,
+                n_queries: 500
+            }, chartContainer);
+        }
     }
-    
+
+    renderParetoPlotsWithMetadata(sweepId, datasetDir, selectedDataset, metadata, chartContainer) {
+        const plotsPath = 'results/plots/' + sweepId;
+        const k = metadata.k || 100;
+        const n_queries = metadata.n_queries || 500;
+        
+        
+        // Create plot display HTML
+        let plotsHtml = '<div style="margin-bottom: 20px;">';
+        plotsHtml += '<h3 style="color: #2c3e50; margin-bottom: 15px;">Pareto Analysis Plots - ' + selectedDataset + '</h3>';
+        plotsHtml += '<p style="color: #666; font-size: 0.9em; margin-bottom: 15px;">Parameters: k=' + k + ', n_queries=' + n_queries + '</p>';
+        plotsHtml += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">';
+        
+        const plotTypes = [
+            { name: 'Latency vs Recall', file: 'latency', description: 'Search latency performance' },
+            { name: 'Throughput vs Recall', file: 'throughput', description: 'Queries per second performance' },
+            { name: 'Build Time Analysis', file: 'build_time', description: 'Index build time with speedup annotations' }
+        ];
+        
+        for (var i = 0; i < plotTypes.length; i++) {
+            var plotType = plotTypes[i];
+            plotsHtml += '<div style="text-align: center; padding: 15px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;">';
+            plotsHtml += '<h4 style="margin: 0 0 10px 0; color: #555;">' + plotType.name + '</h4>';
+            plotsHtml += '<p style="margin: 0 0 15px 0; color: #666; font-size: 0.9em;">' + plotType.description + '</p>';
+            plotsHtml += '<div style="margin-bottom: 10px;">';
+            
+            var filename = plotType.file === 'build_time' ? 
+                'build-' + datasetDir + '-k' + k + '-n_queries' + n_queries + '.png' : 
+                'search-' + datasetDir + '-k' + k + '-n_queries' + n_queries + '.png';
+            
+            plotsHtml += '<img src="' + plotsPath + '/' + plotType.file + '/' + filename + '?v=' + Date.now() + '" ';
+            plotsHtml += 'alt="' + plotType.name + '" ';
+            plotsHtml += 'style="max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px;" ';
+            plotsHtml += 'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';">';
+            plotsHtml += '<div style="display: none; color: #999; font-style: italic;">Plot not available</div>';
+            plotsHtml += '</div>';
+            plotsHtml += '<a href="' + plotsPath + '/' + plotType.file + '/" target="_blank" ';
+            plotsHtml += 'style="color: #3498db; text-decoration: none; font-weight: bold;">';
+            plotsHtml += 'View Full Plot</a>';
+            plotsHtml += '</div>';
+        }
+        
+        plotsHtml += '</div></div>';
+        
+        chartContainer.innerHTML = plotsHtml;
+    }
+
     calculateParetoData(runs, recallLevels, algorithms) {
         const paretoData = {};
         
@@ -763,8 +753,10 @@ class BenchmarkDashboard {
     
     shouldShowParetoAnalysis(sweep) {
         // Check filter selections
-        const selectedDataset = document.getElementById('sweep-dataset-filter')?.value;
-        const selectedAlgorithm = document.getElementById('sweep-algorithm-filter')?.value || 'all';
+        const datasetFilter = document.getElementById('sweep-dataset-filter');
+        const algorithmFilter = document.getElementById('sweep-algorithm-filter');
+        const selectedDataset = datasetFilter ? datasetFilter.value : null;
+        const selectedAlgorithm = algorithmFilter ? algorithmFilter.value : 'all';
         
         // Only show when "all algorithms" is selected
         if (selectedAlgorithm !== 'all') {
@@ -863,8 +855,10 @@ class BenchmarkDashboard {
         // Re-render the table with current sweep data
         if (this.currentSweep) {
             // Apply current filters
-            const selectedDataset = document.getElementById('sweep-dataset-filter')?.value;
-            const selectedAlgorithm = document.getElementById('sweep-algorithm-filter')?.value || 'all';
+            const datasetFilter = document.getElementById('sweep-dataset-filter');
+            const algorithmFilter = document.getElementById('sweep-algorithm-filter');
+            const selectedDataset = datasetFilter ? datasetFilter.value : null;
+            const selectedAlgorithm = algorithmFilter ? algorithmFilter.value : 'all';
             
             const filteredRuns = this.currentSweep.runs.filter(run => {
                 const datasetMatch = run.dataset === selectedDataset;
