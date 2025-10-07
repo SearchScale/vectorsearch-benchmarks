@@ -176,13 +176,20 @@ def main():
     print(f"Average Recall@{args.top_k}: {avg_recall:.2f}%")
     print(f"Mean Latency: {mean_latency:.2f}ms")
     
-    # Create results.json file with metrics
-    results = {
-        "metrics": {
-            "recall-accuracy": avg_recall,
-            "mean-latency": mean_latency
-        }
-    }
+    # Read existing results file if it exists, otherwise create new structure
+    try:
+        with open(args.output_file, "r") as f:
+            results = json.load(f)
+    except FileNotFoundError:
+        results = {}
+    
+    # Ensure metrics section exists
+    if "metrics" not in results:
+        results["metrics"] = {}
+    
+    # Add the new metrics
+    results["metrics"]["recall-accuracy"] = avg_recall
+    results["metrics"]["mean-latency"] = mean_latency
     
     # Save results to output file
     with open(args.output_file, "w") as f:

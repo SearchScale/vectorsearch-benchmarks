@@ -31,7 +31,22 @@
         ],
         "cuvsWriterThreads": 8,
         "cagraHnswLayers": 1
+      },
+      "hnsw": {
+        "hnswMaxConn": [
+          16,
+          32,
+          64,
+          128
+        ],
+        "hnswBeamWidth": [
+          64,
+          128,
+          192,
+          256
+        ]
       }
     }
+
   }
 }

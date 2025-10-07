@@ -146,7 +146,13 @@ fi
 # Use the javabin file generator to generate javabin files
 rm -rf $JAVABIN_FILES_DIR
 if [ ! -d "$JAVABIN_FILES_DIR" ]; then
-	  time java -jar $JFG_DIR/target/javabin-generator-1.0-SNAPSHOT-jar-with-dependencies.jar data_file=$DATASET_FILE output_dir=$JAVABIN_FILES_DIR batch_size=$BATCH_SIZE docs_count=$DOCS_COUNT threads=all
+	  javabin_start_time=$(date +%s%N) # Record start time in nanoseconds
+	  java -jar $JFG_DIR/target/javabin-generator-1.0-SNAPSHOT-jar-with-dependencies.jar data_file=$DATASET_FILE output_dir=$JAVABIN_FILES_DIR batch_size=$BATCH_SIZE docs_count=$DOCS_COUNT threads=all
+	  javabin_end_time=$(date +%s%N)   # Record end time in nanoseconds
+	  javabin_duration=$(( (javabin_end_time - javabin_start_time) / 1000000 )) # Calculate duration in milliseconds
+	  echo "JavaBin preparation time: $javabin_duration ms"
+	  # Store the timing in a file for the benchmark script to read
+	  echo "$javabin_duration" > ${JAVABIN_FILES_DIR}_preparation_time.txt
 fi
 
 echo "************** Setup complete: $SOLR_URL **************"

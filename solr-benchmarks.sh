@@ -36,10 +36,12 @@ QUERY_FILE=$(jq -r '.queryFile' "$CONFIG_FILE")
 GROUND_TRUTH_FILE=$(jq -r '.groundTruthFile' "$CONFIG_FILE")
 VECTOR_COL_NAME=$(jq -r '.vectorColName' "$CONFIG_FILE")
 TOP_K=$(jq -r '.topK' "$CONFIG_FILE")
-CUVS_WRITER_THREADS=$(jq -r '.cuvsWriterThreads' "$CONFIG_FILE")
-INT_GRAPH_DEGREE=$(jq -r '.cagraIntermediateGraphDegree' "$CONFIG_FILE")
-GRAPH_DEGREE=$(jq -r '.cagraGraphDegree' "$CONFIG_FILE")
-HNSW_LAYERS=$(jq -r '.cagraHnswLayers' "$CONFIG_FILE")
+CUVS_WRITER_THREADS=$(jq -r 'if .cuvsWriterThreads == null or .cuvsWriterThreads == "null" then "8" else .cuvsWriterThreads end' "$CONFIG_FILE")
+INT_GRAPH_DEGREE=$(jq -r 'if .cagraIntermediateGraphDegree == null or .cagraIntermediateGraphDegree == "null" then "64" else .cagraIntermediateGraphDegree end' "$CONFIG_FILE")
+GRAPH_DEGREE=$(jq -r 'if .cagraGraphDegree == null or .cagraGraphDegree == "null" then "32" else .cagraGraphDegree end' "$CONFIG_FILE")
+HNSW_LAYERS=$(jq -r 'if .cagraHnswLayers == null or .cagraHnswLayers == "null" then "1" else .cagraHnswLayers end' "$CONFIG_FILE")
+MAX_CONN=$(jq -r 'if .hnswMaxConn == null or .hnswMaxConn == "null" then "16" else .hnswMaxConn end' "$CONFIG_FILE")
+BEAM_WIDTH=$(jq -r 'if .hnswBeamWidth == null or .hnswBeamWidth == "null" then "100" else .hnswBeamWidth end' "$CONFIG_FILE")
 CLEAN_INDEX_DIRECTORY=$(jq -r 'if has("cleanIndexDirectory") then .cleanIndexDirectory else true end' "$CONFIG_FILE")
 SKIP_INDEXING=$(jq -r 'if has("skipIndexing") then .skipIndexing else false end' "$CONFIG_FILE")
 
@@ -54,11 +56,9 @@ DATA_DIR="data"
 DATASET_FILENAME="wiki_all_10M.tar"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
 SOLR_ROOT=solr-10.0.0-SNAPSHOT
-NPARALLEL=2
+NPARALLEL=8
 SIMILARITY_FUNCTION=${SIMILARITY_FUNCTION:-euclidean}
 RAM_BUFFER_SIZE_MB=${RAM_BUFFER_SIZE_MB:-20000}
-MAX_CONN=${MAX_CONN:-16}
-BEAM_WIDTH=${BEAM_WIDTH:-100}
 
 # Only proceed with indexing if skipIndexing is false
 if [ "$SKIP_INDEXING" = "false" ]; then
@@ -67,7 +67,29 @@ if [ "$SKIP_INDEXING" = "false" ]; then
 mkdir -p temp-configset
 
 # Generate managed-schema
-cat > temp-configset/managed-schema << EOF
+if [ "$KNN_ALGORITHM" = "hnsw" ]; then
+    # For HNSW: Include hnswMaxConnections and hnswBeamWidth in fieldType
+    cat > temp-configset/managed-schema << EOF
+<?xml version="1.0" ?>
+<schema name="schema-densevector" version="1.7">
+    <fieldType name="string" class="solr.StrField" multiValued="true"/>
+    <fieldType name="knn_vector" class="solr.DenseVectorField"
+               vectorDimension="$VECTOR_DIMENSION"
+               knnAlgorithm="$KNN_ALGORITHM"
+               similarityFunction="$SIMILARITY_FUNCTION"
+               hnswMaxConnections="$MAX_CONN" hnswBeamWidth="$BEAM_WIDTH" />
+    <fieldType name="plong" class="solr.LongPointField" useDocValuesAsStored="false"/>
+
+    <field name="id" type="string" indexed="true" stored="true" multiValued="false" required="false"/>
+    <field name="article_vector" type="knn_vector" indexed="true" stored="false"/>
+    <field name="_version_" type="plong" indexed="true" stored="true" multiValued="false" />
+
+    <uniqueKey>id</uniqueKey>
+</schema>
+EOF
+else
+    # For CAGRA_HNSW: Keep original format without HNSW-specific parameters
+    cat > temp-configset/managed-schema << EOF
 <?xml version="1.0" ?>
 <schema name="schema-densevector" version="1.7">
     <fieldType name="string" class="solr.StrField" multiValued="true"/>
@@ -84,9 +106,12 @@ cat > temp-configset/managed-schema << EOF
     <uniqueKey>id</uniqueKey>
 </schema>
 EOF
+fi
 
 # Generate solrconfig.xml
-cat > temp-configset/solrconfig.xml << EOF
+if [ "$KNN_ALGORITHM" = "hnsw" ]; then
+    # For HNSW: Remove codecFactory altogether
+    cat > temp-configset/solrconfig.xml << EOF
 <?xml version="1.0" ?>
 <config>
     <luceneMatchVersion>10.0.0</luceneMatchVersion>
@@ -102,9 +127,43 @@ cat > temp-configset/solrconfig.xml << EOF
     </indexConfig>
 
     <updateHandler class="solr.DirectUpdateHandler2">
-        <!--updateLog>
-            <str name="dir">\${solr.ulog.dir:}</str>
-        </updateLog-->
+        <autoCommit>
+            <maxTime>\${solr.autoCommit.maxTime:1500000}</maxTime>
+            <openSearcher>false</openSearcher>
+        </autoCommit>
+        <autoSoftCommit>
+            <maxTime>\${solr.autoSoftCommit.maxTime:1500000}</maxTime>
+        </autoSoftCommit>
+    </updateHandler>
+
+    <requestHandler name="/select" class="solr.SearchHandler">
+        <lst name="defaults">
+            <str name="echoParams">explicit</str>
+            <int name="rows">10</int>
+        </lst>
+    </requestHandler>
+
+    <requestHandler name="/update" class="solr.UpdateRequestHandler" />
+</config>
+EOF
+else
+    # For CAGRA_HNSW: Keep codecFactory as before
+    cat > temp-configset/solrconfig.xml << EOF
+<?xml version="1.0" ?>
+<config>
+    <luceneMatchVersion>10.0.0</luceneMatchVersion>
+    <dataDir>\${solr.data.dir:}</dataDir>
+    <directoryFactory name="DirectoryFactory" class="\${solr.directoryFactory:solr.NRTCachingDirectoryFactory}"/>
+
+    <indexConfig>
+            <ramBufferSizeMB>$RAM_BUFFER_SIZE_MB</ramBufferSizeMB>
+            <maxBufferedDocs>-1</maxBufferedDocs>
+            <useCompoundFile>false</useCompoundFile>
+            <mergePolicyFactory class="org.apache.solr.index.NoMergePolicyFactory" />
+            <infoStream>true</infoStream>
+    </indexConfig>
+
+    <updateHandler class="solr.DirectUpdateHandler2">
         <autoCommit>
             <maxTime>\${solr.autoCommit.maxTime:1500000}</maxTime>
             <openSearcher>false</openSearcher>
@@ -133,6 +192,7 @@ cat > temp-configset/solrconfig.xml << EOF
     <requestHandler name="/update" class="solr.UpdateRequestHandler" />
 </config>
 EOF
+fi
 
 
 # Load cuvs module, start Solr
@@ -146,6 +206,35 @@ cd ..
 # Create collection with dynamically generated configset
 (cd temp-configset && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs"
 curl "$SOLR_URL/solr/admin/collections?action=CREATE&name=test&numShards=1&collection.configName=cuvs"
+
+# Create results file with configuration object
+python3 << EOF
+import json
+import os
+
+# Ensure results directory exists
+os.makedirs("$RESULTS_DIR", exist_ok=True)
+
+# Read the config file and put it as-is into the configuration section
+with open("$CONFIG_FILE", "r") as config_file:
+    config_data = json.load(config_file)
+
+# Create initial results file with configuration and metrics
+results = {
+    "configuration": config_data,
+    "metrics": {}
+}
+
+# Read javabin preparation time if available
+javabin_time_file = "$JAVABIN_FILES_DIR" + "_preparation_time.txt"
+if os.path.exists(javabin_time_file):
+    with open(javabin_time_file, "r") as f:
+        javabin_prep_time = int(f.read().strip())
+        results["metrics"]["javabin-preparation-time"] = javabin_prep_time
+
+with open("$RESULTS_DIR/results.json", "w") as f:
+    json.dump(results, f, indent=2)
+EOF
 
 start_time=$(date +%s%N) # Record start time in nanoseconds
 
@@ -194,6 +283,8 @@ if [ "$SKIP_INDEXING" = "false" ]; then
 import json
 with open('$RESULTS_DIR/results.json', 'r+') as f:
     results = json.load(f)
+    if 'metrics' not in results:
+        results['metrics'] = {}
     results['metrics']['cuvs-indexing-time'] = $duration
     f.seek(0)
     json.dump(results, f, indent=2)

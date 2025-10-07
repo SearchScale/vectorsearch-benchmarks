@@ -176,13 +176,18 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                         
                         # Backfill indexing metrics if needed for this specific run
                         results_file="$CONFIG_RESULTS_DIR/results.json"
-                        if [ -f "$results_file" ] && grep -q '"skipIndexing" : true' "$results_file"; then
+                        config_file="$CONFIG_RESULTS_DIR/config.json"
+                        if [ -f "$results_file" ] && [ -f "$config_file" ] && grep -q '"skipIndexing": true' "$config_file"; then
                             index_hash=$(echo "$CONFIG_NAME" | sed -E 's/.*-([a-f0-9]{8})(-.+)?$/\1/')
                             if [ ${#index_hash} -eq 8 ]; then
-                                algo=$(jq -r '.configuration.algoToRun' "$results_file")
+                                algo=$(jq -r '.algoToRun' "$config_file")
                                 if [ "$algo" = "LUCENE_HNSW" ] && ! jq -e '.metrics["hnsw-indexing-time"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="hnsw"
                                 elif [ "$algo" = "CAGRA_HNSW" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                    metric_type="cuvs"
+                                elif [ "$algo" = "hnsw" ] && ! jq -e '.metrics["hnsw-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                    metric_type="hnsw"
+                                elif [ "$algo" = "cagra_hnsw" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="cuvs"
                                 else
                                     metric_type=""
@@ -191,7 +196,7 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                                 if [ -n "$metric_type" ]; then
                                     source_file=""
                                     for candidate_dir in $(find "$RESULTS_DIR" -name "*$index_hash*" -type d); do
-                                        if [ -f "$candidate_dir/results.json" ] && grep -q '"skipIndexing" : false' "$candidate_dir/results.json" && grep -q "${metric_type}-indexing-time" "$candidate_dir/results.json"; then
+                                        if [ -f "$candidate_dir/results.json" ] && [ -f "$candidate_dir/config.json" ] && ! grep -q '"skipIndexing": true' "$candidate_dir/config.json" && grep -q "${metric_type}-indexing-time" "$candidate_dir/results.json"; then
                                             source_file="$candidate_dir/results.json"
                                             break
                                         fi
@@ -199,8 +204,9 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                                     if [ -n "$source_file" ]; then
                                         indexing_time=$(jq -r ".metrics[\"${metric_type}-indexing-time\"]" "$source_file")
                                         index_size=$(jq -r ".metrics[\"${metric_type}-index-size\"]" "$source_file")
-                                        jq --argjson time "$indexing_time" --argjson size "$index_size" \
-                                           ".metrics[\"${metric_type}-indexing-time\"] = \$time | .metrics[\"${metric_type}-index-size\"] = \$size" \
+                                        javabin_prep_time=$(jq -r ".metrics[\"javabin-preparation-time\"]" "$source_file")
+                                        jq --argjson time "$indexing_time" --argjson size "$index_size" --argjson javabin_time "$javabin_prep_time" --slurpfile config "$config_file" \
+                                           ".metrics[\"${metric_type}-indexing-time\"] = \$time | .metrics[\"${metric_type}-index-size\"] = \$size | .metrics[\"javabin-preparation-time\"] = \$javabin_time | .configuration = \$config[0]" \
                                            "$results_file" > "${results_file}.tmp" && mv "${results_file}.tmp" "$results_file"
                                         echo "  Backfilled $CONFIG_NAME ($metric_type) from $(basename $(dirname "$source_file"))"
                                     fi
