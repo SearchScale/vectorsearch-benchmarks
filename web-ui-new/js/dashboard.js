@@ -218,33 +218,51 @@ class BenchmarkDashboard {
         const algorithmAndId = pathParts[pathParts.length - 1];
         const [algorithm, runId] = algorithmAndId.split('-');
         
-        // Determine metric prefixes based on algorithm
+        // Determine metric prefixes based on algorithm and available metrics
         const algoType = config.algoToRun || algorithm;
-        let recallKey, indexingTimeKey, indexSizeKey;
+        let recallKey, indexingTimeKey, indexSizeKey, meanLatencyKey;
         
-        if (algoType === 'CAGRA_HNSW') {
+        // First check for generic solr mode keys (newer format)
+        if (metrics['recall-accuracy'] !== undefined) {
+            recallKey = 'recall-accuracy';
+            indexingTimeKey = 'cuvs-indexing-time';
+            indexSizeKey = 'cuvs-index-size';
+            meanLatencyKey = 'mean-latency';
+        } else if (algoType === 'CAGRA_HNSW' || algoType === 'cagra_hnsw') {
             recallKey = 'cuvs-recall-accuracy';
             indexingTimeKey = 'cuvs-indexing-time';
             indexSizeKey = 'cuvs-index-size';
-        } else if (algoType === 'LUCENE_HNSW') {
+            meanLatencyKey = 'hnsw-mean-latency';
+        } else if (algoType === 'LUCENE_HNSW' || algoType === 'hnsw') {
             recallKey = 'hnsw-recall-accuracy';
             indexingTimeKey = 'hnsw-indexing-time';
             indexSizeKey = 'hnsw-index-size';
+            meanLatencyKey = 'hnsw-mean-latency';
         } else {
-            // Fallback: try both prefixes
-            recallKey = metrics['cuvs-recall-accuracy'] !== undefined ? 'cuvs-recall-accuracy' : 'hnsw-recall-accuracy';
+            // Fallback: try all possible prefixes
+            recallKey = metrics['recall-accuracy'] !== undefined ? 'recall-accuracy' :
+                       metrics['cuvs-recall-accuracy'] !== undefined ? 'cuvs-recall-accuracy' : 'hnsw-recall-accuracy';
             indexingTimeKey = metrics['cuvs-indexing-time'] !== undefined ? 'cuvs-indexing-time' : 'hnsw-indexing-time';
             indexSizeKey = metrics['cuvs-index-size'] !== undefined ? 'cuvs-index-size' : 'hnsw-index-size';
+            meanLatencyKey = metrics['mean-latency'] !== undefined ? 'mean-latency' : 'hnsw-mean-latency';
+        }
+        
+        // Normalize algorithm type for display
+        let normalizedAlgorithm = algoType;
+        if (algoType === 'cagra_hnsw') {
+            normalizedAlgorithm = 'CAGRA_HNSW';
+        } else if (algoType === 'hnsw') {
+            normalizedAlgorithm = 'LUCENE_HNSW';
         }
         
         const extractedRun = {
             run_id: algorithmAndId,
             dataset: dataset,
-            algorithm: algoType,
+            algorithm: normalizedAlgorithm,
             recall: metrics[recallKey] || 0,
             indexingTime: (metrics[indexingTimeKey] || 0) / 1000, // Convert ms to seconds
             indexSize: metrics[indexSizeKey] || 0,
-            meanLatency: metrics['hnsw-mean-latency'] || 0,
+            meanLatency: metrics[meanLatencyKey] || 0,
             queryThroughput: metrics['hnsw-query-throughput'] || 0,
             // Include algorithm-specific parameters
             cagraGraphDegree: config.cagraGraphDegree,
@@ -256,10 +274,11 @@ class BenchmarkDashboard {
             topK: config.topK
         };
         
-        console.log(`Extracted run for ${algoType}:`, {
-            recallKey, indexingTimeKey, indexSizeKey,
+        console.log(`Extracted run for ${algoType} -> ${normalizedAlgorithm}:`, {
+            recallKey, indexingTimeKey, indexSizeKey, meanLatencyKey,
             recall: extractedRun.recall,
             indexingTime: extractedRun.indexingTime,
+            meanLatency: extractedRun.meanLatency,
             metrics: Object.keys(metrics)
         });
         
@@ -431,12 +450,12 @@ class BenchmarkDashboard {
             const graphDegree = run.cagraGraphDegree || 'N/A';
             const intermediateDegree = run.cagraIntermediateGraphDegree || 'N/A';
             const efSearch = run.efSearch || 'N/A';
-            return `CAGRA ${dataset} (Graph: ${graphDegree}, Intermediate: ${intermediateDegree}, efSearch: ${efSearch})`;
+            return `CAGRA ${dataset} (degree: ${graphDegree}, intermediateDegree: ${intermediateDegree}, efSearch: ${efSearch})`;
         } else if (algorithm === 'LUCENE') {
             const maxConn = run.hnswMaxConn || 'N/A';
             const beamWidth = run.hnswBeamWidth || 'N/A'; 
             const efSearch = run.efSearch || 'N/A';
-            return `Lucene HNSW ${dataset} (MaxConn: ${maxConn}, BeamWidth: ${beamWidth}, efSearch: ${efSearch})`;
+            return `Lucene HNSW ${dataset} (maxConn: ${maxConn}, beamWidth: ${beamWidth}, efSearch: ${efSearch})`;
         } else {
             return `${algorithm} ${dataset} (efSearch: ${run.efSearch || 'N/A'})`;
         }
@@ -801,6 +820,7 @@ class BenchmarkDashboard {
             }
             
             row.innerHTML = `
+                <td>${run.run_id || 'N/A'}</td>
                 <td>${run.dataset || 'N/A'}</td>
                 <td>${run.algorithm.replace('_HNSW', '')}</td>
                 <td>${recall.toFixed(2)}</td>
@@ -808,7 +828,6 @@ class BenchmarkDashboard {
                 <td>${this.formatParameters(run)}</td>
                 <td>${parseFloat(run.meanLatency || 0).toFixed(2)}</td>
                 <td>
-                    <button class="btn btn-primary" onclick="dashboard.showMetrics('${run.run_id}')">Metrics</button>
                     <button class="btn btn-secondary" onclick="dashboard.downloadLogs('${run.run_id}')">Logs</button>
                     <button class="btn btn-success" onclick="dashboard.showResults('${run.run_id}')">Results</button>
                 </td>
@@ -820,7 +839,7 @@ class BenchmarkDashboard {
     
     setupTableSorting() {
         const headers = document.querySelectorAll('#runs-table th');
-        const sortableColumns = ['dataset', 'algorithm', 'recall', 'indexTime', 'parameters', 'meanLatency'];
+        const sortableColumns = ['runId', 'dataset', 'algorithm', 'recall', 'indexTime', 'parameters', 'meanLatency'];
         
         headers.forEach((header, index) => {
             if (index < sortableColumns.length) { // Skip the Actions column
@@ -885,6 +904,10 @@ class BenchmarkDashboard {
             let valueA, valueB;
             
             switch (columnKey) {
+                case 'runId':
+                    valueA = a.run_id || '';
+                    valueB = b.run_id || '';
+                    break;
                 case 'dataset':
                     valueA = a.dataset || '';
                     valueB = b.dataset || '';
@@ -974,11 +997,11 @@ class BenchmarkDashboard {
         if (algorithm === 'CAGRA_HNSW') {
             const graphDegree = run.cagraGraphDegree || 'N/A';
             const intermediateDegree = run.cagraIntermediateGraphDegree || 'N/A';
-            return `graphDegree: ${graphDegree}, intermediateDegree: ${intermediateDegree}, efSearch: ${efSearch}`;
+            return `degree: ${graphDegree}, intermediateDegree: ${intermediateDegree}, efSearch: ${efSearch}`;
         } else if (algorithm === 'LUCENE_HNSW') {
             const maxConn = run.hnswMaxConn || 'N/A';
             const beamWidth = run.hnswBeamWidth || 'N/A';
-            return `m: ${maxConn}, efConstruction: ${beamWidth}, efSearch: ${efSearch}`;
+            return `maxConn: ${maxConn}, beamWidth: ${beamWidth}, efSearch: ${efSearch}`;
         } else {
             return `efSearch: ${efSearch}`;
         }
