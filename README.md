@@ -15,9 +15,21 @@ Benchmark system for comparing CAGRA (GPU) vs Lucene HNSW (CPU) vector search al
    export LD_LIBRARY_PATH="/path/to/cuvs/build:/path/to/cuda/lib64:/path/to/conda/lib:$LD_LIBRARY_PATH"
    ```
 
-3. **Run benchmark:**
+## Run benchmark
+
+
+### cuVS-Lucene benchmarks
 
     ./run_sweep.sh --data-dir /data2/vsbench-datasets --datasets datasets.json --sweeps sweeps.json --configs-dir configs --results-dir results --run-benchmarks
+
+
+### Solr benchmarks
+
+    ./run_sweep.sh --data-dir /data2/vsbench-datasets --datasets datasets.json --mode solr --sweeps solr-sweeps.json --configs-dir configs --results-dir results --run-benchmarks
+
+
+It builds Apache Solr's main branch and runs the benchmarks.
+
 
 ## Adding Datasets
 
