@@ -112,19 +112,23 @@ def create_index_name(config: Dict) -> str:
     algorithm = config.get('algoToRun', 'UNKNOWN')
     
     if algorithm == 'LUCENE_HNSW':
-        ef_construction = config.get('efConstruction', 150)
-        beam_width = config.get('hnswBeamWidth', 32)
-        return f"ef{ef_construction}-beam{beam_width}"
-    elif algorithm == 'CAGRA_HNSW':
-        ef_construction = config.get('efConstruction', 150)
-        graph_degree = config.get('cagraGraphDegree', 32)
-        intermediate_degree = config.get('cagraIntermediateGraphDegree', 32)
-        return f"ef{ef_construction}-deg{graph_degree}-ideg{intermediate_degree}"
+        beam_width = config.get('hnswBeamWidth')  # efConstruction is beamWidth
+        ef_search = config.get('efSearch')  # maxCandidates is efSearch
+        return f"beam{beam_width}-ef{ef_search}"
+    elif algorithm == 'cagra_hnsw':
+        ef_search = config.get('efSearch')  # maxCandidates is efSearch
+        graph_degree = config.get('cagraGraphDegree')
+        intermediate_degree = config.get('cagraIntermediateGraphDegree')
+        return f"ef{ef_search}-deg{graph_degree}-ideg{intermediate_degree}"
+    elif algorithm == 'hnsw':
+        beam_width = config.get('hnswBeamWidth')  # efConstruction is beamWidth
+        max_conn = config.get('hnswMaxConn')  # maxConn is m
+        ef_search = config.get('efSearch')  # maxCandidates is efSearch
+        return f"beam{beam_width}-conn{max_conn}-ef{ef_search}"
     else:
-        ef_construction = config.get('efConstruction', 150)
-        m = config.get('m', 32)
-        max_candidates = config.get('maxCandidates', 128)
-        return f"ef{ef_construction}-deg{m}-ideg{max_candidates}"
+        # Fallback for unknown algorithms
+        ef_search = config.get('efSearch')
+        return f"ef{ef_search}"
 
 
 def convert_results(input_dir: str, output_dir: str, dataset_name: str, 

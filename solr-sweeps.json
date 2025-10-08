@@ -1,0 +1,52 @@
+{
+  "wiki10m": {
+    "dataset": "wiki-10m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 500,
+      "numWarmUpQueries": 20,
+      "batchSize": 500000,
+      "topK": 100,
+      "efSearch": [
+        800,
+        600,
+        400,
+        200
+      ],
+      "vectorColName": "article_vector",
+      "cleanIndexDirectory": true
+    },
+    "algorithms": {
+      "cagra_hnsw": {
+        "cagraGraphDegree": [
+          16,
+          32,
+          64
+        ],
+        "cagraIntermediateGraphDegree": [
+          16,
+          32,
+          64,
+          128
+        ],
+        "cuvsWriterThreads": 8,
+        "cagraHnswLayers": 1
+      },
+      "hnsw": {
+        "hnswMaxConn": [
+          16,
+          32,
+          64,
+          128
+        ],
+        "hnswBeamWidth": [
+          64,
+          128,
+          192,
+          256
+        ]
+      }
+    }
+
+  }
+}

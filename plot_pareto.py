@@ -237,17 +237,21 @@ def create_plot_build(
 
         len_80, len_90, len_95, len_99 = 0, 0, 0, 0
         for i in range(len(xs)):
+            build_key = (ls[i], idxs[i])
+            if build_key not in build_results:
+                continue  # Skip if build result not found
+            
             if xs[i] >= 0.80 and xs[i] < 0.90:
-                bt_80[pos] = bt_80[pos] + build_results[(ls[i], idxs[i])][0][2]
+                bt_80[pos] = bt_80[pos] + build_results[build_key][0][2]
                 len_80 = len_80 + 1
             elif xs[i] >= 0.9 and xs[i] < 0.95:
-                bt_90[pos] = bt_90[pos] + build_results[(ls[i], idxs[i])][0][2]
+                bt_90[pos] = bt_90[pos] + build_results[build_key][0][2]
                 len_90 = len_90 + 1
             elif xs[i] >= 0.95 and xs[i] < 0.99:
-                bt_95[pos] = bt_95[pos] + build_results[(ls[i], idxs[i])][0][2]
+                bt_95[pos] = bt_95[pos] + build_results[build_key][0][2]
                 len_95 = len_95 + 1
             elif xs[i] >= 0.99:
-                bt_99[pos] = bt_99[pos] + build_results[(ls[i], idxs[i])][0][2]
+                bt_99[pos] = bt_99[pos] + build_results[build_key][0][2]
                 len_99 = len_99 + 1
         if len_80 > 0:
             bt_80[pos] = bt_80[pos] / len_80
