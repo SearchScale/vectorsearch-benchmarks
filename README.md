@@ -41,7 +41,8 @@ Edit (or copy+edit) `sweep.json`:
 
 ## Visualization
 
-./run_pareto_analysis.sh --benchmark-id <benchmark-id or sweep-id>  <dataset>(already called in run_sweep.sh)
+./run_pareto_analysis.sh <benchmark-id or sweep-id>  <dataset>(already called in run_sweep.sh)
+example: ./run_pareto_analysis.sh 3cNWY5 wiki10m
 
 Serve the webui on port 8000:
 
