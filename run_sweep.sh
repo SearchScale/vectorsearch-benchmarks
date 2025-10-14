@@ -238,12 +238,20 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
     echo "Generating Pareto analysis plots"
     echo "========================================="
     
-    if ./generate_pareto_analysis.sh --benchmark-id "$BENCHMARKID"; then
-        echo "Pareto analysis completed successfully"
-        echo "Plots saved to: results/plots/$BENCHMARKID"
-    else
-        echo "Pareto analysis failed (check logs above)"
-    fi
+    # Process each dataset found in the results
+    for dataset_dir in $(find "$RESULTS_DIR" -maxdepth 1 -type d ! -name ".*" ! -name "$(basename "$RESULTS_DIR")" | sed 's|.*/||' | sort | uniq); do
+        if [ -d "$RESULTS_DIR/$dataset_dir" ]; then
+            result_count=$(find "$RESULTS_DIR/$dataset_dir" -name "results.json" 2>/dev/null | wc -l)
+            if [ "$result_count" -gt 0 ]; then
+                echo "Processing dataset: $dataset_dir ($result_count results)"
+                if ./run_pareto_analysis.sh "$BENCHMARKID" "$dataset_dir"; then
+                    echo "Pareto analysis completed for $dataset_dir"
+                else
+                    echo "Pareto analysis failed for $dataset_dir"
+                fi
+            fi
+        fi
+    done
     
     # Update sweeps-list.json in the parent results directory
     PARENT_RESULTS_DIR=$(dirname "$RESULTS_DIR")

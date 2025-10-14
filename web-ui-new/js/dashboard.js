@@ -688,7 +688,7 @@ class BenchmarkDashboard {
     }
 
     renderParetoPlotsWithMetadata(sweepId, datasetDir, selectedDataset, metadata, chartContainer) {
-        const plotsPath = 'results/plots/' + sweepId;
+        const plotsPath = 'results/' + sweepId + '/' + datasetDir + '/plots';
         const k = metadata.k || 100;
         const n_queries = metadata.n_queries || 500;
         
@@ -700,9 +700,9 @@ class BenchmarkDashboard {
         plotsHtml += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">';
         
         const plotTypes = [
-            { name: 'Latency vs Recall', file: 'latency', description: 'Search latency performance' },
-            { name: 'Throughput vs Recall', file: 'throughput', description: 'Queries per second performance' },
-            { name: 'Build Time Analysis', file: 'build_time', description: 'Index build time with speedup annotations' }
+            { name: 'Latency vs Recall', filename: 'latency-' + datasetDir + '-k' + k + '-n_queries' + n_queries + '.png', description: 'Search latency performance' },
+            { name: 'Throughput vs Recall', filename: 'throughput-' + datasetDir + '-k' + k + '-n_queries' + n_queries + '.png', description: 'Queries per second performance' },
+            { name: 'Build Time Analysis', filename: 'build-' + datasetDir + '-k' + k + '-n_queries' + n_queries + '.png', description: 'Index build time with speedup annotations' }
         ];
         
         for (var i = 0; i < plotTypes.length; i++) {
@@ -712,17 +712,13 @@ class BenchmarkDashboard {
             plotsHtml += '<p style="margin: 0 0 15px 0; color: #666; font-size: 0.9em;">' + plotType.description + '</p>';
             plotsHtml += '<div style="margin-bottom: 10px;">';
             
-            var filename = plotType.file === 'build_time' ? 
-                'build-' + datasetDir + '-k' + k + '-n_queries' + n_queries + '.png' : 
-                'search-' + datasetDir + '-k' + k + '-n_queries' + n_queries + '.png';
-            
-            plotsHtml += '<img src="' + plotsPath + '/' + plotType.file + '/' + filename + '?v=' + Date.now() + '" ';
+            plotsHtml += '<img src="' + plotsPath + '/' + plotType.filename + '?v=' + Date.now() + '" ';
             plotsHtml += 'alt="' + plotType.name + '" ';
             plotsHtml += 'style="max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 4px;" ';
             plotsHtml += 'onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'block\';">';
             plotsHtml += '<div style="display: none; color: #999; font-style: italic;">Plot not available</div>';
             plotsHtml += '</div>';
-            plotsHtml += '<a href="' + plotsPath + '/' + plotType.file + '/" target="_blank" ';
+            plotsHtml += '<a href="' + plotsPath + '/' + plotType.filename + '" target="_blank" ';
             plotsHtml += 'style="color: #3498db; text-decoration: none; font-weight: bold;">';
             plotsHtml += 'View Full Plot</a>';
             plotsHtml += '</div>';
