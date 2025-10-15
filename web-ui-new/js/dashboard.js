@@ -702,16 +702,9 @@ class BenchmarkDashboard {
         const paretoData = {};
         const optimalRunIds = new Set();
 
-        try {
-            const fileOptimalRunIds = await this.loadParetoOptimalRunsFromFiles();
-            console.log(`Loaded ${fileOptimalRunIds.size} Pareto optimal runs from is_pareto files`);
-            fileOptimalRunIds.forEach(runId => optimalRunIds.add(runId));
-        } catch (error) {
-            console.log('Could not load is_pareto files, falling back to calculated Pareto frontier:', error);
-            const paretoOptimalRuns = this.findParetoFrontier(runs);
-            console.log(`Found ${paretoOptimalRuns.length} Pareto optimal runs out of ${runs.length} total runs`);
-            paretoOptimalRuns.forEach(run => optimalRunIds.add(run.run_id));
-        }
+        const fileOptimalRunIds = await this.loadParetoOptimalRunsFromFiles();
+        console.log(`Loaded ${fileOptimalRunIds.size} Pareto optimal runs from is_pareto files`);
+        fileOptimalRunIds.forEach(runId => optimalRunIds.add(runId));
 
         recallLevels.forEach(level => {
             paretoData[level] = {};
@@ -751,7 +744,8 @@ class BenchmarkDashboard {
         const selectedDataset = datasetFilter ? datasetFilter.value : null;
 
         if (!selectedDataset || !this.currentSweep) {
-            throw new Error('No dataset or sweep selected');
+            console.warn('No dataset or sweep selected for loading Pareto optimal runs');
+            return optimalRunIds;
         }
 
         for (const run of this.currentSweep.runs) {
@@ -764,41 +758,12 @@ class BenchmarkDashboard {
                     console.log(`Found Pareto optimal run: ${run.run_id}`);
                 }
             } catch (error) {
+                // Not all runs have is_pareto files
             }
         }
 
         console.log(`Found ${optimalRunIds.size} Pareto optimal runs using is_pareto files`);
         return optimalRunIds;
-    }
-
-    findParetoFrontier(runs) {
-        const paretoOptimal = [];
-
-        for (let i = 0; i < runs.length; i++) {
-            const currentRun = runs[i];
-            let isDominated = false;
-
-            for (let j = 0; j < runs.length; j++) {
-                if (i === j) continue;
-
-                const otherRun = runs[j];
-                const currentRecall = parseFloat(currentRun.recall || 0);
-                const currentTime = parseFloat(currentRun.indexingTime || 0);
-                const otherRecall = parseFloat(otherRun.recall || 0);
-                const otherTime = parseFloat(otherRun.indexingTime || 0);
-
-                if (otherRecall > currentRecall && otherTime < currentTime) {
-                    isDominated = true;
-                    break;
-                }
-            }
-
-            if (!isDominated) {
-                paretoOptimal.push(currentRun);
-            }
-        }
-
-        return paretoOptimal;
     }
 
     shouldShowParetoAnalysis(sweep) {

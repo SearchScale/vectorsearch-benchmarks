@@ -52,7 +52,7 @@ mkdir -p "${INTERMEDIATE_DIR}/${DATASET_NAME}/result/build"
 
 if [ -d "${INTERMEDIATE_DIR}/${DATASET_NAME}" ]; then
     cd "${INTERMEDIATE_DIR}/${DATASET_NAME}"
-    
+
     for file in *throughput.csv *latency.csv *raw.csv; do
         if [ -f "$file" ]; then
             if [[ "$file" == *",raw.csv" ]]; then
@@ -64,13 +64,13 @@ if [ -d "${INTERMEDIATE_DIR}/${DATASET_NAME}" ]; then
             fi
         fi
     done
-    
+
     for file in *.csv; do
         if [ -f "$file" ]; then
             mv "$file" "result/build/"
         fi
     done
-    
+
     cd - > /dev/null
 fi
 
@@ -81,123 +81,115 @@ import csv
 import json
 import glob
 
+def create_index_name_from_config(config):
+    algorithm = config.get('algoToRun', 'UNKNOWN')
+    ef_search = config.get('efSearch', 0)
+
+    if algorithm in ['LUCENE_HNSW', 'hnsw']:
+        beam_width = config.get('hnswBeamWidth', 0)
+        max_conn = config.get('hnswMaxConn', 0)
+        return f'beam{beam_width}-conn{max_conn}-ef{ef_search}'
+    elif algorithm in ['CAGRA_HNSW', 'cagra_hnsw']:
+        graph_degree = config.get('cagraGraphDegree', 0)
+        intermediate_degree = config.get('cagraIntermediateGraphDegree', 0)
+        return f'ef{ef_search}-deg{graph_degree}-ideg{intermediate_degree}'
+    else:
+        return f'ef{ef_search}'
+
 intermediate_dir = '${INTERMEDIATE_DIR}/${DATASET_NAME}'
 results_dir = '${RESULTS_DIR}/${SWEEP_ID}/${DATASET_NAME}'
 
-csv_files = glob.glob(f'{intermediate_dir}/result/search/*throughput.csv')
-for csv_file in csv_files:
-    algorithm = os.path.basename(csv_file).split(',')[0]
-    print(f'Processing {algorithm} Pareto runs...')
-    
-    with open(csv_file, 'r') as f:
-        reader = csv.DictReader(f)
-        pareto_runs = list(reader)
-    
-    benchmark_dirs = glob.glob(f'{results_dir}/{algorithm}-*')
-    if not benchmark_dirs:
-        if algorithm == 'CAGRA_HNSW':
-            benchmark_dirs = glob.glob(f'{results_dir}/CAGRA_HNSW-*') + glob.glob(f'{results_dir}/cagra_hnsw-*')
-        elif algorithm == 'LUCENE_HNSW':
-            benchmark_dirs = glob.glob(f'{results_dir}/LUCENE_HNSW-*') + glob.glob(f'{results_dir}/hnsw-*')
-    
-    all_runs = []
-    print(f'Processing {len(benchmark_dirs)} directories for {algorithm}')
+csv_patterns = [
+    f'{intermediate_dir}/result/search/*throughput.csv',
+    f'{intermediate_dir}/result/search/*latency.csv'
+]
+
+pareto_runs_by_algo = {}
+
+for pattern in csv_patterns:
+    csv_files = glob.glob(pattern)
+    for csv_file in csv_files:
+        algorithm = os.path.basename(csv_file).split(',')[0]
+
+        with open(csv_file, 'r') as f:
+            reader = csv.DictReader(f)
+            pareto_runs = list(reader)
+
+        if algorithm not in pareto_runs_by_algo:
+            pareto_runs_by_algo[algorithm] = {}
+
+        for pareto_run in pareto_runs:
+            index_name = pareto_run['index_name']
+            if index_name not in pareto_runs_by_algo[algorithm]:
+                pareto_runs_by_algo[algorithm][index_name] = pareto_run
+
+print(f'Found Pareto optimal runs from CSV files:')
+for algo, runs in pareto_runs_by_algo.items():
+    print(f'  {algo}: {len(runs)} unique configurations')
+
+for algorithm, pareto_indices in pareto_runs_by_algo.items():
+    print(f'\\nProcessing {algorithm}...')
+
+    benchmark_dirs = []
+    for variant in [algorithm, algorithm.upper(), algorithm.lower()]:
+        benchmark_dirs.extend(glob.glob(f'{results_dir}/{variant}-*'))
+
+    if algorithm == 'CAGRA_HNSW':
+        benchmark_dirs.extend(glob.glob(f'{results_dir}/cagra_hnsw-*'))
+    elif algorithm == 'LUCENE_HNSW':
+        benchmark_dirs.extend(glob.glob(f'{results_dir}/hnsw-*'))
+
+    benchmark_dirs = list(set(benchmark_dirs))
+    print(f'Found {len(benchmark_dirs)} result directories')
+
+    index_to_dir = {}
     for benchmark_dir in benchmark_dirs:
         results_json_path = os.path.join(benchmark_dir, 'results.json')
         if os.path.exists(results_json_path):
             try:
                 with open(results_json_path, 'r') as f:
                     results_data = json.load(f)
-                
+
                 config = results_data['configuration']
-                metrics = results_data['metrics']
-                
                 algo_to_run = config.get('algoToRun')
+
                 algorithm_match = False
                 if algorithm == 'CAGRA_HNSW' and algo_to_run in ['CAGRA_HNSW', 'cagra_hnsw']:
                     algorithm_match = True
                 elif algorithm == 'LUCENE_HNSW' and algo_to_run in ['LUCENE_HNSW', 'hnsw']:
                     algorithm_match = True
-                
-                if algorithm_match:
-                    recall_key = next((key for key in metrics.keys() if 'recall' in key.lower()), None)
-                    if recall_key:
-                        run_recall = float(metrics[recall_key]) / 100.0
-                        all_runs.append({
-                            'dir': benchmark_dir,
-                            'recall': run_recall,
-                            'config': config,
-                            'metrics': metrics
-                        })
-                        print(f'Added run: {benchmark_dir} (recall: {run_recall:.4f})')
-                    else:
-                        print(f'No recall key found in {benchmark_dir}')
-                else:
-                    print(f'Algorithm mismatch: CSV={algorithm}, JSON={algo_to_run}')
-            except Exception as e:
-                print(f'Error processing {benchmark_dir}: {e}')
-                continue
-    
-    print(f'Found {len(all_runs)} {algorithm} runs to match against {len(pareto_runs)} Pareto points')
-    
-    for pareto_run in pareto_runs:
-        index_name = pareto_run['index_name']
-        target_recall = float(pareto_run['recall'])
-        
-        best_match = None
-        best_score = float('inf')
-        
-        for run in all_runs:
-            score = float('inf')
-            
-            parts = index_name.split('-')
-            parameter_match = False
-            if len(parts) >= 3:
-                if algorithm == 'CAGRA_HNSW':
-                    ef_search = int(parts[0].replace('ef', ''))
-                    graph_degree = int(parts[1].replace('deg', ''))
-                    intermediate_degree = int(parts[2].replace('ideg', ''))
-                    
-                    if (run['config'].get('efSearch') == ef_search and
-                        run['config'].get('cagraGraphDegree') == graph_degree and
-                        run['config'].get('cagraIntermediateGraphDegree') == intermediate_degree):
-                        parameter_match = True
-                        score = 0
-                elif algorithm == 'LUCENE_HNSW':
-                    beam_width = int(parts[0].replace('beam', ''))
-                    max_conn = int(parts[1].replace('conn', ''))
-                    ef_search = int(parts[2].replace('ef', ''))
-                    
-                    if (run['config'].get('hnswBeamWidth') == beam_width and
-                        run['config'].get('hnswMaxConn') == max_conn and
-                        run['config'].get('efSearch') == ef_search):
-                        parameter_match = True
-                        score = 0
-            
-            if not parameter_match:
-                recall_diff = abs(run['recall'] - target_recall)
-                score = recall_diff
-            
-            if score < best_score:
-                best_score = score
-                best_match = run
-        
-        if best_match and best_score <= 0.05:
-            is_pareto_file = os.path.join(best_match['dir'], 'is_pareto')
-            with open(is_pareto_file, 'w') as f:
-                f.write(f'Pareto optimal run\n')
-                f.write(f'Algorithm: {algorithm}\n')
-                f.write(f'Index: {index_name}\n')
-                f.write(f'Target Recall: {target_recall:.4f}\n')
-                f.write(f'Actual Recall: {best_match[\"recall\"]:.4f}\n')
-                f.write(f'Match Score: {best_score:.4f}\n')
-                f.write(f'Throughput: {pareto_run[\"throughput\"]}\n')
-                f.write(f'Latency: {pareto_run[\"latency\"]}\n')
-            print(f'Created is_pareto file: {is_pareto_file} (score: {best_score:.4f})')
-        else:
-            print(f'No good match found for {algorithm} {index_name} (best score: {best_score:.4f})')
 
-print('is_pareto file generation complete!')
+                if algorithm_match:
+                    index_name = create_index_name_from_config(config)
+                    if index_name not in index_to_dir:
+                        index_to_dir[index_name] = benchmark_dir
+            except Exception as e:
+                print(f'  Error processing {benchmark_dir}: {e}')
+
+    print(f'Mapped {len(index_to_dir)} configurations')
+
+    matched = 0
+    unmatched = 0
+    for index_name, pareto_run in pareto_indices.items():
+        if index_name in index_to_dir:
+            benchmark_dir = index_to_dir[index_name]
+            is_pareto_file = os.path.join(benchmark_dir, 'is_pareto')
+
+            with open(is_pareto_file, 'w') as f:
+                f.write(f'Pareto optimal run\\n')
+                f.write(f'Algorithm: {algorithm}\\n')
+                f.write(f'Index: {index_name}\\n')
+                f.write(f'Recall: {pareto_run[\"recall\"]}\\n')
+                f.write(f'Throughput: {pareto_run[\"throughput\"]}\\n')
+                f.write(f'Latency: {pareto_run[\"latency\"]}\\n')
+
+            matched += 1
+        else:
+            unmatched += 1
+
+    print(f'Matched {matched}/{len(pareto_indices)} runs')
+
+print('\\nPareto file generation complete')
 "
 
 echo "Parameters: k=${K}, n_queries=${N_QUERIES}"

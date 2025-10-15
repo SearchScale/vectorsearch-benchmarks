@@ -25,16 +25,7 @@ def create_index_name(config: Dict) -> str:
 
 
 def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, dataset_name: str = None) -> Tuple[str, Optional[str]]:
-    """
-    Convert results.json to NVIDIA JSON format using aggregated metrics.
-
-    Args:
-        results_json_path: Path to results.json file
-        output_dir: Output directory for JSON files
-
-    Returns:
-        Tuple of (search_filepath, build_filepath)
-    """
+    """Convert results.json to NVIDIA JSON format"""
     with open(results_json_path, 'r') as f:
         results_data = json.load(f)
 
@@ -42,24 +33,19 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
     metrics = results_data['metrics']
     algorithm = config['algoToRun']
 
-    # Normalize algorithm names for consistent grouping
     if algorithm in ['cagra_hnsw', 'CAGRA_HNSW']:
         algorithm = 'CAGRA_HNSW'
     elif algorithm in ['hnsw', 'LUCENE_HNSW']:
         algorithm = 'LUCENE_HNSW'
 
-    # Create index name from configuration
     index_name = create_index_name(config)
 
-    # Find recall metric (handles both cuvs and hnsw variants)
     recall_key = next((key for key in metrics.keys() if 'recall-accuracy' in key.lower()), None)
     if not recall_key:
         raise KeyError("No recall-accuracy metric found")
 
-    # Extract metrics
-    recall = float(metrics[recall_key]) / 100.0  # Convert percentage to decimal
+    recall = float(metrics[recall_key]) / 100.0
 
-    # Find latency metric (handles both CUVS and Solr naming)
     latency_key = next((key for key in metrics.keys() if 'mean-latency' in key.lower()), None)
     if not latency_key:
         raise KeyError("No mean-latency metric found")
@@ -67,7 +53,6 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
     latency_ms = float(metrics[latency_key])
     throughput = 1000.0 / latency_ms if latency_ms > 0 else 0
 
-    # Create benchmark entry
     benchmark = {
         "name": f"{algorithm}/{index_name}",
         "real_time": latency_ms,
@@ -84,9 +69,7 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
         "per_family_instance_index": 0
     }
 
-    # Setup paths
     if dataset_name is None:
-        # Extract dataset name from the path structure
         path_parts = Path(results_json_path).parts
         dataset_name = path_parts[-3] if len(path_parts) >= 3 else "unknown"
 
@@ -96,7 +79,6 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
     dataset_dir = Path(output_dir) / dataset_name
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write search JSON (group by algorithm)
     search_filename = f"{algorithm},base,k{k},bs{n_queries},throughput.json"
     search_filepath = dataset_dir / search_filename
 
@@ -110,12 +92,11 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
     with open(search_filepath, 'w') as f:
         json.dump(data, f, indent=2)
 
-    # Write build JSON if build time available
     build_filepath = None
     build_time_key = next((key for key in metrics.keys() if 'indexing-time' in key.lower()), None)
 
     if build_time_key:
-        build_time_ms = float(metrics[build_time_key])  # Already in ms
+        build_time_ms = float(metrics[build_time_key])
 
         build_benchmark = {
             "name": f"{algorithm}/{index_name}",
