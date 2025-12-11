@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 # Parse command-line arguments
 while getopts ":-:" opt; do
     case $OPTARG in
@@ -155,9 +156,10 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                             echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
                         fi
                     elif [ "$MODE" = "solr" ]; then
-                        # Extract dataset name from sweeps file
-                        DATASET_NAME=$(jq -r '.wiki10m.dataset' "$SWEEPS_FILE")
-                        BATCHES_DIR="${DATASET_NAME}_batches"
+                        # Extract dataset name from sweeps file (use the first key in the sweeps file)
+                        DATASET_NAME=$(jq -r "keys[0]" "$SWEEPS_FILE")
+                        DATASET_FROM_SWEEP=$(jq -r ".[\"$DATASET_NAME\"].dataset" "$SWEEPS_FILE")
+                        BATCHES_DIR="${DATASET_FROM_SWEEP}_batches"
                         SOLR_UPDATE_URL="http://localhost:8983/solr/test/update?commit=true&overwrite=false"
                         
                         # Run Solr benchmark using the new format: config batches_dir solr_url results_dir

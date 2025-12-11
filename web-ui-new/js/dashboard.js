@@ -824,6 +824,7 @@ class BenchmarkDashboard {
                 <td>
                     <button class="btn btn-secondary" onclick="dashboard.downloadLogs('${run.run_id}')">Logs</button>
                     <button class="btn btn-success" onclick="dashboard.showResults('${run.run_id}')">Results</button>
+                    <button class="btn btn-primary" onclick="dashboard.showMetrics('${run.run_id}')">Metrics</button>
                 </td>
             `;
 

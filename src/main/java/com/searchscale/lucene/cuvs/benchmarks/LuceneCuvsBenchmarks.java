@@ -10,9 +10,7 @@ import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,7 +60,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
-import com.nvidia.cuvs.lucene.Lucene101AcceleratedHNSWCodec;
+import com.nvidia.cuvs.lucene.Lucene99AcceleratedHNSWVectorsFormat;
 
 public class LuceneCuvsBenchmarks {
 
@@ -137,6 +135,9 @@ public class LuceneCuvsBenchmarks {
     Map<String, Object> metrics = new LinkedHashMap<String, Object>();
     List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
     config.debugPrintArguments();
+
+    MetricsCollector metricsCollector = new MetricsCollector();
+    metricsCollector.start();
 
     // [0] Pre-check
     Util.preCheck(config);
@@ -339,34 +340,35 @@ public class LuceneCuvsBenchmarks {
 
       Util.calculateRecallAccuracy(queryResults, metrics, "CAGRA_HNSW".equalsIgnoreCase(config.algoToRun));
 
+      metricsCollector.stop();
+
       String resultsJson = Util.newObjectMapper().writerWithDefaultPrettyPrinter()
           .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
 
       if (config.saveResultsOnDisk) {
-        // Use the resultsDirectory directly if provided
         String resultsDir = config.resultsDirectory != null ? config.resultsDirectory : "results";
         File results = new File(resultsDir);
         if (!results.exists()) {
           results.mkdirs();
         }
 
-        // Save results.json directly to the specified directory
         FileUtils.write(
             new File(results.toString() + "/results.json"),
             resultsJson, Charset.forName("UTF-8"));
-            
-        // Save CSV with neighbors data  
         Util.writeCSV(queryResults, results.toString() + "/neighbors.csv");
+        
+        try {
+          metricsCollector.writeToFiles(resultsDir);
+        } catch (IOException e) {
+          log.error("Failed to write metrics files", e);
+        }
         
         log.info("Results saved to directory: {}", resultsDir);
       }
 
       log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
       
-      // Close the index directory before cleaning
       indexDir.close();
-      
-      // Clean index directory after benchmarks complete if requested
       if (config.cleanIndexDirectory && !config.createIndexInMemory) {
         Path indexPath = null;
         if (config.algoToRun.equalsIgnoreCase("LUCENE_HNSW")) {
@@ -386,6 +388,9 @@ public class LuceneCuvsBenchmarks {
         }
       }
     } finally {
+      if (metricsCollector != null) {
+        metricsCollector.stop();
+      }
       if (vectorProvider != null) {
         vectorProvider.close();
       }
@@ -616,15 +621,26 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static Codec getCuVSCodec(BenchmarkConfiguration config) {
-    // Use Lucene101AcceleratedHNSWCodec with configurable parameters
+    // Use Lucene99AcceleratedHNSWVectorsFormat wrapped in a Codec
     // Constructor signature: (cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth)
-    return new Lucene101AcceleratedHNSWCodec(
-        config.cuvsWriterThreads,
-        config.cagraIntermediateGraphDegree,
-        config.cagraGraphDegree,
-        config.cagraHnswLayers,
-        config.hnswMaxConn,
-        config.hnswBeamWidth);
+    // Use defaults for hnswMaxConn and hnswBeamWidth if not set (needed for HNSW graph construction)
+    int maxConn = config.hnswMaxConn > 0 ? config.hnswMaxConn : 16;
+    int beamWidth = config.hnswBeamWidth > 0 ? config.hnswBeamWidth : 100;
+    int hnswLayers = config.cagraHnswLayers > 0 ? config.cagraHnswLayers : 1;
+    
+    return new Lucene101Codec(Mode.BEST_SPEED) {
+      @Override
+      public KnnVectorsFormat getKnnVectorsFormatForField(String field) {
+        KnnVectorsFormat knnFormat = new Lucene99AcceleratedHNSWVectorsFormat(
+            config.cuvsWriterThreads,
+            config.cagraIntermediateGraphDegree,
+            config.cagraGraphDegree,
+            hnswLayers,
+            maxConn,
+            beamWidth);
+        return new HighDimensionKnnVectorsFormat(knnFormat, config.vectorDimension);
+      }
+    };
   }
 
   // Removed ConfigurableCuVSCodec - using CuVSCPUSearchCodec directly with better error handling

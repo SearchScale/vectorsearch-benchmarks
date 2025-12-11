@@ -16,14 +16,6 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
   </properties>
 
-  <repositories>
-    <repository>
-      <id>searchscale-maven</id>
-      <name>SearchScale Maven</name>
-      <url>https://maven.searchscale.com/snapshots</url>
-    </repository>
-  </repositories>
-
   <dependencyManagement>
     <dependencies>
       <dependency>
@@ -37,15 +29,15 @@
   </dependencyManagement>
 
     <dependencies>
-	<dependency>
-		  <groupId>com.nvidia.cuvs.lucene</groupId>
-		    <artifactId>cuvs-lucene</artifactId>
-		      <version>25.10.0-33318-SNAPSHOT</version>
-		      </dependency>
+        <dependency>
+            <groupId>com.nvidia.cuvs.lucene</groupId>
+            <artifactId>cuvs-lucene</artifactId>
+            <version>25.10.0</version>
+        </dependency>
         <dependency>
             <groupId>com.nvidia.cuvs</groupId>
             <artifactId>cuvs-java</artifactId>
-            <version>25.10.0-55985-SNAPSHOT</version>
+            <version>25.10.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.lucene</groupId>
