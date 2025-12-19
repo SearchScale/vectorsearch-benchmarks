@@ -181,7 +181,8 @@ class BenchmarkDashboard {
         const lines = summaryText.split('\n');
 
         for (const line of lines) {
-            const match = line.match(/^([\w-]+\/[\w-]+):/);
+            // Match any path-like token before the first colon (e.g. "wiki10m/cagra_hnsw-b7fa14d3-efs2.0:")
+            const match = line.match(/^([^:]+):/);
             if (match) {
                 const configPath = match[1].trim();
                 configs.push(configPath);

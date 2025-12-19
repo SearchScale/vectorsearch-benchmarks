@@ -14,6 +14,8 @@ JAVABIN_FILES_DIR="$2"
 URL="$3"
 RESULTS_DIR="$4"
 
+mkdir -p "$RESULTS_DIR"
+
 # Check if config file exists
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "Error: Config file '$CONFIG_FILE' not found"
@@ -29,7 +31,7 @@ fi
 # Extract variables from config file using jq
 VECTOR_DIMENSION=$(jq -r '.vectorDimension' "$CONFIG_FILE")
 KNN_ALGORITHM=$(jq -r '.algoToRun' "$CONFIG_FILE")
-EF_SEARCH=$(jq -r '.efSearch' "$CONFIG_FILE")
+EF_SEARCH_SCALE_FACTOR=$(jq -r '.efSearchScaleFactor' "$CONFIG_FILE")
 WARMUP_QUERIES=$(jq -r '.numWarmUpQueries' "$CONFIG_FILE")
 TOTAL_QUERIES=$(jq -r '.numQueriesToRun' "$CONFIG_FILE")
 QUERY_FILE=$(jq -r '.queryFile' "$CONFIG_FILE")
@@ -45,9 +47,6 @@ BEAM_WIDTH=$(jq -r 'if .hnswBeamWidth == null or .hnswBeamWidth == "null" then "
 CLEAN_INDEX_DIRECTORY=$(jq -r 'if has("cleanIndexDirectory") then .cleanIndexDirectory else true end' "$CONFIG_FILE")
 SKIP_INDEXING=$(jq -r 'if has("skipIndexing") then .skipIndexing else false end' "$CONFIG_FILE")
 
-echo "DEBUG: CLEAN_INDEX_DIRECTORY=$CLEAN_INDEX_DIRECTORY"
-echo "DEBUG: SKIP_INDEXING=$SKIP_INDEXING"
-
 # Extract Solr URL from the update URL parameter
 SOLR_URL=$(echo "$URL" | sed 's|/solr/.*||')
 
@@ -55,20 +54,191 @@ SOLR_URL=$(echo "$URL" | sed 's|/solr/.*||')
 DATA_DIR="data"
 DATASET_FILENAME="wiki_all_10M.tar"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
-SOLR_ROOT=solr-10.0.0-SNAPSHOT
-NPARALLEL=8
+SOLR_ROOT=solr-11.0.0-SNAPSHOT
+NPARALLEL=${NPARALLEL:-4}
 SIMILARITY_FUNCTION=${SIMILARITY_FUNCTION:-euclidean}
 RAM_BUFFER_SIZE_MB=${RAM_BUFFER_SIZE_MB:-20000}
+SOLR_HEAP=${SOLR_HEAP:-16G}
 
-# Only proceed with indexing if skipIndexing is false
+METRICS_PID=""
+
+wait_for_solr() {
+    local url="$1"
+    local retries="${2:-60}"
+    for _ in $(seq 1 "$retries"); do
+        if curl -sSf "${url}/solr/admin/info/system?wt=json" >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
+
+start_metrics() {
+    if [ -n "${METRICS_PID:-}" ]; then
+        return
+    fi
+
+    mkdir -p "$RESULTS_DIR"
+    SOLR_URL="$SOLR_URL" RESULTS_DIR="$RESULTS_DIR" python3 -u << 'METRICS_EOF' > "$RESULTS_DIR/metrics.log" 2>&1 &
+import urllib.request
+import json
+import time
+import signal
+import sys
+import math
+import os
+
+solr_url = os.environ["SOLR_URL"]
+results_dir = os.environ["RESULTS_DIR"]
+start_time = int(time.time() * 1000)
+memory_samples = []
+cpu_samples = []
+
+PREFERRED_SCOPE = "io.opentelemetry.runtime-telemetry-java17"
+
+def save_metrics():
+    import os
+    os.makedirs(results_dir, exist_ok=True)
+    with open(f"{results_dir}/memory_metrics.json", "w") as f:
+        json.dump({"memory_samples": memory_samples}, f, indent=2)
+    with open(f"{results_dir}/cpu_metrics.json", "w") as f:
+        json.dump({"cpu_samples": cpu_samples}, f, indent=2)
+
+def handle_signal(signum, frame):
+    save_metrics()
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, handle_signal)
+signal.signal(signal.SIGINT, handle_signal)
+
+def parse_labels(label_str: str):
+    labels = {}
+    if not label_str:
+        return labels
+    parts = []
+    cur = []
+    in_quotes = False
+    for ch in label_str:
+        if ch == '"' and (not cur or cur[-1] != '\\'):
+            in_quotes = not in_quotes
+        if ch == ',' and not in_quotes:
+            parts.append(''.join(cur))
+            cur = []
+        else:
+            cur.append(ch)
+    if cur:
+        parts.append(''.join(cur))
+    for p in parts:
+        if '=' not in p:
+            continue
+        k, v = p.split('=', 1)
+        labels[k.strip()] = v.strip().strip('"')
+    return labels
+
+def parse_prometheus(text: str):
+    points = []
+    for line in text.splitlines():
+        if not line or line[0] == '#':
+            continue
+        try:
+            left, val = line.rsplit(' ', 1)
+        except ValueError:
+            continue
+        if '{' in left:
+            name, rest = left.split('{', 1)
+            labels = parse_labels(rest.rstrip('}'))
+        else:
+            name, labels = left, {}
+        try:
+            value = float(val)
+        except ValueError:
+            continue
+        points.append((name, labels, value))
+    return points
+
+def pick_scope(points):
+    scopes = set()
+    for _, labels, _ in points:
+        s = labels.get("otel_scope_name")
+        if s:
+            scopes.add(s)
+    if PREFERRED_SCOPE in scopes:
+        return PREFERRED_SCOPE
+    return next(iter(scopes), None)
+
+for _ in range(60):
+    try:
+        urllib.request.urlopen(f"{solr_url}/solr/admin/metrics?wt=prometheus", timeout=5)
+        break
+    except Exception:
+        time.sleep(1)
+else:
+    print("Error: Solr metrics endpoint not ready", file=sys.stderr)
+    sys.exit(1)
+
+while True:
+    try:
+        elapsed = int(time.time() * 1000) - start_time
+
+        sys_resp = urllib.request.urlopen(f"{solr_url}/solr/admin/info/system?wt=json", timeout=5)
+        sys_data = json.loads(sys_resp.read().decode("utf-8"))
+        heap_used = sys_data["jvm"]["memory"]["raw"]["used"]
+        heap_max = sys_data["jvm"]["memory"]["raw"]["max"]
+
+        resp = urllib.request.urlopen(f"{solr_url}/solr/admin/metrics?wt=prometheus", timeout=10)
+        text = resp.read().decode("utf-8", errors="replace")
+        points = parse_prometheus(text)
+        scope = pick_scope(points)
+
+        nonheap_used = 0.0
+        proc_cpu = None
+        sys_cpu = None
+
+        for name, labels, value in points:
+            if scope and labels.get("otel_scope_name") not in (None, scope):
+                continue
+            if name == "jvm_memory_used_bytes":
+                if labels.get("jvm_memory_type") == "non_heap":
+                    nonheap_used += value
+            elif name == "jvm_cpu_recent_utilization_ratio":
+                proc_cpu = value
+            elif name == "jvm_system_cpu_utilization_ratio":
+                sys_cpu = value
+
+        if proc_cpu is None or math.isnan(proc_cpu):
+            proc_cpu = 0.0
+        if sys_cpu is None or math.isnan(sys_cpu):
+            sys_cpu = 0.0
+
+        memory_samples.append({
+            "timestamp": elapsed,
+            "heapUsed": int(heap_used),
+            "heapMax": int(heap_max),
+            "offHeapUsed": int(nonheap_used),
+        })
+        cpu_samples.append({
+            "timestamp": elapsed,
+            "cpuUsagePercent": float(proc_cpu) * 100.0,
+            "systemCpuUsagePercent": float(sys_cpu) * 100.0,
+        })
+
+        time.sleep(2)
+    except Exception as e:
+        print(f"Metrics collection error: {e}", file=sys.stderr)
+        time.sleep(2)
+METRICS_EOF
+
+    METRICS_PID=$!
+    echo "Started metrics collection (PID: $METRICS_PID)"
+    trap "kill -TERM $METRICS_PID 2>/dev/null; wait $METRICS_PID 2>/dev/null" EXIT
+}
+
 if [ "$SKIP_INDEXING" = "false" ]; then
 
-# Generate configset files on the fly
 mkdir -p temp-configset
 
-# Generate managed-schema
 if [ "$KNN_ALGORITHM" = "hnsw" ]; then
-    # For HNSW: Include hnswMaxConnections and hnswBeamWidth in fieldType
     cat > temp-configset/managed-schema << EOF
 <?xml version="1.0" ?>
 <schema name="schema-densevector" version="1.7">
@@ -88,7 +258,6 @@ if [ "$KNN_ALGORITHM" = "hnsw" ]; then
 </schema>
 EOF
 else
-    # For CAGRA_HNSW: Keep original format without HNSW-specific parameters
     cat > temp-configset/managed-schema << EOF
 <?xml version="1.0" ?>
 <schema name="schema-densevector" version="1.7">
@@ -108,9 +277,7 @@ else
 EOF
 fi
 
-# Generate solrconfig.xml
 if [ "$KNN_ALGORITHM" = "hnsw" ]; then
-    # For HNSW: Remove codecFactory altogether
     cat > temp-configset/solrconfig.xml << EOF
 <?xml version="1.0" ?>
 <config>
@@ -129,7 +296,7 @@ if [ "$KNN_ALGORITHM" = "hnsw" ]; then
     <updateHandler class="solr.DirectUpdateHandler2">
         <autoCommit>
             <maxTime>\${solr.autoCommit.maxTime:1500000}</maxTime>
-            <openSearcher>false</openSearcher>
+            <openSearcher>true</openSearcher>
         </autoCommit>
         <autoSoftCommit>
             <maxTime>\${solr.autoSoftCommit.maxTime:1500000}</maxTime>
@@ -147,7 +314,6 @@ if [ "$KNN_ALGORITHM" = "hnsw" ]; then
 </config>
 EOF
 else
-    # For CAGRA_HNSW: Keep codecFactory as before
     cat > temp-configset/solrconfig.xml << EOF
 <?xml version="1.0" ?>
 <config>
@@ -166,7 +332,7 @@ else
     <updateHandler class="solr.DirectUpdateHandler2">
         <autoCommit>
             <maxTime>\${solr.autoCommit.maxTime:1500000}</maxTime>
-            <openSearcher>false</openSearcher>
+            <openSearcher>true</openSearcher>
         </autoCommit>
         <autoSoftCommit>
             <maxTime>\${solr.autoSoftCommit.maxTime:1500000}</maxTime>
@@ -196,36 +362,38 @@ fi
 
 
 # Load cuvs module, start Solr
-pkill -9 java; rm -rf $SOLR_ROOT
+pkill -9 java 2>/dev/null || true
+rm -rf $SOLR_ROOT
 tar -xf $SOLR_ROOT.tgz
 cd $SOLR_ROOT
-cp log4j2.xml solr-10.0.0-SNAPSHOT/server/resources/log4j2.xml
-cp modules/cuvs/lib/*.jar server/solr-webapp/webapp/WEB-INF/lib/
-bin/solr start -m 29G
+cp modules/cuvs/lib/*.jar server/solr-webapp/webapp/WEB-INF/lib/ 2>/dev/null || true
+bin/solr start -m "$SOLR_HEAP"
 cd ..
-# Create collection with dynamically generated configset
+
+if ! wait_for_solr "$SOLR_URL" 180; then
+    echo "Error: Solr did not start on $SOLR_URL"
+    exit 1
+fi
+
 (cd temp-configset && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs"
 curl "$SOLR_URL/solr/admin/collections?action=CREATE&name=test&numShards=1&collection.configName=cuvs"
 
-# Create results file with configuration object
+start_metrics
+
 python3 << EOF
 import json
 import os
 
-# Ensure results directory exists
 os.makedirs("$RESULTS_DIR", exist_ok=True)
 
-# Read the config file and put it as-is into the configuration section
 with open("$CONFIG_FILE", "r") as config_file:
     config_data = json.load(config_file)
 
-# Create initial results file with configuration and metrics
 results = {
     "configuration": config_data,
     "metrics": {}
 }
 
-# Read javabin preparation time if available
 javabin_time_file = "$JAVABIN_FILES_DIR" + "_preparation_time.txt"
 if os.path.exists(javabin_time_file):
     with open(javabin_time_file, "r") as f:
@@ -236,37 +404,97 @@ with open("$RESULTS_DIR/results.json", "w") as f:
     json.dump(results, f, indent=2)
 EOF
 
-start_time=$(date +%s%N) # Record start time in nanoseconds
+start_time=$(date +%s%N)
 
-# Loop through each file in the directory and post it in batches using Python
 python3 << EOF
-import subprocess
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import requests
+import time
 
 files = sorted(Path("$JAVABIN_FILES_DIR").glob("*"))
-def upload(f):
-    print(f"Uploading {f}...")
-    subprocess.run(["http", "--ignore-stdin", "POST", "$URL", "Content-Type:application/javabin", f"@{f}"])
-    print(f"Completed {f}")
+failed_files = []
+
+def upload(f, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            if attempt > 0:
+                wait_time = min((attempt + 1) * 5, 30)
+                print(f"Uploading {f.name}... (attempt {attempt + 1}/{max_retries}, waiting {wait_time}s)", flush=True)
+                time.sleep(wait_time)
+            else:
+                print(f"Uploading {f.name}... (attempt {attempt + 1}/{max_retries})", flush=True)
+            with open(f, "rb") as fh:
+                r = requests.post(
+                    "$URL",
+                    data=fh,
+                    headers={"Content-Type": "application/javabin"},
+                    timeout=600,
+                )
+                r.raise_for_status()
+            print(f"Completed {f.name}", flush=True)
+            time.sleep(0.5)
+            return True
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code >= 500 and attempt < max_retries - 1:
+                continue
+            print(f"Failed to upload {f.name}: HTTP {e.response.status_code if hasattr(e, 'response') else 'unknown'}", flush=True)
+            return False
+        except requests.exceptions.ConnectionError as e:
+            if attempt < max_retries - 1:
+                continue
+            print(f"Failed to upload {f.name}: Connection error", flush=True)
+            return False
+        except Exception as e:
+            if attempt < max_retries - 1:
+                continue
+            print(f"Failed to upload {f.name}: {e}", flush=True)
+            return False
+    return False
 
 print(f"Starting batch upload with {$NPARALLEL} parallel workers")
 with ThreadPoolExecutor(max_workers=$NPARALLEL) as ex:
-    list(ex.map(upload, files))
-print("All uploads completed")
-EOF
-end_time=$(date +%s%N)   # Record end time in nanoseconds
+    futures = {ex.submit(upload, f): f for f in files}
+    for future in as_completed(futures):
+        f = futures[future]
+        try:
+            success = future.result()
+            if not success:
+                failed_files.append(f)
+        except Exception as e:
+            print(f"Exception for {f.name}: {e}", flush=True)
+            failed_files.append(f)
 
-duration=$(( (end_time - start_time) / 1000000 )) # Calculate duration in milliseconds
+if failed_files:
+    print(f"\nWarning: {len(failed_files)} files failed to upload:", flush=True)
+    for f in failed_files:
+        print(f"  - {f.name}", flush=True)
+    exit(1)
+else:
+    print("All uploads completed successfully", flush=True)
+EOF
+INDEXING_EXIT_CODE=$?
+
+if [ $INDEXING_EXIT_CODE -ne 0 ]; then
+    echo "Error: Indexing failed with exit code $INDEXING_EXIT_CODE"
+    if [ -n "${METRICS_PID:-}" ]; then
+        kill -TERM $METRICS_PID 2>/dev/null || true
+        wait $METRICS_PID 2>/dev/null || true
+    fi
+    exit $INDEXING_EXIT_CODE
+fi
+
+end_time=$(date +%s%N)
+duration=$(( (end_time - start_time) / 1000000 ))
 echo "Execution time: $duration ms"
 echo "Done!"
 
-fi # End of skipIndexing check
+fi
 
-# Run query benchmarks
-echo "Running query benchmarks..."
+start_metrics
+
 python3 run_queries.py \
-    --ef-search $EF_SEARCH \
+    --ef-search-scale-factor $EF_SEARCH_SCALE_FACTOR \
     --warmup-queries $WARMUP_QUERIES \
     --num-queries $TOTAL_QUERIES \
     --query-file $QUERY_FILE \
@@ -276,8 +504,17 @@ python3 run_queries.py \
     --vector-field $VECTOR_COL_NAME \
     --top-k $TOP_K \
     --output-file "$RESULTS_DIR/results.json"
+QUERY_EXIT_CODE=$?
 
-# Add indexing time to results.json only if indexing was performed
+if [ $QUERY_EXIT_CODE -ne 0 ]; then
+    echo "Error: Query benchmarks failed with exit code $QUERY_EXIT_CODE"
+    if [ -n "${METRICS_PID:-}" ]; then
+        kill -TERM $METRICS_PID 2>/dev/null || true
+        wait $METRICS_PID 2>/dev/null || true
+    fi
+    exit $QUERY_EXIT_CODE
+fi
+
 if [ "$SKIP_INDEXING" = "false" ]; then
     python3 -c "
 import json
@@ -289,22 +526,22 @@ with open('$RESULTS_DIR/results.json', 'r+') as f:
     f.seek(0)
     json.dump(results, f, indent=2)
     f.truncate()
-"
+" || echo "Warning: Failed to add indexing time to results.json (non-fatal)"
 fi
 
-# Cleanup
+if [ -n "${METRICS_PID:-}" ]; then
+    kill -TERM $METRICS_PID 2>/dev/null || true
+    wait $METRICS_PID 2>/dev/null || true
+fi
+
 rm -rf temp-configset
 
-echo "DEBUG: About to check CLEAN_INDEX_DIRECTORY condition: '$CLEAN_INDEX_DIRECTORY'"
 if [ "$CLEAN_INDEX_DIRECTORY" = "true" ]; then
-    echo "DEBUG: CLEAN_INDEX_DIRECTORY is true, stopping and cleaning Solr"
     cd $SOLR_ROOT
     bin/solr stop -p 8983
     cd ..
     rm -rf $SOLR_ROOT
-    echo "Stopped Solr and cleaned it up..."
-else
-    echo "DEBUG: CLEAN_INDEX_DIRECTORY is false, preserving Solr for reuse"
 fi
 
 wait
+exit 0

@@ -62,27 +62,32 @@ for sweep in sweeps:
         # Generate all combination of variants. For each combination, generate a hashed ID, and a file with the
         # name pattern as <sweep>-<algo>-<hash>.json. The file should contain the invariants as is, and the variants as the current combination.
         if algo_variants:
-            # Separate efSearch from other variants if it exists
+            # Separate efSearch or efSearchScaleFactor from other variants if it exists
             efSearch_values = None
+            efSearchScaleFactor_values = None
             other_variant_keys = []
             other_variant_values = []
             
             for key, value in algo_variants.items():
                 if key == 'efSearch':
                     efSearch_values = value
+                elif key == 'efSearchScaleFactor':
+                    efSearchScaleFactor_values = value
                 else:
                     other_variant_keys.append(key)
                     other_variant_values.append(value)
             
-            # Generate combinations with efSearch at the beginning (innermost loop)
-            if efSearch_values and other_variant_keys:
+            # Generate combinations with efSearch or efSearchScaleFactor at the beginning (innermost loop)
+            if (efSearch_values or efSearchScaleFactor_values) and other_variant_keys:
                 # Generate combinations of other parameters first
                 for other_combination in itertools.product(*other_variant_values):
                     other_variants = dict(zip(other_variant_keys, other_combination))
-                    # Then iterate through efSearch values
-                    for ef_index, ef_value in enumerate(efSearch_values):
+                    # Then iterate through efSearch or efSearchScaleFactor values
+                    search_values = efSearch_values if efSearch_values else efSearchScaleFactor_values
+                    search_key = 'efSearch' if efSearch_values else 'efSearchScaleFactor'
+                    for ef_index, ef_value in enumerate(search_values):
                         current_variants = other_variants.copy()
-                        current_variants['efSearch'] = ef_value
+                        current_variants[search_key] = ef_value
                         
                         # Skip if cagraIntermediateDegree < cagraGraphDegree
                         if 'cagraIntermediateDegree' in current_variants and 'cagraGraphDegree' in current_variants:
@@ -96,21 +101,24 @@ for sweep in sweeps:
                                 print(f"\t\tSkipping combination: hnswMaxConn ({current_variants['hnswMaxConn']}) > hnswBeamWidth ({current_variants['hnswBeamWidth']})")
                                 continue
                         
-                        # Generate hash only from other_variants (excluding efSearch)
+                        # Generate hash only from other_variants (excluding efSearch/efSearchScaleFactor)
                         base_hash = hashlib.md5(json.dumps(other_variants, sort_keys=True).encode()).hexdigest()[:8]
-                        hash_id = f"{base_hash}-ef{ef_value}"
+                        if search_key == 'efSearch':
+                            hash_id = f"{base_hash}-ef{ef_value}"
+                        else:
+                            hash_id = f"{base_hash}-efs{ef_value}"
                         
                         config = algo_invariants.copy()
                         config.update(current_variants)
                         
-                        # For multiple efSearch combinations: subsequent ones skip indexing
-                        if len(efSearch_values) > 1 and ef_index > 0:
+                        # For multiple search value combinations: subsequent ones skip indexing
+                        if len(search_values) > 1 and ef_index > 0:
                             config['skipIndexing'] = True
                         
                         # Set cleanIndexDirectory based on position
                         if ef_index == 0:
                             config['cleanIndexDirectory'] = False
-                        elif ef_index == len(efSearch_values) - 1:
+                        elif ef_index == len(search_values) - 1:
                             config['cleanIndexDirectory'] = True
                         else:
                             config['cleanIndexDirectory'] = False
@@ -128,25 +136,30 @@ for sweep in sweeps:
                         with open(filepath, 'w') as f:
                             json.dump(config, f, indent=2)
                         print(f"\tGenerated config file: {filepath}")
-            elif efSearch_values:
-                # Only efSearch values, no other variants
-                for ef_index, ef_value in enumerate(efSearch_values):
-                    current_variants = {'efSearch': ef_value}
+            elif efSearch_values or efSearchScaleFactor_values:
+                # Only efSearch or efSearchScaleFactor values, no other variants
+                search_values = efSearch_values if efSearch_values else efSearchScaleFactor_values
+                search_key = 'efSearch' if efSearch_values else 'efSearchScaleFactor'
+                for ef_index, ef_value in enumerate(search_values):
+                    current_variants = {search_key: ef_value}
                     # Generate hash from empty dict since no other variants exist
                     base_hash = hashlib.md5(json.dumps({}, sort_keys=True).encode()).hexdigest()[:8]
-                    hash_id = f"{base_hash}-ef{ef_value}"
+                    if search_key == 'efSearch':
+                        hash_id = f"{base_hash}-ef{ef_value}"
+                    else:
+                        hash_id = f"{base_hash}-efs{ef_value}"
                     
                     config = algo_invariants.copy()
                     config.update(current_variants)
                     
-                    # For multiple efSearch combinations: subsequent ones skip indexing
-                    if len(efSearch_values) > 1 and ef_index > 0:
+                    # For multiple search value combinations: subsequent ones skip indexing
+                    if len(search_values) > 1 and ef_index > 0:
                         config['skipIndexing'] = True
                     
                     # Set cleanIndexDirectory based on position
                     if ef_index == 0:
                         config['cleanIndexDirectory'] = False
-                    elif ef_index == len(efSearch_values) - 1:
+                    elif ef_index == len(search_values) - 1:
                         config['cleanIndexDirectory'] = True
                     else:
                         config['cleanIndexDirectory'] = False

@@ -126,12 +126,16 @@ def create_plot_search(
     # Sorting by mean y-value helps aligning plots with labels
     def mean_y(algo):
         points = np.array(all_data[algo], dtype=object)
+        if len(points) == 0 or points.ndim < 2:
+            return float('inf')
         return -np.log(np.array(points[:, 3], dtype=np.float32)).mean()
 
     # Find range for logit x-scale
     min_x, max_x = 1, 0
     for algo in sorted(all_data.keys(), key=mean_y):
         points = np.array(all_data[algo], dtype=object)
+        if len(points) == 0 or points.ndim < 2:
+            continue
         xs = points[:, 2]
         ys = points[:, 3]
         min_x = min([min_x] + [x for x in xs if x > 0])
@@ -226,10 +230,14 @@ def create_plot_build(
     # Sorting by mean y-value helps aligning plots with labels
     def mean_y(algo):
         points = np.array(search_results[algo], dtype=object)
+        if len(points) == 0 or points.ndim < 2:
+            return float('inf')
         return -np.log(np.array(points[:, 3], dtype=np.float32)).mean()
 
     for pos, algo in enumerate(sorted(search_results.keys(), key=mean_y)):
         points = np.array(search_results[algo], dtype=object)
+        if len(points) == 0 or points.ndim < 2:
+            continue
         # x is recall, ls is algo_name, idxs is index_name
         xs = points[:, 2]
         ls = points[:, 0]
@@ -279,33 +287,32 @@ def create_plot_build(
     df = pd.DataFrame(data, index=index)
     df.replace(0.0, np.nan, inplace=True)
     df = df.dropna(how="all")
+
+    if df.empty or df.shape[1] == 0:
+        print(f"Skipping build plot: no data points in recall buckets >= 80%")
+        return
+
     plt.figure(figsize=(12, 9))
     ax = df.plot.bar(rot=0, color=colors)
     fig = ax.get_figure()
     
-    # Add speedup annotations
     if 'LUCENE_HNSW' in df.columns and 'CAGRA_HNSW' in df.columns:
         y_max = ax.get_ylim()[1]
-        
         for i, bucket in enumerate(df.index):
             lucene_time = df.loc[bucket, 'LUCENE_HNSW']
             cagra_time = df.loc[bucket, 'CAGRA_HNSW']
-            
             if pd.notna(lucene_time) and pd.notna(cagra_time) and lucene_time > 0 and cagra_time > 0:
                 speedup = lucene_time / cagra_time
-                # Position annotations just above the bars, below subtitle
                 ax.text(i, y_max * 0.98, f'{speedup:.1f}x', 
                        ha='center', va='bottom', fontsize=9, fontweight='bold',
                        bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.9, edgecolor='gray'))
     
     print(f"writing build output to {fn_out}")
-    plt.title(
-        "Average Build Time within Recall Range "
-        f"for k={k} n_queries={n_queries}"
-    )
+    plt.title(f"Average Build Time within Recall Range for k={k} n_queries={n_queries}")
     plt.suptitle(f"{dataset}")
     plt.ylabel("Build Time (s)")
     fig.savefig(fn_out)
+    plt.close()
 
 
 def load_lines(results_path, result_files, method, index_key, mode, time_unit):

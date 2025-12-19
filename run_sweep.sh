@@ -1,6 +1,10 @@
 #!/bin/bash
 
 
+# Always run from the repo root (directory of this script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR" || exit 1
+
 # Parse command-line arguments
 while getopts ":-:" opt; do
     case $OPTARG in
@@ -32,7 +36,6 @@ done
 DATA_DIR=${DATA_DIR:-datasets}
 DATASETS_FILE=${DATASETS_FILE:-datasets.json}
 MODE=${MODE:-lucene}
-SWEEPS_FILE=${SWEEPS_FILE:-sweeps.json}
 CONFIGS_DIR=${CONFIGS_DIR:-configs}
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 RESULTS_DIR=${RESULTS_DIR:-results}
@@ -44,9 +47,13 @@ if [ "$MODE" != "lucene" ] && [ "$MODE" != "solr" ]; then
     exit 1
 fi
 
-# Set mode-specific defaults
-if [ "$MODE" = "solr" ]; then
-    SWEEPS_FILE=${SWEEPS_FILE:-solr-sweeps.json}
+# Set mode-specific defaults for sweeps file
+if [ -z "$SWEEPS_FILE" ]; then
+    if [ "$MODE" = "solr" ]; then
+        SWEEPS_FILE="solr-sweeps.json"
+    else
+        SWEEPS_FILE="sweeps.json"
+    fi
 fi
 
 BENCHMARKID=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 6)
