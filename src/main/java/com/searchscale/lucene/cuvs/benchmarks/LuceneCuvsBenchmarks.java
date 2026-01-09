@@ -10,9 +10,7 @@ import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,7 +60,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
-import com.nvidia.cuvs.lucene.Lucene101AcceleratedHNSWCodec;
+import com.nvidia.cuvs.lucene.Lucene99AcceleratedHNSWVectorsFormat;
 
 public class LuceneCuvsBenchmarks {
 
@@ -80,7 +78,7 @@ public class LuceneCuvsBenchmarks {
       // First, try to find the field in IndexWriterConfig
       java.lang.reflect.Field field = null;
       Class<?> clazz = config.getClass();
-      
+
       // Try to find the field in the class hierarchy
       while (clazz != null && field == null) {
         try {
@@ -90,7 +88,7 @@ public class LuceneCuvsBenchmarks {
           clazz = clazz.getSuperclass();
         }
       }
-      
+
       if (field == null) {
         // If not found in IndexWriterConfig, try LiveIndexWriterConfig
         clazz = config.getClass().getSuperclass();
@@ -102,7 +100,7 @@ public class LuceneCuvsBenchmarks {
           }
         }
       }
-      
+
       if (field != null) {
         field.setAccessible(true);
         field.setInt(config, limitMB);
@@ -124,12 +122,12 @@ public class LuceneCuvsBenchmarks {
     }
 
     BenchmarkConfiguration config = Util.newObjectMapper().readValue(new File(args[0]), BenchmarkConfiguration.class);
-    
+
     // Override benchmarkID if provided as command line argument
     if (args.length >= 2) {
       config.benchmarkID = args[1];
     }
-    
+
     // Override resultsDirectory if provided as command line argument
     if (args.length >= 3) {
       config.resultsDirectory = args[2];
@@ -137,6 +135,9 @@ public class LuceneCuvsBenchmarks {
     Map<String, Object> metrics = new LinkedHashMap<String, Object>();
     List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
     config.debugPrintArguments();
+
+    MetricsCollector metricsCollector = new MetricsCollector();
+    metricsCollector.start();
 
     // [0] Pre-check
     Util.preCheck(config);
@@ -228,8 +229,8 @@ public class LuceneCuvsBenchmarks {
       luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
       setPerThreadRAMLimit(luceneHNSWWriterConfig, 10240); // 10GB per thread
-      log.info("Configured HNSW writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB", 
-              config.flushFreq, luceneHNSWWriterConfig.getRAMBufferSizeMB(), 
+      log.info("Configured HNSW writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB",
+              config.flushFreq, luceneHNSWWriterConfig.getRAMBufferSizeMB(),
               luceneHNSWWriterConfig.getRAMPerThreadHardLimitMB());
 
       IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
@@ -244,7 +245,7 @@ public class LuceneCuvsBenchmarks {
       cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
       setPerThreadRAMLimit(cuvsIndexWriterConfig, 10240); // 10GB per thread
-      log.info("Configured CuVS writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB", 
+      log.info("Configured CuVS writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB",
               config.flushFreq, cuvsIndexWriterConfig.getRAMBufferSizeMB(),
               cuvsIndexWriterConfig.getRAMPerThreadHardLimitMB());
 
@@ -259,8 +260,8 @@ public class LuceneCuvsBenchmarks {
       IndexWriter luceneHnswIndexWriter = null;
       IndexWriter cuvsIndexWriter = null;
 
-      
-      
+
+
       if (config.algoToRun.equalsIgnoreCase("LUCENE_HNSW")) {
         if (!config.createIndexInMemory) {
           Path hnswIndex = Path.of(config.hnswIndexDirPath);
@@ -289,17 +290,17 @@ public class LuceneCuvsBenchmarks {
       }
 
         var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
-   	  
-        boolean isCuVSIndexing = formatName.equals("Lucene99AcceleratedHNSWVectorsFormat");
+
+        boolean isCuVSIndexing = "CAGRA_HNSW".equalsIgnoreCase(config.algoToRun);
 
         log.info("Indexing documents using {} ...", formatName);
         long indexStartTime = System.currentTimeMillis();
-        indexDocuments(writer, config, titles, vectorProvider);
+        indexDocuments(writer, config, titles, vectorProvider, metrics, isCuVSIndexing);
         long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
         if (isCuVSIndexing) {
-          metrics.put("cuvs-indexing-time", indexTimeTaken);
+          metrics.put("cuvs-total-time-ms", indexTimeTaken);
         } else {
-          metrics.put("hnsw-indexing-time", indexTimeTaken);
+          metrics.put("hnsw-total-time-ms", indexTimeTaken);
         }
 
         log.info("Time taken for index building (end to end): {} ms", indexTimeTaken);
@@ -329,7 +330,7 @@ public class LuceneCuvsBenchmarks {
               writer == cuvsIndexWriter ? config.cuvsIndexDirPath : config.hnswIndexDirPath, e);
         }
        }
-     	
+
       Directory indexDir = MMapDirectory.open("CAGRA_HNSW".equals(config.algoToRun) ? Path.of(config.cuvsIndexDirPath) : Path.of(config.hnswIndexDirPath));
       log.info("Index directory is: {} (using memory-mapped files)", indexDir);
       log.info("Querying documents using {} ...", config.algoToRun);
@@ -339,34 +340,35 @@ public class LuceneCuvsBenchmarks {
 
       Util.calculateRecallAccuracy(queryResults, metrics, "CAGRA_HNSW".equalsIgnoreCase(config.algoToRun));
 
+      metricsCollector.stop();
+
       String resultsJson = Util.newObjectMapper().writerWithDefaultPrettyPrinter()
           .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
 
       if (config.saveResultsOnDisk) {
-        // Use the resultsDirectory directly if provided
         String resultsDir = config.resultsDirectory != null ? config.resultsDirectory : "results";
         File results = new File(resultsDir);
         if (!results.exists()) {
           results.mkdirs();
         }
 
-        // Save results.json directly to the specified directory
         FileUtils.write(
             new File(results.toString() + "/results.json"),
             resultsJson, Charset.forName("UTF-8"));
-            
-        // Save CSV with neighbors data  
         Util.writeCSV(queryResults, results.toString() + "/neighbors.csv");
-        
+
+        try {
+          metricsCollector.writeToFiles(resultsDir);
+        } catch (IOException e) {
+          log.error("Failed to write metrics files", e);
+        }
+
         log.info("Results saved to directory: {}", resultsDir);
       }
 
       log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
-      
-      // Close the index directory before cleaning
+
       indexDir.close();
-      
-      // Clean index directory after benchmarks complete if requested
       if (config.cleanIndexDirectory && !config.createIndexInMemory) {
         Path indexPath = null;
         if (config.algoToRun.equalsIgnoreCase("LUCENE_HNSW")) {
@@ -374,7 +376,7 @@ public class LuceneCuvsBenchmarks {
         } else if (config.algoToRun.equalsIgnoreCase("CAGRA_HNSW")) {
           indexPath = Path.of(config.cuvsIndexDirPath);
         }
-        
+
         if (indexPath != null) {
           try {
             log.info("Cleaning index directory: {}", indexPath);
@@ -386,6 +388,9 @@ public class LuceneCuvsBenchmarks {
         }
       }
     } finally {
+      if (metricsCollector != null) {
+        metricsCollector.stop();
+      }
       if (vectorProvider != null) {
         vectorProvider.close();
       }
@@ -393,15 +398,17 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static void indexDocuments(IndexWriter writer, BenchmarkConfiguration config, List<String> titles,
-      VectorProvider vectorProvider) throws IOException, InterruptedException {
+      VectorProvider vectorProvider, Map<String, Object> metrics, boolean isCuVSIndexing) throws IOException, InterruptedException {
 
     int threads = config.numIndexThreads;
     ExecutorService pool = Executors.newFixedThreadPool(threads);
     AtomicInteger numDocsIndexed = new AtomicInteger(0);
     log.info("Starting indexing with {} threads.", threads);
-    log.info("IndexWriter config - MaxBufferedDocs: {}, RAMBufferSizeMB: {}", 
+    log.info("IndexWriter config - MaxBufferedDocs: {}, RAMBufferSizeMB: {}",
             writer.getConfig().getMaxBufferedDocs(), writer.getConfig().getRAMBufferSizeMB());
     final int numDocsToIndex = Math.min(config.numDocs, vectorProvider.size());
+
+    long indexingStartTime = System.nanoTime();
 
     for (int i = 0; i < threads; i++) {
       pool.submit(() -> {
@@ -441,16 +448,33 @@ public class LuceneCuvsBenchmarks {
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
-    // log.info("Calling forceMerge(1).");
-    // writer.forceMerge(1);
+    long indexingEndTime = System.nanoTime();
+    long indexingTimeMs = TimeUnit.NANOSECONDS.toMillis(indexingEndTime - indexingStartTime);
+
     log.info("Calling commit.");
+    long serializationStartTime = System.nanoTime();
     writer.commit();
+    long serializationEndTime = System.nanoTime();
+    long serializationTimeMs = TimeUnit.NANOSECONDS.toMillis(serializationEndTime - serializationStartTime);
+
     writer.close();
+
+    if (isCuVSIndexing) {
+      metrics.put("cuvs-indexing-time-ms", indexingTimeMs);
+      metrics.put("cuvs-serialization-time-ms", serializationTimeMs);
+      log.info("CuVS indexing time (IndexWriter.addDocument): {} ms", indexingTimeMs);
+      log.info("CuVS serialization time (IndexWriter.commit): {} ms", serializationTimeMs);
+    } else {
+      metrics.put("hnsw-indexing-time-ms", indexingTimeMs);
+      metrics.put("hnsw-serialization-time-ms", serializationTimeMs);
+      log.info("HNSW indexing time (IndexWriter.addDocument): {} ms", indexingTimeMs);
+      log.info("HNSW serialization time (IndexWriter.commit): {} ms", serializationTimeMs);
+    }
   }
 
   private static void search(Directory directory, BenchmarkConfiguration config, boolean useCuVS,
       Map<String, Object> metrics, List<QueryResult> queryResults, List<int[]> groundTruth) {
-	  
+
     DB db = null;
     try (IndexReader indexReader = DirectoryReader.open(directory)) {
       IndexSearcher indexSearcher = new IndexSearcher(indexReader);
@@ -504,7 +528,7 @@ public class LuceneCuvsBenchmarks {
                                                config.cagraSearchWidth);
           } else {
               int effectiveEfSearch = config.getEffectiveEfSearch();
-              query = new KnnFloatVectorQuery(config.vectorColName, queryVector, effectiveEfSearch);   
+              query = new KnnFloatVectorQuery(config.vectorColName, queryVector, effectiveEfSearch);
           }
 
           TopDocs topDocs;
@@ -553,8 +577,8 @@ public class LuceneCuvsBenchmarks {
           double retrievalTimeTakenMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - retrievalStartTime);
           if (currentQueryId > config.numWarmUpQueries) {
         	  retrievalLatencies.put(queryId.get(), retrievalTimeTakenMs);
-          }          
-          
+          }
+
           // Debug: Log results for all queries
           log.info("Query " + currentQueryId + " - First 5 neighbors: " + neighbors.subList(0, Math.min(5, neighbors.size())));
           log.info("Query " + currentQueryId + " - First 5 distances: " + scores.subList(0, Math.min(5, scores.size())));
@@ -564,7 +588,7 @@ public class LuceneCuvsBenchmarks {
           var s = useCuVS ? "lucene_cuvs" : "lucene_hnsw";
           if (currentQueryId > config.numWarmUpQueries) {
 	          QueryResult result = new QueryResult(s, currentQueryId, neighbors, groundTruth.get(currentQueryId), scores,
-	              searchTimeTakenMs);          
+	              searchTimeTakenMs);
 	          queryResults.add(result);
           } else {
         	  log.info("Skipping warmup query: {}", currentQueryId);
@@ -616,15 +640,26 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static Codec getCuVSCodec(BenchmarkConfiguration config) {
-    // Use Lucene101AcceleratedHNSWCodec with configurable parameters
+    // Use Lucene99AcceleratedHNSWVectorsFormat wrapped in a Codec
     // Constructor signature: (cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth)
-    return new Lucene101AcceleratedHNSWCodec(
-        config.cuvsWriterThreads,
-        config.cagraIntermediateGraphDegree,
-        config.cagraGraphDegree,
-        config.cagraHnswLayers,
-        config.hnswMaxConn,
-        config.hnswBeamWidth);
+    // Use defaults for hnswMaxConn and hnswBeamWidth if not set (needed for HNSW graph construction)
+    int maxConn = config.hnswMaxConn > 0 ? config.hnswMaxConn : 16;
+    int beamWidth = config.hnswBeamWidth > 0 ? config.hnswBeamWidth : 100;
+    int hnswLayers = config.cagraHnswLayers > 0 ? config.cagraHnswLayers : 1;
+
+    return new Lucene101Codec(Mode.BEST_SPEED) {
+      @Override
+      public KnnVectorsFormat getKnnVectorsFormatForField(String field) {
+        KnnVectorsFormat knnFormat = new Lucene99AcceleratedHNSWVectorsFormat(
+            config.cuvsWriterThreads,
+            config.cagraIntermediateGraphDegree,
+            config.cagraGraphDegree,
+            hnswLayers,
+            maxConn,
+            beamWidth);
+        return new HighDimensionKnnVectorsFormat(knnFormat, config.vectorDimension);
+      }
+    };
   }
 
   // Removed ConfigurableCuVSCodec - using CuVSCPUSearchCodec directly with better error handling

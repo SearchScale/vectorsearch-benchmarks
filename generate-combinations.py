@@ -59,68 +59,59 @@ for sweep in sweeps:
                 else:
                     algo_variants[param] = value
 
-        # Generate all combination of variants. For each combination, generate a hashed ID, and a file with the
-        # name pattern as <sweep>-<algo>-<hash>.json. The file should contain the invariants as is, and the variants as the current combination.
         if algo_variants:
-            # Separate efSearch from other variants if it exists
             efSearch_values = None
+            efSearchScaleFactor_values = None
             other_variant_keys = []
             other_variant_values = []
-            
+
             for key, value in algo_variants.items():
                 if key == 'efSearch':
                     efSearch_values = value
+                elif key == 'efSearchScaleFactor':
+                    efSearchScaleFactor_values = value
                 else:
                     other_variant_keys.append(key)
                     other_variant_values.append(value)
-            
-            # Generate combinations with efSearch at the beginning (innermost loop)
-            if efSearch_values and other_variant_keys:
-                # Generate combinations of other parameters first
+
+            if (efSearch_values or efSearchScaleFactor_values) and other_variant_keys:
                 for other_combination in itertools.product(*other_variant_values):
                     other_variants = dict(zip(other_variant_keys, other_combination))
-                    # Then iterate through efSearch values
-                    for ef_index, ef_value in enumerate(efSearch_values):
+                    search_values = efSearch_values if efSearch_values else efSearchScaleFactor_values
+                    search_key = 'efSearch' if efSearch_values else 'efSearchScaleFactor'
+                    for ef_index, ef_value in enumerate(search_values):
                         current_variants = other_variants.copy()
-                        current_variants['efSearch'] = ef_value
-                        
-                        # Skip if cagraIntermediateDegree < cagraGraphDegree
+                        current_variants[search_key] = ef_value
+
                         if 'cagraIntermediateDegree' in current_variants and 'cagraGraphDegree' in current_variants:
                             if current_variants['cagraIntermediateDegree'] < current_variants['cagraGraphDegree']:
-                                print(f"\t\tSkipping combination: cagraIntermediateDegree ({current_variants['cagraIntermediateDegree']}) < cagraGraphDegree ({current_variants['cagraGraphDegree']})")
                                 continue
-                        
-                        # Skip if hnswMaxConn > hnswBeamWidth
+
                         if 'hnswMaxConn' in current_variants and 'hnswBeamWidth' in current_variants:
                             if current_variants['hnswMaxConn'] > current_variants['hnswBeamWidth']:
-                                print(f"\t\tSkipping combination: hnswMaxConn ({current_variants['hnswMaxConn']}) > hnswBeamWidth ({current_variants['hnswBeamWidth']})")
                                 continue
-                        
-                        # Generate hash only from other_variants (excluding efSearch)
+
                         base_hash = hashlib.md5(json.dumps(other_variants, sort_keys=True).encode()).hexdigest()[:8]
-                        hash_id = f"{base_hash}-ef{ef_value}"
-                        
+                        hash_id = f"{base_hash}-ef{ef_value}" if search_key == 'efSearch' else f"{base_hash}-efs{ef_value}"
+
                         config = algo_invariants.copy()
                         config.update(current_variants)
-                        
-                        # For multiple efSearch combinations: subsequent ones skip indexing
-                        if len(efSearch_values) > 1 and ef_index > 0:
+
+                        if len(search_values) > 1 and ef_index > 0:
                             config['skipIndexing'] = True
-                        
-                        # Set cleanIndexDirectory based on position
+
                         if ef_index == 0:
                             config['cleanIndexDirectory'] = False
-                        elif ef_index == len(efSearch_values) - 1:
+                        elif ef_index == len(search_values) - 1:
                             config['cleanIndexDirectory'] = True
                         else:
                             config['cleanIndexDirectory'] = False
-                        
-                        # Use base_hash for index directory paths
+
                         if 'hnswIndexDirPath' in config:
                             config['hnswIndexDirPath'] = f"hnswIndex-{base_hash}"
                         if 'cuvsIndexDirPath' in config:
                             config['cuvsIndexDirPath'] = f"cuvsIndex-{base_hash}"
-                        
+
                         filename = f"{algo}-{hash_id}.json"
                         sweep_dir = f"{args.configs_dir}/{sweep}"
                         filepath = f"{sweep_dir}/{filename}"
@@ -128,35 +119,32 @@ for sweep in sweeps:
                         with open(filepath, 'w') as f:
                             json.dump(config, f, indent=2)
                         print(f"\tGenerated config file: {filepath}")
-            elif efSearch_values:
-                # Only efSearch values, no other variants
-                for ef_index, ef_value in enumerate(efSearch_values):
-                    current_variants = {'efSearch': ef_value}
-                    # Generate hash from empty dict since no other variants exist
+            elif efSearch_values or efSearchScaleFactor_values:
+                search_values = efSearch_values if efSearch_values else efSearchScaleFactor_values
+                search_key = 'efSearch' if efSearch_values else 'efSearchScaleFactor'
+                for ef_index, ef_value in enumerate(search_values):
+                    current_variants = {search_key: ef_value}
                     base_hash = hashlib.md5(json.dumps({}, sort_keys=True).encode()).hexdigest()[:8]
-                    hash_id = f"{base_hash}-ef{ef_value}"
-                    
+                    hash_id = f"{base_hash}-ef{ef_value}" if search_key == 'efSearch' else f"{base_hash}-efs{ef_value}"
+
                     config = algo_invariants.copy()
                     config.update(current_variants)
-                    
-                    # For multiple efSearch combinations: subsequent ones skip indexing
-                    if len(efSearch_values) > 1 and ef_index > 0:
+
+                    if len(search_values) > 1 and ef_index > 0:
                         config['skipIndexing'] = True
-                    
-                    # Set cleanIndexDirectory based on position
+
                     if ef_index == 0:
                         config['cleanIndexDirectory'] = False
-                    elif ef_index == len(efSearch_values) - 1:
+                    elif ef_index == len(search_values) - 1:
                         config['cleanIndexDirectory'] = True
                     else:
                         config['cleanIndexDirectory'] = False
-                    
-                    # Use base_hash for index directory paths
+
                     if 'hnswIndexDirPath' in config:
                         config['hnswIndexDirPath'] = f"hnswIndex-{base_hash}"
                     if 'cuvsIndexDirPath' in config:
                         config['cuvsIndexDirPath'] = f"cuvsIndex-{base_hash}"
-                    
+
                     filename = f"{algo}-{hash_id}.json"
                     sweep_dir = f"{args.configs_dir}/{sweep}"
                     filepath = f"{sweep_dir}/{filename}"
@@ -165,26 +153,21 @@ for sweep in sweeps:
                         json.dump(config, f, indent=2)
                     print(f"\tGenerated config file: {filepath}")
             else:
-                # No efSearch, use original logic
                 variant_keys = list(algo_variants.keys())
                 variant_values = list(algo_variants.values())
                 for combination in itertools.product(*variant_values):
                     current_variants = dict(zip(variant_keys, combination))
-                    
-                    # Skip if cagraIntermediateDegree < cagraGraphDegree
+
                     if 'cagraIntermediateDegree' in current_variants and 'cagraGraphDegree' in current_variants:
                         if current_variants['cagraIntermediateDegree'] < current_variants['cagraGraphDegree']:
-                            print(f"\t\tSkipping combination: cagraIntermediateDegree ({current_variants['cagraIntermediateDegree']}) < cagraGraphDegree ({current_variants['cagraGraphDegree']})")
                             continue
-                    
-                    # Skip if hnswMaxConn > hnswBeamWidth
+
                     if 'hnswMaxConn' in current_variants and 'hnswBeamWidth' in current_variants:
                         if current_variants['hnswMaxConn'] > current_variants['hnswBeamWidth']:
-                            print(f"\t\tSkipping combination: hnswMaxConn ({current_variants['hnswMaxConn']}) > hnswBeamWidth ({current_variants['hnswBeamWidth']})")
                             continue
-                    
+
                     hash_id = hashlib.md5(json.dumps(current_variants, sort_keys=True).encode()).hexdigest()[:8]
-                    
+
                     config = algo_invariants.copy()
                     config.update(current_variants)
                     filename = f"{algo}-{hash_id}.json"
@@ -194,6 +177,16 @@ for sweep in sweeps:
                     with open(filepath, 'w') as f:
                         json.dump(config, f, indent=2)
                     print(f"\tGenerated config file: {filepath}")
-        
-        
+        else:
+            hash_id = hashlib.md5(json.dumps({}, sort_keys=True).encode()).hexdigest()[:8]
+            config = algo_invariants.copy()
+            filename = f"{algo}-{hash_id}.json"
+            sweep_dir = f"{args.configs_dir}/{sweep}"
+            filepath = f"{sweep_dir}/{filename}"
+            os.makedirs(sweep_dir, exist_ok=True)
+            with open(filepath, 'w') as f:
+                json.dump(config, f, indent=2)
+            print(f"\tGenerated config file: {filepath}")
+
+
     print("----------------------")

@@ -7,11 +7,11 @@
       "numWarmUpQueries": 20,
       "batchSize": 500000,
       "topK": 100,
-      "efSearch": [
-        800,
-        600,
-        400,
-        200
+      "efSearchScaleFactor": [
+        8.0,
+        6.0,
+        4.0,
+        2.0
       ],
       "vectorColName": "article_vector",
       "cleanIndexDirectory": true

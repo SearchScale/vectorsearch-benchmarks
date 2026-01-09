@@ -46,4 +46,4 @@ example: ./run_pareto_analysis.sh 3cNWY5 wiki10m
 
 Serve the webui on port 8000:
 
-    cd web-ui-new; python3 -m http.server
+    cd web-ui; python3 -m http.server

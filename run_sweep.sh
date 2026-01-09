@@ -1,5 +1,10 @@
 #!/bin/bash
 
+
+# Always run from the repo root (directory of this script)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR" || exit 1
+
 # Parse command-line arguments
 while getopts ":-:" opt; do
     case $OPTARG in
@@ -31,7 +36,6 @@ done
 DATA_DIR=${DATA_DIR:-datasets}
 DATASETS_FILE=${DATASETS_FILE:-datasets.json}
 MODE=${MODE:-lucene}
-SWEEPS_FILE=${SWEEPS_FILE:-sweeps.json}
 CONFIGS_DIR=${CONFIGS_DIR:-configs}
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 RESULTS_DIR=${RESULTS_DIR:-results}
@@ -43,9 +47,13 @@ if [ "$MODE" != "lucene" ] && [ "$MODE" != "solr" ]; then
     exit 1
 fi
 
-# Set mode-specific defaults
-if [ "$MODE" = "solr" ]; then
-    SWEEPS_FILE=${SWEEPS_FILE:-solr-sweeps.json}
+# Set mode-specific defaults for sweeps file
+if [ -z "$SWEEPS_FILE" ]; then
+    if [ "$MODE" = "solr" ]; then
+        SWEEPS_FILE="solr-sweeps.json"
+    else
+        SWEEPS_FILE="sweeps.json"
+    fi
 fi
 
 BENCHMARKID=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 6)
@@ -155,9 +163,10 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                             echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
                         fi
                     elif [ "$MODE" = "solr" ]; then
-                        # Extract dataset name from sweeps file
-                        DATASET_NAME=$(jq -r '.wiki10m.dataset' "$SWEEPS_FILE")
-                        BATCHES_DIR="${DATASET_NAME}_batches"
+                        # Extract dataset name from sweeps file (use the first key in the sweeps file)
+                        DATASET_NAME=$(jq -r "keys[0]" "$SWEEPS_FILE")
+                        DATASET_FROM_SWEEP=$(jq -r ".[\"$DATASET_NAME\"].dataset" "$SWEEPS_FILE")
+                        BATCHES_DIR="${DATASET_FROM_SWEEP}_batches"
                         SOLR_UPDATE_URL="http://localhost:8983/solr/test/update?commit=true&overwrite=false"
                         
                         # Run Solr benchmark using the new format: config batches_dir solr_url results_dir
@@ -181,13 +190,13 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                             index_hash=$(echo "$CONFIG_NAME" | sed -E 's/.*-([a-f0-9]{8})(-.+)?$/\1/')
                             if [ ${#index_hash} -eq 8 ]; then
                                 algo=$(jq -r '.algoToRun' "$config_file")
-                                if [ "$algo" = "LUCENE_HNSW" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                if [ "$algo" = "LUCENE_HNSW" ] && ! jq -e '.metrics["hnsw-total-time-ms"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="cuvs"
-                                elif [ "$algo" = "CAGRA_HNSW" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                elif [ "$algo" = "CAGRA_HNSW" ] && ! jq -e '.metrics["cuvs-total-time-ms"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="cuvs"
-                                elif [ "$algo" = "hnsw" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                elif [ "$algo" = "hnsw" ] && ! jq -e '.metrics["solr-total-indexing-time-ms"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="cuvs"
-                                elif [ "$algo" = "cagra_hnsw" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                elif [ "$algo" = "cagra_hnsw" ] && ! jq -e '.metrics["solr-total-indexing-time-ms"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="cuvs"
                                 else
                                     metric_type=""
