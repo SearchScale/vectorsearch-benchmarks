@@ -88,9 +88,8 @@ ALGORITHM_PARAMS=$(jq -r ".[\"$DATASET_NAME\"].algorithms[\"$ALGORITHM_NAME\"]" 
 # Extract specific algorithm parameters with defaults
 if [ "$ALGORITHM_NAME" = "cagra_hnsw" ]; then
     CUVS_WRITER_THREADS=$(echo "$ALGORITHM_PARAMS" | jq -r '.cuvsWriterThreads // 16')
-    # Use first values from arrays for setup
-    INT_GRAPH_DEGREE=$(echo "$ALGORITHM_PARAMS" | jq -r '.cagraIntermediateGraphDegree[0] // 128')
-    GRAPH_DEGREE=$(echo "$ALGORITHM_PARAMS" | jq -r '.cagraGraphDegree[0] // 64')
+    INT_GRAPH_DEGREE=$(echo "$ALGORITHM_PARAMS" | jq -r 'if .cagraIntermediateGraphDegree | type == "array" then .cagraIntermediateGraphDegree[0] else .cagraIntermediateGraphDegree end // 128')
+    GRAPH_DEGREE=$(echo "$ALGORITHM_PARAMS" | jq -r 'if .cagraGraphDegree | type == "array" then .cagraGraphDegree[0] else .cagraGraphDegree end // 64')
     HNSW_LAYERS=$(echo "$ALGORITHM_PARAMS" | jq -r '.cagraHnswLayers // 1')
 fi
 

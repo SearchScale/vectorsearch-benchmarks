@@ -360,23 +360,36 @@ else
 EOF
 fi
 
-
-# Load cuvs module, start Solr
 pkill -9 java 2>/dev/null || true
-rm -rf $SOLR_ROOT
-tar -xf $SOLR_ROOT.tgz
-cd $SOLR_ROOT
-cp modules/cuvs/lib/*.jar server/solr-webapp/webapp/WEB-INF/lib/ 2>/dev/null || true
-bin/solr start -m "$SOLR_HEAP"
-cd ..
+sleep 2
 
-if ! wait_for_solr "$SOLR_URL" 180; then
-    echo "Error: Solr did not start on $SOLR_URL"
+if [ ! -f "$SOLR_ROOT.tgz" ]; then
+    echo "Error: Solr tarball '$SOLR_ROOT.tgz' not found"
+    exit 1
+fi
+rm -rf $SOLR_ROOT
+if ! tar -xf "$SOLR_ROOT.tgz"; then
+    echo "Error: Failed to extract Solr tarball"
     exit 1
 fi
 
-(cd temp-configset && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs"
-curl "$SOLR_URL/solr/admin/collections?action=CREATE&name=test&numShards=1&collection.configName=cuvs"
+cd $SOLR_ROOT
+cp modules/cuvs/lib/*.jar server/solr-webapp/webapp/WEB-INF/lib/ 2>/dev/null || true
+if ! bin/solr start -m "$SOLR_HEAP"; then
+    echo "Error: Failed to start Solr"
+    exit 1
+fi
+cd ..
+
+if ! wait_for_solr "$SOLR_URL" 180; then
+    echo "Error: Solr did not start on $SOLR_URL after 180 seconds"
+    ps aux | grep -i solr | grep -v grep || echo "No Solr process found"
+    exit 1
+fi
+
+(cd temp-configset && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs" >/dev/null 2>&1
+
+curl "$SOLR_URL/solr/admin/collections?action=CREATE&name=test&numShards=1&collection.configName=cuvs" >/dev/null 2>&1
 
 start_metrics
 
@@ -398,7 +411,7 @@ javabin_time_file = "$JAVABIN_FILES_DIR" + "_preparation_time.txt"
 if os.path.exists(javabin_time_file):
     with open(javabin_time_file, "r") as f:
         javabin_prep_time = int(f.read().strip())
-        results["metrics"]["javabin-preparation-time"] = javabin_prep_time
+        results["metrics"]["javabin-generation-time-ms"] = javabin_prep_time
 
 with open("$RESULTS_DIR/results.json", "w") as f:
     json.dump(results, f, indent=2)
@@ -414,6 +427,7 @@ import time
 
 files = sorted(Path("$JAVABIN_FILES_DIR").glob("*"))
 failed_files = []
+total_upload_time_ms = 0.0
 
 def upload(f, max_retries=3):
     for attempt in range(max_retries):
@@ -424,6 +438,8 @@ def upload(f, max_retries=3):
                 time.sleep(wait_time)
             else:
                 print(f"Uploading {f.name}... (attempt {attempt + 1}/{max_retries})", flush=True)
+
+            batch_start = time.perf_counter()
             with open(f, "rb") as fh:
                 r = requests.post(
                     "$URL",
@@ -432,25 +448,27 @@ def upload(f, max_retries=3):
                     timeout=600,
                 )
                 r.raise_for_status()
-            print(f"Completed {f.name}", flush=True)
+            batch_time = (time.perf_counter() - batch_start) * 1000
+
+            print(f"Completed {f.name} (size: {f.stat().st_size / 1024 / 1024:.1f}MB, time: {batch_time:.1f}ms)", flush=True)
             time.sleep(0.5)
-            return True
+            return batch_time
         except requests.exceptions.HTTPError as e:
             if e.response.status_code >= 500 and attempt < max_retries - 1:
                 continue
             print(f"Failed to upload {f.name}: HTTP {e.response.status_code if hasattr(e, 'response') else 'unknown'}", flush=True)
-            return False
+            return None
         except requests.exceptions.ConnectionError as e:
             if attempt < max_retries - 1:
                 continue
             print(f"Failed to upload {f.name}: Connection error", flush=True)
-            return False
+            return None
         except Exception as e:
             if attempt < max_retries - 1:
                 continue
             print(f"Failed to upload {f.name}: {e}", flush=True)
-            return False
-    return False
+            return None
+    return None
 
 print(f"Starting batch upload with {$NPARALLEL} parallel workers")
 with ThreadPoolExecutor(max_workers=$NPARALLEL) as ex:
@@ -458,9 +476,11 @@ with ThreadPoolExecutor(max_workers=$NPARALLEL) as ex:
     for future in as_completed(futures):
         f = futures[future]
         try:
-            success = future.result()
-            if not success:
+            batch_time = future.result()
+            if batch_time is None:
                 failed_files.append(f)
+            else:
+                total_upload_time_ms += batch_time
         except Exception as e:
             print(f"Exception for {f.name}: {e}", flush=True)
             failed_files.append(f)
@@ -471,23 +491,25 @@ if failed_files:
         print(f"  - {f.name}", flush=True)
     exit(1)
 else:
-    print("All uploads completed successfully", flush=True)
+    print(f"All uploads completed successfully", flush=True)
+    print(f"Total batch upload time: {total_upload_time_ms:.1f}ms", flush=True)
+
+    import json
+    with open("$RESULTS_DIR/upload_timing.json", "w") as f:
+        json.dump({"total_batch_upload_time_ms": total_upload_time_ms}, f, indent=2)
 EOF
 INDEXING_EXIT_CODE=$?
 
 if [ $INDEXING_EXIT_CODE -ne 0 ]; then
     echo "Error: Indexing failed with exit code $INDEXING_EXIT_CODE"
-    if [ -n "${METRICS_PID:-}" ]; then
-        kill -TERM $METRICS_PID 2>/dev/null || true
-        wait $METRICS_PID 2>/dev/null || true
-    fi
     exit $INDEXING_EXIT_CODE
 fi
 
 end_time=$(date +%s%N)
 duration=$(( (end_time - start_time) / 1000000 ))
-echo "Execution time: $duration ms"
-echo "Done!"
+
+export RESULTS_DIR
+export DURATION=$duration
 
 fi
 
@@ -508,25 +530,38 @@ QUERY_EXIT_CODE=$?
 
 if [ $QUERY_EXIT_CODE -ne 0 ]; then
     echo "Error: Query benchmarks failed with exit code $QUERY_EXIT_CODE"
-    if [ -n "${METRICS_PID:-}" ]; then
-        kill -TERM $METRICS_PID 2>/dev/null || true
-        wait $METRICS_PID 2>/dev/null || true
-    fi
     exit $QUERY_EXIT_CODE
 fi
 
 if [ "$SKIP_INDEXING" = "false" ]; then
-    python3 -c "
+    python3 << 'EOF'
 import json
-with open('$RESULTS_DIR/results.json', 'r+') as f:
+import os
+
+results_dir = os.environ.get('RESULTS_DIR')
+duration = int(os.environ.get('DURATION', '0'))
+
+with open(f'{results_dir}/results.json', 'r+') as f:
     results = json.load(f)
     if 'metrics' not in results:
         results['metrics'] = {}
-    results['metrics']['cuvs-indexing-time'] = $duration
+
+    results['metrics']['solr-total-indexing-time-ms'] = duration
+
+    upload_timing_file = f'{results_dir}/upload_timing.json'
+    if os.path.exists(upload_timing_file):
+        with open(upload_timing_file, 'r') as timing_file:
+            timing_data = json.load(timing_file)
+            results['metrics']['solr-batch-upload-time-ms'] = timing_data['total_batch_upload_time_ms']
+
     f.seek(0)
     json.dump(results, f, indent=2)
     f.truncate()
-" || echo "Warning: Failed to add indexing time to results.json (non-fatal)"
+EOF
+    METRICS_EXIT_CODE=$?
+    if [ $METRICS_EXIT_CODE -ne 0 ]; then
+        echo "Warning: Failed to add timing metrics to results.json (non-fatal)"
+    fi
 fi
 
 if [ -n "${METRICS_PID:-}" ]; then

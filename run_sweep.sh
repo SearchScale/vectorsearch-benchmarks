@@ -190,13 +190,13 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                             index_hash=$(echo "$CONFIG_NAME" | sed -E 's/.*-([a-f0-9]{8})(-.+)?$/\1/')
                             if [ ${#index_hash} -eq 8 ]; then
                                 algo=$(jq -r '.algoToRun' "$config_file")
-                                if [ "$algo" = "LUCENE_HNSW" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                if [ "$algo" = "LUCENE_HNSW" ] && ! jq -e '.metrics["hnsw-total-time-ms"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="cuvs"
-                                elif [ "$algo" = "CAGRA_HNSW" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                elif [ "$algo" = "CAGRA_HNSW" ] && ! jq -e '.metrics["cuvs-total-time-ms"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="cuvs"
-                                elif [ "$algo" = "hnsw" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                elif [ "$algo" = "hnsw" ] && ! jq -e '.metrics["solr-total-indexing-time-ms"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="cuvs"
-                                elif [ "$algo" = "cagra_hnsw" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
+                                elif [ "$algo" = "cagra_hnsw" ] && ! jq -e '.metrics["solr-total-indexing-time-ms"]' "$results_file" >/dev/null 2>&1; then
                                     metric_type="cuvs"
                                 else
                                     metric_type=""

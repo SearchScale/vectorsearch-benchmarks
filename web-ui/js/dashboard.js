@@ -206,23 +206,26 @@ class BenchmarkDashboard {
 
         if (metrics['recall-accuracy'] !== undefined) {
             recallKey = 'recall-accuracy';
-            indexingTimeKey = 'cuvs-indexing-time';
+            indexingTimeKey = 'solr-total-indexing-time-ms';
             indexSizeKey = 'cuvs-index-size';
             meanLatencyKey = 'mean-latency';
         } else if (algoType === 'CAGRA_HNSW' || algoType === 'cagra_hnsw') {
             recallKey = 'cuvs-recall-accuracy';
-            indexingTimeKey = 'cuvs-indexing-time';
+            indexingTimeKey = 'cuvs-total-time-ms';
             indexSizeKey = 'cuvs-index-size';
             meanLatencyKey = 'hnsw-mean-latency';
         } else if (algoType === 'LUCENE_HNSW' || algoType === 'hnsw') {
             recallKey = 'hnsw-recall-accuracy';
-            indexingTimeKey = 'hnsw-indexing-time';
+            indexingTimeKey = 'hnsw-total-time-ms';
             indexSizeKey = 'hnsw-index-size';
             meanLatencyKey = 'hnsw-mean-latency';
         } else {
             recallKey = metrics['recall-accuracy'] !== undefined ? 'recall-accuracy' :
                        metrics['cuvs-recall-accuracy'] !== undefined ? 'cuvs-recall-accuracy' : 'hnsw-recall-accuracy';
-            indexingTimeKey = metrics['cuvs-indexing-time'] !== undefined ? 'cuvs-indexing-time' : 'hnsw-indexing-time';
+            indexingTimeKey = metrics['cuvs-total-time-ms'] !== undefined ? 'cuvs-total-time-ms' :
+                              metrics['hnsw-total-time-ms'] !== undefined ? 'hnsw-total-time-ms' :
+                              metrics['solr-total-indexing-time-ms'] !== undefined ? 'solr-total-indexing-time-ms' :
+                              metrics['cuvs-indexing-time'] !== undefined ? 'cuvs-indexing-time' : 'hnsw-indexing-time';
             indexSizeKey = metrics['cuvs-index-size'] !== undefined ? 'cuvs-index-size' : 'hnsw-index-size';
             meanLatencyKey = metrics['mean-latency'] !== undefined ? 'mean-latency' : 'hnsw-mean-latency';
         }
