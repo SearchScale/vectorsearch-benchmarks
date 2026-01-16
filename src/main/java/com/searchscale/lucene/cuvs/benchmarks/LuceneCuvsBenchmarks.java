@@ -5,6 +5,7 @@ import static org.apache.lucene.index.VectorSimilarityFunction.EUCLIDEAN;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.charset.Charset;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
@@ -441,6 +442,11 @@ public class LuceneCuvsBenchmarks {
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
+    if (config.forceMerge) {
+    	log.info("Force merge is enabled.");
+    	writer.forceMerge(1);
+    }
+    
     // log.info("Calling forceMerge(1).");
     // writer.forceMerge(1);
     log.info("Calling commit.");
@@ -615,7 +621,7 @@ public class LuceneCuvsBenchmarks {
     };
   }
 
-  private static Codec getCuVSCodec(BenchmarkConfiguration config) {
+  private static Codec getCuVSCodec(BenchmarkConfiguration config) throws Exception {
     // Use Lucene101AcceleratedHNSWCodec with configurable parameters
     // Constructor signature: (cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth)
     return new Lucene101AcceleratedHNSWCodec(
