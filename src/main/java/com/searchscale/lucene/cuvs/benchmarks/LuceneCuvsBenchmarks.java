@@ -441,6 +441,11 @@ public class LuceneCuvsBenchmarks {
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
+    if (config.forceMerge) {
+    	log.info("Force merge is enabled.");
+    	writer.forceMerge(1);
+    }
+    
     // log.info("Calling forceMerge(1).");
     // writer.forceMerge(1);
     log.info("Calling commit.");
