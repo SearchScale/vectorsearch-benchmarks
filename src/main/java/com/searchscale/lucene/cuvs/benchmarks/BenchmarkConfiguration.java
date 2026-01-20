@@ -27,7 +27,7 @@ public class BenchmarkConfiguration {
   public String hnswIndexDirPath;
   public boolean loadVectorsInMemory;
   public boolean skipIndexing;
-  public boolean forceMerge;
+  public int forceMerge;
 
   // Lucene HNSW parameters
   public int hnswMaxConn;               // 16 default (max 512)
@@ -80,7 +80,7 @@ public class BenchmarkConfiguration {
     if (hnswIndexDirPath != null) sb.append("HNSW index directory path is: ").append(hnswIndexDirPath).append('\n');
     sb.append("Load vectors in memory before indexing: ").append(loadVectorsInMemory).append('\n');
     sb.append("Skip indexing (and use existing index for search): ").append(skipIndexing).append('\n');
-    sb.append("Do force merge while indexing documents: ").append(forceMerge).append('\n');
+    sb.append("Do force merge while indexing documents [a value < 1 implies no force merge]: ").append(forceMerge).append('\n');
     
     sb.append("------- algo parameters ------\n");
     if (isLucene()) {

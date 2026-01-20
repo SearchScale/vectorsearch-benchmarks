@@ -10,9 +10,7 @@ import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,7 +60,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
-import com.nvidia.cuvs.lucene.Lucene101AcceleratedHNSWCodec;
 
 public class LuceneCuvsBenchmarks {
 
@@ -441,9 +438,9 @@ public class LuceneCuvsBenchmarks {
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
-    if (config.forceMerge) {
+    if (config.forceMerge > 0) {
     	log.info("Force merge is enabled.");
-    	writer.forceMerge(1);
+    	writer.forceMerge(config.forceMerge);
     }
     
     // log.info("Calling forceMerge(1).");
@@ -620,7 +617,7 @@ public class LuceneCuvsBenchmarks {
     };
   }
 
-  private static Codec getCuVSCodec(BenchmarkConfiguration config) {
+  private static Codec getCuVSCodec(BenchmarkConfiguration config) throws Exception {
     // Use Lucene101AcceleratedHNSWCodec with configurable parameters
     // Constructor signature: (cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth)
     return new Lucene101AcceleratedHNSWCodec(
