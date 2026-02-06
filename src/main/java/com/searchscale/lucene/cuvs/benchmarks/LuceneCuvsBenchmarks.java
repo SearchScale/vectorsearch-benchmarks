@@ -42,6 +42,7 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.NoMergePolicy;
 import org.apache.lucene.index.SegmentReadState;
 import org.apache.lucene.index.SegmentWriteState;
+import org.apache.lucene.index.TieredMergePolicy;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.KnnFloatVectorQuery;
 import org.apache.lucene.search.ScoreDoc;
@@ -220,9 +221,15 @@ public class LuceneCuvsBenchmarks {
       // For 4M docs with 768-dim float vectors, we need approximately:
       // 4M * 768 * 4 bytes = ~12GB just for vectors, plus overhead
       // Set RAM buffer to 32GB to ensure doc count triggers flush first
-      luceneHNSWWriterConfig.setRAMBufferSizeMB(32768); // 32GB RAM buffer
+
       luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq);
-      luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
+      luceneHNSWWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+      if (config.forceMerge > 0 || config.enableTieredMerge) {
+    	luceneHNSWWriterConfig.setMergePolicy(new TieredMergePolicy());
+      } else {
+        luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
+      }
+    	  
       // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
       setPerThreadRAMLimit(luceneHNSWWriterConfig, 10240); // 10GB per thread
       log.info("Configured HNSW writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB", 
@@ -236,9 +243,14 @@ public class LuceneCuvsBenchmarks {
       // For 4M docs with 768-dim float vectors, we need approximately:
       // 4M * 768 * 4 bytes = ~12GB just for vectors, plus overhead
       // Set RAM buffer to 32GB to ensure doc count triggers flush first
-      cuvsIndexWriterConfig.setRAMBufferSizeMB(32768); // 32GB RAM buffer
       cuvsIndexWriterConfig.setMaxBufferedDocs(config.flushFreq);
-      cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
+      cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+      if (config.forceMerge > 0 || config.enableTieredMerge) {
+    	  cuvsIndexWriterConfig.setMergePolicy(new TieredMergePolicy());
+      } else {
+    	  cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
+      }
+      
       // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
       setPerThreadRAMLimit(cuvsIndexWriterConfig, 10240); // 10GB per thread
       log.info("Configured CuVS writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB", 

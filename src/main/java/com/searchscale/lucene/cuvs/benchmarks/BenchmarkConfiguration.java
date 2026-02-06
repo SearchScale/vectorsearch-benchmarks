@@ -28,6 +28,7 @@ public class BenchmarkConfiguration {
   public boolean loadVectorsInMemory;
   public boolean skipIndexing;
   public int forceMerge;
+  public boolean enableTieredMerge;
 
   // Lucene HNSW parameters
   public int hnswMaxConn;               // 16 default (max 512)

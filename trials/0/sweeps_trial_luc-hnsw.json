@@ -1,0 +1,32 @@
+{
+  "wiki1m": {
+    "dataset": "wiki-1m",
+    "common-params": {
+      "numDocs": 1000000,
+      "numQueriesToRun": 10000,
+      "numWarmUpQueries": 20,
+      "flushFreq": 500000,
+      "topK": 100,
+      "efSearch": 150,
+      "queryThreads": 1,
+      "vectorColName": "vector",
+      "createIndexInMemory": false,
+      "cleanIndexDirectory": true,
+      "saveResultsOnDisk": true,
+      "forceMerge": 0,
+      "enableTieredMerge": true
+    },
+    "algorithms": {
+      "LUCENE_HNSW": {
+        "hnswIndexDirPath": "hnswIndex",
+        "hnswMaxConn": [128],
+        "hnswBeamWidth": [256],
+        "numIndexThreads": 32,
+        "cagraGraphDegree": [32],
+        "cagraIntermediateGraphDegree": [64],
+        "cagraHnswLayers": [2],
+        "cuvsWriterThreads": 32        
+      }
+    }
+  }
+}

@@ -35,12 +35,12 @@
 	<dependency>
 		  <groupId>com.nvidia.cuvs.lucene</groupId>
 		    <artifactId>cuvs-lucene</artifactId>
-		      <version>25.12.0</version>
+		      <version>26.02.0</version>
 		      </dependency>
         <dependency>
             <groupId>com.nvidia.cuvs</groupId>
             <artifactId>cuvs-java</artifactId>
-            <version>25.12.0</version>
+            <version>26.02.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.lucene</groupId>

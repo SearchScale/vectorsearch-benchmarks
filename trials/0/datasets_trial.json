@@ -1,0 +1,15 @@
+{
+  "datasets": {
+    "wiki-1m": {
+      "description": "Wikipedia 768-dimensions, 1M vectors",
+      "download-url": "https://data.rapids.ai/raft/datasets/wiki_all_1M/wiki_all_1M.tar",
+      "preparation-commands": "tar -xvf wiki_all_1M.tar",
+      "base_file": "base.1M.fbin",
+      "query_file": "queries.fbin",
+      "ground_truth_file": "groundtruth.1M.neighbors.ibin",
+      "num_docs": 1000000,
+      "vector_dimension": 768,
+      "top_k_ground_truth": 100
+    }
+  }
+}

@@ -12,7 +12,9 @@
       "vectorColName": "vector",
       "createIndexInMemory": false,
       "cleanIndexDirectory": true,
-      "saveResultsOnDisk": true
+      "saveResultsOnDisk": true,
+	  "forceMerge": 0,
+	  "enableTieredMerge": true
     },
     "algorithms": {
       "LUCENE_HNSW": {
