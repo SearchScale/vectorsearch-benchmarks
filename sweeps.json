@@ -13,8 +13,8 @@
       "createIndexInMemory": false,
       "cleanIndexDirectory": true,
       "saveResultsOnDisk": true,
-	  "forceMerge": 0,
-	  "enableTieredMerge": true
+ 	    "forceMerge": 0,
+	    "enableTieredMerge": true
     },
     "algorithms": {
       "LUCENE_HNSW": {
