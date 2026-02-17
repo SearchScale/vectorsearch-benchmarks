@@ -14,16 +14,18 @@
       "cleanIndexDirectory": true,
       "saveResultsOnDisk": true,
       "forceMerge": 0,
-      "enableTieredMerge": true
+      "enableTieredMerge": true,
+      "enableIndexWriterInfoStream": false,
+      "ramBufferSizeMB": 10240
     },
     "algorithms": {
       "CAGRA_HNSW": {
         "cuvsIndexDirPath": "cuvsIndex",
-        "cagraGraphDegree": [64],
-        "cagraIntermediateGraphDegree": [128],
-        "cagraHnswLayers": [2],
-        "cuvsWriterThreads": 32,
-        "numIndexThreads": 32,
+        "cagraGraphDegree": [32],
+        "cagraIntermediateGraphDegree": [96],
+        "cagraHnswLayers": [1],
+        "cuvsWriterThreads": 14,
+        "numIndexThreads": 14,
         "hnswMaxConn": 5,
         "hnswBeamWidth": 5
       }

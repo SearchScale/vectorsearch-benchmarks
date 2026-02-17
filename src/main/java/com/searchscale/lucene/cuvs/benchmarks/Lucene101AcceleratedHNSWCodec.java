@@ -4,20 +4,19 @@
  */
 package com.searchscale.lucene.cuvs.benchmarks;
 
+import com.nvidia.cuvs.LibraryException;
+import com.nvidia.cuvs.lucene.AcceleratedHNSWParams;
+import com.nvidia.cuvs.lucene.Lucene99AcceleratedHNSWVectorsFormat;
+import com.nvidia.cuvs.lucene.LuceneProvider;
 import java.lang.reflect.InvocationTargetException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
 import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.FilterCodec;
 import org.apache.lucene.codecs.KnnVectorsFormat;
 
-import com.nvidia.cuvs.LibraryException;
-import com.nvidia.cuvs.lucene.Lucene99AcceleratedHNSWVectorsFormat;
-import com.nvidia.cuvs.lucene.LuceneProvider;
-
 /**
- * PLEASE NOTE: ADDING THIS CODEC CLASS IN THIS REPO IS A TEMPORARY MEASURE AS 
+ * PLEASE NOTE: ADDING THIS CODEC CLASS IN THIS REPO IS A TEMPORARY MEASURE AS
  * THE RELEASED ARTIFACTS DO NOT HAVE CODECS EXPOSED
  *
  */
@@ -99,9 +98,16 @@ public class Lucene101AcceleratedHNSWCodec extends FilterCodec {
       int maxConn,
       int beamWidth) {
     try {
-      format =
-          new Lucene99AcceleratedHNSWVectorsFormat(
-              cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth);
+      AcceleratedHNSWParams params =
+          new AcceleratedHNSWParams.Builder()
+              .withWriterThreads(cuvsWriterThreads)
+              .withIntermediateGraphDegree(intGraphDegree)
+              .withGraphDegree(graphDegree)
+              .withHNSWLayer(hnswLayers)
+              .withMaxConn(maxConn)
+              .withBeamWidth(beamWidth)
+              .build();
+      format = new Lucene99AcceleratedHNSWVectorsFormat(params);
       setKnnFormat(format);
     } catch (LibraryException ex) {
       log.log(

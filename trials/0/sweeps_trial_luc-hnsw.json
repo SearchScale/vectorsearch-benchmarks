@@ -14,14 +14,17 @@
       "cleanIndexDirectory": true,
       "saveResultsOnDisk": true,
       "forceMerge": 0,
-      "enableTieredMerge": true
+      "enableTieredMerge": false,
+      "enableIndexWriterInfoStream": false,
+      "ramBufferSizeMB": 32767
     },
     "algorithms": {
       "LUCENE_HNSW": {
         "hnswIndexDirPath": "hnswIndex",
         "hnswMaxConn": [128],
         "hnswBeamWidth": [256],
-        "numIndexThreads": 32,
+        "numIndexThreads": 8,
+        "hnswMergeThreads": 8,
         "cagraGraphDegree": [32],
         "cagraIntermediateGraphDegree": [64],
         "cagraHnswLayers": [2],
