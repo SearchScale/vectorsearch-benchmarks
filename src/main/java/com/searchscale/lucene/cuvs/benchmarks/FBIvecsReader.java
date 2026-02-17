@@ -8,12 +8,11 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
-
-import org.mapdb.IndexTreeList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-//TODO: The three static methods have a lot of common logic, ideally should be combined as just one.
+// TODO: The three static methods have a lot of common logic, ideally should be combined as just
+// one.
 public class FBIvecsReader {
 
   private static final Logger log = LoggerFactory.getLogger(FBIvecsReader.class.getName());
@@ -176,92 +175,91 @@ public class FBIvecsReader {
   }
 
   // New method to read .fbin files (format: num_vectors, dimension, then vector data)
- // Corrected readFbin method for Wiki-88M .fbin files
-public static void readFbin(String filePath, int numRows, List<float[]> vectors) {
-  log.info("Reading {} from file: {}", numRows, filePath);
+  // Corrected readFbin method for Wiki-88M .fbin files
+  public static void readFbin(String filePath, int numRows, List<float[]> vectors) {
+    log.info("Reading {} from file: {}", numRows, filePath);
 
-  try (InputStream is = new FileInputStream(filePath)) {
-    // Read num_vectors (first 4 bytes, little endian)
-    byte[] numVecBytes = is.readNBytes(4);
-    ByteBuffer numVecBuffer = ByteBuffer.wrap(numVecBytes).order(ByteOrder.LITTLE_ENDIAN);
-    int numVectors = numVecBuffer.getInt();
+    try (InputStream is = new FileInputStream(filePath)) {
+      // Read num_vectors (first 4 bytes, little endian)
+      byte[] numVecBytes = is.readNBytes(4);
+      ByteBuffer numVecBuffer = ByteBuffer.wrap(numVecBytes).order(ByteOrder.LITTLE_ENDIAN);
+      int numVectors = numVecBuffer.getInt();
 
-    // Read dimension (next 4 bytes, little endian)
-    byte[] dimBytes = is.readNBytes(4);
-    ByteBuffer dimBuffer = ByteBuffer.wrap(dimBytes).order(ByteOrder.LITTLE_ENDIAN);
-    int dimension = dimBuffer.getInt();
+      // Read dimension (next 4 bytes, little endian)
+      byte[] dimBytes = is.readNBytes(4);
+      ByteBuffer dimBuffer = ByteBuffer.wrap(dimBytes).order(ByteOrder.LITTLE_ENDIAN);
+      int dimension = dimBuffer.getInt();
 
-    log.info("File header - total vectors: {}, dimension: {}", numVectors, dimension);
+      log.info("File header - total vectors: {}, dimension: {}", numVectors, dimension);
 
-    float[] row = new float[dimension];
-    int count = 0;
+      float[] row = new float[dimension];
+      int count = 0;
 
-    while (is.available() != 0) {
-      byte[] vectorBytes = is.readNBytes(dimension * 4);
-      if (vectorBytes.length != dimension * 4) break;
-      ByteBuffer bb = ByteBuffer.wrap(vectorBytes).order(ByteOrder.LITTLE_ENDIAN);
-      for (int i = 0; i < dimension; i++) row[i] = bb.getFloat();
-      vectors.add(row.clone());
-      count++;
-      if (numRows != -1 && count == numRows) break;
-      if (count % 1000 == 0) System.out.print(".");
+      while (is.available() != 0) {
+        byte[] vectorBytes = is.readNBytes(dimension * 4);
+        if (vectorBytes.length != dimension * 4) break;
+        ByteBuffer bb = ByteBuffer.wrap(vectorBytes).order(ByteOrder.LITTLE_ENDIAN);
+        for (int i = 0; i < dimension; i++) row[i] = bb.getFloat();
+        vectors.add(row.clone());
+        count++;
+        if (numRows != -1 && count == numRows) break;
+        if (count % 1000 == 0) System.out.print(".");
+      }
+      System.out.println();
+      log.info("Reading complete. Read {} vectors out of {} in file.", count, numVectors);
+    } catch (Exception e) {
+      log.error("Error reading fbin file", e);
     }
-    System.out.println();
-    log.info("Reading complete. Read {} vectors out of {} in file.", count, numVectors);
-  } catch (Exception e) {
-    log.error("Error reading fbin file", e);
   }
-}
 
-// Fixed method to read .ibin files (ground truth neighbors)
-public static ArrayList<int[]> readIbin(String filePath, int numRows) {
-  log.info("Reading {} from file: {}", numRows, filePath);
-  ArrayList<int[]> vectors = new ArrayList<int[]>();
+  // Fixed method to read .ibin files (ground truth neighbors)
+  public static ArrayList<int[]> readIbin(String filePath, int numRows) {
+    log.info("Reading {} from file: {}", numRows, filePath);
+    ArrayList<int[]> vectors = new ArrayList<int[]>();
 
-  try {
-    InputStream is = new FileInputStream(filePath);
+    try {
+      InputStream is = new FileInputStream(filePath);
 
-    // For .ibin ground truth files: Read num_vectors first, then dimension
-    byte[] numVecBytes = is.readNBytes(4);
-    ByteBuffer numVecBuffer = ByteBuffer.wrap(numVecBytes).order(ByteOrder.LITTLE_ENDIAN);
-    int numVectors = numVecBuffer.getInt();
+      // For .ibin ground truth files: Read num_vectors first, then dimension
+      byte[] numVecBytes = is.readNBytes(4);
+      ByteBuffer numVecBuffer = ByteBuffer.wrap(numVecBytes).order(ByteOrder.LITTLE_ENDIAN);
+      int numVectors = numVecBuffer.getInt();
 
-    byte[] dimBytes = is.readNBytes(4);
-    ByteBuffer dimBuffer = ByteBuffer.wrap(dimBytes).order(ByteOrder.LITTLE_ENDIAN);
-    int dimension = dimBuffer.getInt();
+      byte[] dimBytes = is.readNBytes(4);
+      ByteBuffer dimBuffer = ByteBuffer.wrap(dimBytes).order(ByteOrder.LITTLE_ENDIAN);
+      int dimension = dimBuffer.getInt();
 
-    log.info("Ground truth file - total vectors: {}, dimension: {}", numVectors, dimension);
+      log.info("Ground truth file - total vectors: {}, dimension: {}", numVectors, dimension);
 
-    int count = 0;
-    while (is.available() != 0 && (numRows == -1 || count < numRows)) {
-      // Read dimension * 4 bytes (int values)
-      byte[] vectorBytes = is.readNBytes(dimension * 4);
-      if (vectorBytes.length != dimension * 4) {
-        break; // End of file
+      int count = 0;
+      while (is.available() != 0 && (numRows == -1 || count < numRows)) {
+        // Read dimension * 4 bytes (int values)
+        byte[] vectorBytes = is.readNBytes(dimension * 4);
+        if (vectorBytes.length != dimension * 4) {
+          break; // End of file
+        }
+
+        ByteBuffer bb = ByteBuffer.wrap(vectorBytes);
+        bb.order(ByteOrder.LITTLE_ENDIAN);
+
+        int[] row = new int[dimension];
+        for (int i = 0; i < dimension; i++) {
+          row[i] = bb.getInt();
+        }
+
+        vectors.add(row);
+        count++;
+
+        if (count % 1000 == 0) {
+          System.out.print(".");
+        }
       }
-
-      ByteBuffer bb = ByteBuffer.wrap(vectorBytes);
-      bb.order(ByteOrder.LITTLE_ENDIAN);
-
-      int[] row = new int[dimension];
-      for (int i = 0; i < dimension; i++) {
-        row[i] = bb.getInt();
-      }
-
-      vectors.add(row);
-      count++;
-
-      if (count % 1000 == 0) {
-        System.out.print(".");
-      }
+      System.out.println();
+      is.close();
+      log.info("Reading complete. Read {} vectors out of {} total.", count, numVectors);
+    } catch (Exception e) {
+      e.printStackTrace();
     }
-    System.out.println();
-    is.close();
-    log.info("Reading complete. Read {} vectors out of {} total.", count, numVectors);
-  } catch (Exception e) {
-    e.printStackTrace();
+    return vectors;
   }
-  return vectors;
-}
-
 }
