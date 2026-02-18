@@ -481,31 +481,25 @@ public class LuceneCuvsBenchmarks {
             }
           });
     }
-    System.out.println("------------- !!!!!! idi1 " + st.getTime());
 
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
-
-    System.out.println("------------- !!!!!! idi2 " + st.getTime());
 
     if (config.forceMerge > 0) {
       log.info("Force merge is enabled.");
       writer.forceMerge(config.forceMerge);
     }
 
-    System.out.println("------------- !!!!!! idi3 " + st.getTime());
-
     if (writer.hasUncommittedChanges()) {
       StopWatch st1 = StopWatch.createStarted();
       log.info("Calling commit.");
       writer.commit();
       st1.stop();
-      System.out.println("----------- !!!!!!!!!!! commit " + st1.getTime(TimeUnit.MILLISECONDS));
     }
     st.stop();
+    writer.close();
     System.out.println(
         "----------- !!!!!!!!!!! indexDocuments internal " + st.getTime(TimeUnit.MILLISECONDS));
-    writer.close();
   }
 
   private static void search(
