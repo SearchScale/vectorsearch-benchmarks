@@ -644,18 +644,18 @@ public class LuceneCuvsBenchmarks {
                       }
 
                       // Debug: Log results for all queries
-                      log.debug(
+                      log.info(
                           "Query "
                               + currentQueryId
                               + " - First 5 neighbors: "
                               + neighbors.subList(0, Math.min(5, neighbors.size())));
-                      log.debug(
+                      log.info(
                           "Query "
                               + currentQueryId
                               + " - First 5 distances: "
                               + scores.subList(0, Math.min(5, scores.size())));
                       int[] expectedNeighbors = groundTruth.get(currentQueryId);
-                      log.debug(
+                      log.info(
                           "Query "
                               + currentQueryId
                               + " - Expected neighbors: "
