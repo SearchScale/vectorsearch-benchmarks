@@ -543,7 +543,6 @@ public class LuceneCuvsBenchmarks {
       }
 
       int qThreads = config.queryThreads;
-      if (useCuVS) qThreads = 1;
       ExecutorService pool = Executors.newFixedThreadPool(qThreads);
       AtomicInteger queriesFinished = new AtomicInteger(0);
       ConcurrentHashMap<Integer, Double> queryLatencies = new ConcurrentHashMap<Integer, Double>();
@@ -552,133 +551,132 @@ public class LuceneCuvsBenchmarks {
 
       long startTime = System.currentTimeMillis();
       AtomicInteger queryId = new AtomicInteger(0);
-      queries.stream()
-          .limit(config.numQueriesToRun)
-          .forEach(
-              (queryVector) -> {
-                // Get a unique query ID for this query before submitting to thread pool
-                int currentQueryId = queryId.getAndIncrement();
-                pool.submit(
-                    () -> {
-                      KnnFloatVectorQuery query;
 
-                      if (useCuVS) {
-                        int effectiveEfSearch = config.getEffectiveEfSearch();
-                        query =
-                            new GPUKnnFloatVectorQuery(
-                                config.vectorColName,
-                                queryVector,
-                                effectiveEfSearch,
-                                null,
-                                config.cagraITopK,
-                                config.cagraSearchWidth);
-                      } else {
-                        int effectiveEfSearch = config.getEffectiveEfSearch();
-                        query =
-                            new KnnFloatVectorQuery(
-                                config.vectorColName, queryVector, effectiveEfSearch);
-                      }
+      for (int t = 0; t < qThreads; t++) {
+        pool.submit(
+            () -> {
+              while (queryId.getAndIncrement() <= config.numQueriesToRun) {
+                int currentQueryId = queryId.get();
+                KnnFloatVectorQuery query;
 
-                      TopDocs topDocs;
-                      long searchStartTime = System.nanoTime();
-                      try {
-                        int effectiveEfSearch = config.getEffectiveEfSearch();
-                        TopScoreDocCollectorManager collectorManager =
-                            new TopScoreDocCollectorManager(
-                                effectiveEfSearch, null, Integer.MAX_VALUE, true);
-                        topDocs = indexSearcher.search(query, collectorManager);
-                      } catch (IOException e) {
-                        throw new RuntimeException("Problem during executing a query: ", e);
-                      }
-                      double searchTimeTakenMs =
-                          TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - searchStartTime);
-                      // log.info("End to end search took: " + searchTimeTakenMs);
-                      if (currentQueryId > config.numWarmUpQueries) {
-                        queryLatencies.put(queryId.get(), searchTimeTakenMs);
-                      }
-                      int finishedCount = queriesFinished.incrementAndGet();
+                if (useCuVS) {
+                  int effectiveEfSearch = config.getEffectiveEfSearch();
+                  query =
+                      new GPUKnnFloatVectorQuery(
+                          config.vectorColName,
+                          queries.get(currentQueryId),
+                          effectiveEfSearch,
+                          null,
+                          config.cagraITopK,
+                          config.cagraSearchWidth);
+                } else {
+                  int effectiveEfSearch = config.getEffectiveEfSearch();
+                  query =
+                      new KnnFloatVectorQuery(
+                          config.vectorColName, queries.get(currentQueryId), effectiveEfSearch);
+                }
 
-                      // Log progress every 1000 queries
-                      if (finishedCount % 1000 == 0 || finishedCount == config.numQueriesToRun) {
-                        log.info(
-                            "Done querying "
-                                + finishedCount
-                                + " out of "
-                                + config.numQueriesToRun
-                                + " queries.");
-                      }
+                TopDocs topDocs;
+                long searchStartTime = System.nanoTime();
+                try {
+                  int effectiveEfSearch = config.getEffectiveEfSearch();
+                  TopScoreDocCollectorManager collectorManager =
+                      new TopScoreDocCollectorManager(
+                          effectiveEfSearch, null, Integer.MAX_VALUE, true);
+                  topDocs = indexSearcher.search(query, collectorManager);
+                } catch (IOException e) {
+                  throw new RuntimeException("Problem during executing a query: ", e);
+                }
+                double searchTimeTakenMs =
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - searchStartTime);
+                // log.info("End to end search took: " + searchTimeTakenMs);
+                if (currentQueryId > config.numWarmUpQueries) {
+                  queryLatencies.put(queryId.get(), searchTimeTakenMs);
+                }
+                int finishedCount = queriesFinished.incrementAndGet();
 
-                      ScoreDoc[] hits = topDocs.scoreDocs;
-                      List<Integer> neighbors = new ArrayList<>();
-                      List<Float> scores = new ArrayList<>();
+                // Log progress every 1000 queries
+                if (finishedCount % 1000 == 0 || finishedCount == config.numQueriesToRun) {
+                  log.info(
+                      "Done querying "
+                          + finishedCount
+                          + " out of "
+                          + config.numQueriesToRun
+                          + " queries.");
+                }
 
-                      // Debug: Log search results for first query
-                      if (queryId.get() == 0) {
-                        log.info(
-                            "Debug: First query returned "
-                                + hits.length
-                                + " hits (ef-search candidates)");
-                        log.info(
-                            "Debug: Will select top "
-                                + config.topK
-                                + " from "
-                                + hits.length
-                                + " candidates");
-                      }
-                      int numResultsToTake = Math.min(config.topK, hits.length);
-                      long retrievalStartTime = System.nanoTime();
-                      for (int i = 0; i < numResultsToTake; i++) {
-                        ScoreDoc hit = hits[i];
-                        try {
-                          Document d = indexReader.storedFields().document(hit.doc);
-                          neighbors.add(Integer.parseInt(d.get("id")));
-                        } catch (IOException e) {
-                          e.printStackTrace();
-                        }
-                        scores.add(hit.score);
-                      }
-                      double retrievalTimeTakenMs =
-                          TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - retrievalStartTime);
-                      if (currentQueryId > config.numWarmUpQueries) {
-                        retrievalLatencies.put(queryId.get(), retrievalTimeTakenMs);
-                      }
+                ScoreDoc[] hits = topDocs.scoreDocs;
+                List<Integer> neighbors = new ArrayList<>();
+                List<Float> scores = new ArrayList<>();
 
-                      // Debug: Log results for all queries
-                      log.debug(
-                          "Query "
-                              + currentQueryId
-                              + " - First 5 neighbors: "
-                              + neighbors.subList(0, Math.min(5, neighbors.size())));
-                      log.debug(
-                          "Query "
-                              + currentQueryId
-                              + " - First 5 distances: "
-                              + scores.subList(0, Math.min(5, scores.size())));
-                      int[] expectedNeighbors = groundTruth.get(currentQueryId);
-                      log.debug(
-                          "Query "
-                              + currentQueryId
-                              + " - Expected neighbors: "
-                              + java.util.Arrays.toString(
-                                  java.util.Arrays.copyOf(
-                                      expectedNeighbors, Math.min(5, expectedNeighbors.length))));
+                // Debug: Log search results for first query
+                if (queryId.get() == 0) {
+                  log.info(
+                      "Debug: First query returned "
+                          + hits.length
+                          + " hits (ef-search candidates)");
+                  log.info(
+                      "Debug: Will select top "
+                          + config.topK
+                          + " from "
+                          + hits.length
+                          + " candidates");
+                }
+                int numResultsToTake = Math.min(config.topK, hits.length);
+                long retrievalStartTime = System.nanoTime();
+                for (int i = 0; i < numResultsToTake; i++) {
+                  ScoreDoc hit = hits[i];
+                  try {
+                    Document d = indexReader.storedFields().document(hit.doc);
+                    neighbors.add(Integer.parseInt(d.get("id")));
+                  } catch (IOException e) {
+                    e.printStackTrace();
+                  }
+                  scores.add(hit.score);
+                }
+                double retrievalTimeTakenMs =
+                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - retrievalStartTime);
+                if (currentQueryId > config.numWarmUpQueries) {
+                  retrievalLatencies.put(queryId.get(), retrievalTimeTakenMs);
+                }
 
-                      var s = useCuVS ? "lucene_cuvs" : "lucene_hnsw";
-                      if (currentQueryId > config.numWarmUpQueries) {
-                        QueryResult result =
-                            new QueryResult(
-                                s,
-                                currentQueryId,
-                                neighbors,
-                                groundTruth.get(currentQueryId),
-                                scores,
-                                searchTimeTakenMs);
-                        queryResults.add(result);
-                      } else {
-                        log.info("Skipping warmup query: {}", currentQueryId);
-                      }
-                    });
-              });
+                // Debug: Log results for all queries
+                log.debug(
+                    "Query "
+                        + currentQueryId
+                        + " - First 5 neighbors: "
+                        + neighbors.subList(0, Math.min(5, neighbors.size())));
+                log.debug(
+                    "Query "
+                        + currentQueryId
+                        + " - First 5 distances: "
+                        + scores.subList(0, Math.min(5, scores.size())));
+                int[] expectedNeighbors = groundTruth.get(currentQueryId);
+                log.debug(
+                    "Query "
+                        + currentQueryId
+                        + " - Expected neighbors: "
+                        + java.util.Arrays.toString(
+                            java.util.Arrays.copyOf(
+                                expectedNeighbors, Math.min(5, expectedNeighbors.length))));
+
+                var s = useCuVS ? "lucene_cuvs" : "lucene_hnsw";
+                if (currentQueryId > config.numWarmUpQueries) {
+                  QueryResult result =
+                      new QueryResult(
+                          s,
+                          currentQueryId,
+                          neighbors,
+                          groundTruth.get(currentQueryId),
+                          scores,
+                          searchTimeTakenMs);
+                  queryResults.add(result);
+                } else {
+                  log.info("Skipping warmup query: {}", currentQueryId);
+                }
+              }
+            });
+      }
 
       pool.shutdown();
       pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
