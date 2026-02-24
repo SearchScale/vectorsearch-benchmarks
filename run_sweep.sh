@@ -136,7 +136,7 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                     # Run the benchmark and capture output
                     LOG_FILE="$CONFIG_RESULTS_DIR/benchmark.log"
                     echo "Starting benchmark at $(date)" > "$LOG_FILE"
-                    
+                    export MAVEN_OPTS="-Xms32g -Xmx32g"
                     if [ "$MODE" = "lucene" ]; then
                         # Run benchmark with Maven, redirecting output to log file
                         # Pass CONFIG_RESULTS_DIR as third argument to Java program

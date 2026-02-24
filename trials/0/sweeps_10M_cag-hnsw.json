@@ -1,14 +1,14 @@
 {
-  "wiki1m": {
-    "dataset": "wiki-1m",
+  "wiki10m": {
+    "dataset": "wiki-10m",
     "common-params": {
-      "numDocs": 1000000,
+      "numDocs": 10000000,
       "numQueriesToRun": 10000,
       "numWarmUpQueries": 20,
-      "flushFreq": 500000,
+      "flushFreq": 10000000,
       "topK": 100,
       "efSearch": 100,
-      "queryThreads": 16,
+      "queryThreads": 32,
       "vectorColName": "vector",
       "createIndexInMemory": false,
       "cleanIndexDirectory": true,
@@ -16,7 +16,7 @@
       "forceMerge": 0,
       "enableTieredMerge": false,
       "enableIndexWriterInfoStream": false,
-      "ramBufferSizeMB": 32767
+      "ramBufferSizeMB": 64000
     },
     "algorithms": {
       "CAGRA_HNSW": {
@@ -24,8 +24,8 @@
         "cagraGraphDegree": [32],
         "cagraIntermediateGraphDegree": [96],
         "cagraHnswLayers": [1],
-        "cuvsWriterThreads": 16,
-        "numIndexThreads": 16,
+        "cuvsWriterThreads": 32,
+        "numIndexThreads": 32,
         "hnswMaxConn": 5,
         "hnswBeamWidth": 5
       }

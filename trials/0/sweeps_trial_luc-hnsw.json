@@ -7,8 +7,8 @@
       "numWarmUpQueries": 20,
       "flushFreq": 500000,
       "topK": 100,
-      "efSearch": 150,
-      "queryThreads": 1,
+      "efSearch": 100,
+      "queryThreads": 16,
       "vectorColName": "vector",
       "createIndexInMemory": false,
       "cleanIndexDirectory": true,
@@ -23,11 +23,11 @@
         "hnswIndexDirPath": "hnswIndex",
         "hnswMaxConn": [128],
         "hnswBeamWidth": [256],
-        "numIndexThreads": 8,
-        "hnswMergeThreads": 8,
+        "numIndexThreads": 16,
+        "hnswMergeThreads": 16,
         "cagraGraphDegree": [32],
         "cagraIntermediateGraphDegree": [64],
-        "cagraHnswLayers": [2],
+        "cagraHnswLayers": [1],
         "cuvsWriterThreads": 32        
       }
     }
