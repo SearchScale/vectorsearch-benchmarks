@@ -21,7 +21,7 @@ public class BenchmarkConfiguration {
   public boolean saveResultsOnDisk;
   public String resultsDirectory;
   public boolean hasColNames;
-  public String algoToRun;              // keep as String
+  public String algoToRun; // keep as String
   public String groundTruthFile;
   public String cuvsIndexDirPath;
   public String hnswIndexDirPath;
@@ -29,22 +29,26 @@ public class BenchmarkConfiguration {
   public boolean skipIndexing;
   public int forceMerge;
   public boolean enableTieredMerge;
+  public boolean enableIndexWriterInfoStream;
+  public int ramBufferSizeMB;
 
   // Lucene HNSW parameters
-  public int hnswMaxConn;               // 16 default (max 512)
-  public int hnswBeamWidth;             // 100 default (max 3200)
+  public int hnswMaxConn; // 16 default (max 512)
+  public int hnswBeamWidth; // 100 default (max 3200)
+  public int hnswMergeThreads;
 
   // CAGRA parameters
   public int cagraIntermediateGraphDegree; // 128 default
-  public int cagraGraphDegree;             // 64 default
+  public int cagraGraphDegree; // 64 default
   public int cagraITopK;
   public int cagraSearchWidth;
-  public int cagraHnswLayers;             // layers in CAGRA->HNSW conversion
+  public int cagraHnswLayers; // layers in CAGRA->HNSW conversion
   public int efSearch;
 
   private boolean isLucene() {
     return "LUCENE_HNSW".equalsIgnoreCase(algoToRun);
   }
+
   private boolean isCagra() {
     return "CAGRA_HNSW".equalsIgnoreCase(algoToRun);
   }
@@ -77,12 +81,22 @@ public class BenchmarkConfiguration {
     sb.append("Has column names in the dataset file: ").append(hasColNames).append('\n');
     sb.append("algoToRun {Choices: HNSW | CAGRA}: ").append(algoToRun).append('\n');
     sb.append("Ground Truth file used is: ").append(groundTruthFile).append('\n');
-    if (cuvsIndexDirPath != null) sb.append("CuVS index directory path is: ").append(cuvsIndexDirPath).append('\n');
-    if (hnswIndexDirPath != null) sb.append("HNSW index directory path is: ").append(hnswIndexDirPath).append('\n');
+    if (cuvsIndexDirPath != null)
+      sb.append("CuVS index directory path is: ").append(cuvsIndexDirPath).append('\n');
+    if (hnswIndexDirPath != null)
+      sb.append("HNSW index directory path is: ").append(hnswIndexDirPath).append('\n');
     sb.append("Load vectors in memory before indexing: ").append(loadVectorsInMemory).append('\n');
-    sb.append("Skip indexing (and use existing index for search): ").append(skipIndexing).append('\n');
-    sb.append("Do force merge while indexing documents [a value < 1 implies no force merge]: ").append(forceMerge).append('\n');
-    
+    sb.append("Skip indexing (and use existing index for search): ")
+        .append(skipIndexing)
+        .append('\n');
+    sb.append("Do force merge while indexing documents [a value < 1 implies no force merge]: ")
+        .append(forceMerge)
+        .append('\n');
+    sb.append("Enable TieredMerge: ").append(enableTieredMerge).append('\n');
+    sb.append("Num merge threads: ").append(hnswMergeThreads).append('\n');
+    sb.append("enableIndexWriterInfoStream: ").append(enableIndexWriterInfoStream).append('\n');
+    sb.append("ramBufferSizeMB: ").append(ramBufferSizeMB).append('\n');
+
     sb.append("------- algo parameters ------\n");
     if (isLucene()) {
       sb.append("hnswMaxConn: ").append(hnswMaxConn).append('\n');
@@ -98,7 +112,10 @@ public class BenchmarkConfiguration {
     return sb.toString();
   }
 
-  @Override public String toString() { return prettyString(); }
+  @Override
+  public String toString() {
+    return prettyString();
+  }
 
   public void debugPrintArguments() {
     // keep a single source of truth for printing
