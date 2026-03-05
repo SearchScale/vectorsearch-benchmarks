@@ -4,6 +4,7 @@
  */
 package com.searchscale.lucene.cuvs.benchmarks;
 
+import com.nvidia.cuvs.CagraIndexParams.CagraGraphBuildAlgo;
 import com.nvidia.cuvs.LibraryException;
 import com.nvidia.cuvs.lucene.AcceleratedHNSWParams;
 import com.nvidia.cuvs.lucene.Lucene99AcceleratedHNSWVectorsFormat;
@@ -106,6 +107,7 @@ public class Lucene101AcceleratedHNSWCodec extends FilterCodec {
               .withHNSWLayer(hnswLayers)
               .withMaxConn(maxConn)
               .withBeamWidth(beamWidth)
+              .withCagraGraphBuildAlgo(CagraGraphBuildAlgo.IVF_PQ)
               .build();
       format = new Lucene99AcceleratedHNSWVectorsFormat(params);
       setKnnFormat(format);
