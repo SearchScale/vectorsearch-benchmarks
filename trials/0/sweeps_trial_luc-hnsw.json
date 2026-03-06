@@ -8,20 +8,22 @@
       "flushFreq": 500000,
       "topK": 100,
       "efSearch": 150,
-      "queryThreads": 1,
+      "queryThreads": 16,
       "vectorColName": "vector",
       "createIndexInMemory": false,
       "cleanIndexDirectory": true,
       "saveResultsOnDisk": true,
       "forceMerge": 0,
-      "enableTieredMerge": true
+      "enableTieredMerge": true,
+      "enableIndexWriterInfoStream": false,
+      "ramBufferSizeMB": 8192
     },
     "algorithms": {
       "LUCENE_HNSW": {
-        "hnswIndexDirPath": "hnswIndex",
+        "indexDirPath": "hnswIndex",
         "hnswMaxConn": [128],
         "hnswBeamWidth": [256],
-        "numIndexThreads": 32,
+        "numIndexThreads": 16,
         "cagraGraphDegree": [32],
         "cagraIntermediateGraphDegree": [64],
         "cagraHnswLayers": [2],

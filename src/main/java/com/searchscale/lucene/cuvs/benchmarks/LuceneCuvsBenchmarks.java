@@ -60,14 +60,28 @@ import org.mapdb.QueueLong.Node.SERIALIZER;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.nvidia.cuvs.CuVSIvfPqIndexParams;
+import com.nvidia.cuvs.CuVSIvfPqParams;
+import com.nvidia.cuvs.CuVSIvfPqSearchParams;
+import com.nvidia.cuvs.lucene.AcceleratedHNSWParams;
+import com.nvidia.cuvs.lucene.CuVS2510GPUSearchCodec;
 import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
+import com.nvidia.cuvs.lucene.GPUSearchParams;
+import com.nvidia.cuvs.lucene.Lucene101AcceleratedHNSWCodec;
+import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWBinaryQuantizedCodec;
+import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWScalarQuantizedCodec;
 
 public class LuceneCuvsBenchmarks {
 
   private static final Logger log = LoggerFactory.getLogger(LuceneCuvsBenchmarks.class.getName());
-
-  private static boolean RESULTS_DEBUGGING = false; // when enabled, titles are indexed and printed after search
-  private static boolean INDEX_WRITER_INFO_STREAM = true; // when enabled, prints information about merges, deletes,
+  
+  public enum Codex {
+	  LUCENE_HNSW,
+	  CAGRA_HNSW,
+	  CAGRA_SEARCH,
+	  CAGRA_HNSW_BINARY,
+	  CAGRA_HNSW_SCALAR
+  }
 
   /**
    * Uses reflection to bypass the 2048MB hard limit for per-thread RAM buffer.
@@ -113,7 +127,6 @@ public class LuceneCuvsBenchmarks {
     }
   }
 
-  @SuppressWarnings("resource")
   public static void main(String[] args) throws Throwable {
 
     if (args.length < 1 || args.length > 3) {
@@ -213,140 +226,76 @@ public class LuceneCuvsBenchmarks {
 
       // [2] Benchmarking setup
 
-      // HNSW Writer:
-      IndexWriterConfig luceneHNSWWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
-      luceneHNSWWriterConfig.setCodec(getLuceneHnswCodec(config));
-      //luceneHNSWWriterConfig.setUseCompoundFile(false);
-      // Configure to flush based on document count only
-      // For 4M docs with 768-dim float vectors, we need approximately:
-      // 4M * 768 * 4 bytes = ~12GB just for vectors, plus overhead
-      // Set RAM buffer to 32GB to ensure doc count triggers flush first
-
-      luceneHNSWWriterConfig.setMaxBufferedDocs(config.flushFreq);
-      luceneHNSWWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
-      if (config.forceMerge > 0 || config.enableTieredMerge) {
-    	luceneHNSWWriterConfig.setMergePolicy(new TieredMergePolicy());
-      } else {
-        luceneHNSWWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
-      }
-    	  
-      // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
-      setPerThreadRAMLimit(luceneHNSWWriterConfig, 10240); // 10GB per thread
-      log.info("Configured HNSW writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB", 
-              config.flushFreq, luceneHNSWWriterConfig.getRAMBufferSizeMB(), 
-              luceneHNSWWriterConfig.getRAMPerThreadHardLimitMB());
-
-      IndexWriterConfig cuvsIndexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
-      cuvsIndexWriterConfig.setCodec(getCuVSCodec(config));
-      //cuvsIndexWriterConfig.setUseCompoundFile(false);
-      // Configure to flush based on document count only
-      // For 4M docs with 768-dim float vectors, we need approximately:
-      // 4M * 768 * 4 bytes = ~12GB just for vectors, plus overhead
-      // Set RAM buffer to 32GB to ensure doc count triggers flush first
-      cuvsIndexWriterConfig.setMaxBufferedDocs(config.flushFreq);
-      cuvsIndexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
-      if (config.forceMerge > 0 || config.enableTieredMerge) {
-    	  cuvsIndexWriterConfig.setMergePolicy(new TieredMergePolicy());
-      } else {
-    	  cuvsIndexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
-      }
-      
-      // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
-      setPerThreadRAMLimit(cuvsIndexWriterConfig, 10240); // 10GB per thread
-      log.info("Configured CuVS writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB", 
-              config.flushFreq, cuvsIndexWriterConfig.getRAMBufferSizeMB(),
-              cuvsIndexWriterConfig.getRAMPerThreadHardLimitMB());
-
-      if (INDEX_WRITER_INFO_STREAM) {
-        luceneHNSWWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
-        cuvsIndexWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
-      }
-
      	if (!config.skipIndexing) {
-
-
-      IndexWriter luceneHnswIndexWriter = null;
-      IndexWriter cuvsIndexWriter = null;
-
-      
-      
-      if (config.algoToRun.equalsIgnoreCase("LUCENE_HNSW")) {
-        if (!config.createIndexInMemory) {
-          Path hnswIndex = Path.of(config.hnswIndexDirPath);
-          luceneHnswIndexWriter = new IndexWriter(FSDirectory.open(hnswIndex), luceneHNSWWriterConfig);
-        } else {
-          luceneHnswIndexWriter = new IndexWriter(new ByteBuffersDirectory(), luceneHNSWWriterConfig);
-        }
-      } else if (config.algoToRun.equalsIgnoreCase("CAGRA_HNSW")) {
-        if (!config.createIndexInMemory) {
-          Path cuvsIndex = Path.of(config.cuvsIndexDirPath);
-          cuvsIndexWriter = new IndexWriter(FSDirectory.open(cuvsIndex), cuvsIndexWriterConfig);
-        } else {
-          cuvsIndexWriter = new IndexWriter(new ByteBuffersDirectory(), cuvsIndexWriterConfig);
-        }
-      }
 
 
       IndexWriter writer;
 
-      if ("LUCENE_HNSW".equalsIgnoreCase(config.algoToRun)) {
-        writer = luceneHnswIndexWriter;
-      } else if ("CAGRA_HNSW".equalsIgnoreCase(config.algoToRun)) {
-        writer = cuvsIndexWriter;
+      // HNSW Writer:
+      IndexWriterConfig indexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
+      indexWriterConfig.setCodec(getCodec(config));
+      indexWriterConfig.setMaxBufferedDocs(config.flushFreq);
+      indexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+      if (config.forceMerge > 0 || config.enableTieredMerge) {
+    	indexWriterConfig.setMergePolicy(new TieredMergePolicy());
       } else {
-        throw new IllegalArgumentException("Please pass an acceptable option for `algoToRun`. Choices: LUCENE_HNSW, CAGRA_HNSW");
+        indexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
       }
+    	  
+      // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
+      setPerThreadRAMLimit(indexWriterConfig, 10240); // 10GB per thread
+      log.info("Configured HNSW writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {} MB", 
+              config.flushFreq, indexWriterConfig.getRAMBufferSizeMB(), 
+              indexWriterConfig.getRAMPerThreadHardLimitMB());
 
+      if (!config.createIndexInMemory) {
+          Path hnswIndex = Path.of(config.indexDirPath);
+          writer = new IndexWriter(FSDirectory.open(hnswIndex), indexWriterConfig);
+        } else {
+          writer = new IndexWriter(new ByteBuffersDirectory(), indexWriterConfig);
+        }
+
+        if (config.enableIndexWriterInfoStream) {
+            indexWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
+        }
+      
         var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
    	  
-        boolean isCuVSIndexing = formatName.equals("Lucene99AcceleratedHNSWVectorsFormat");
-
         log.info("Indexing documents using {} ...", formatName);
         long indexStartTime = System.currentTimeMillis();
         indexDocuments(writer, config, titles, vectorProvider);
         long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
-        if (isCuVSIndexing) {
-          metrics.put("cuvs-indexing-time", indexTimeTaken);
-        } else {
-          metrics.put("hnsw-indexing-time", indexTimeTaken);
-        }
+
+        metrics.put(config.algoToRun + "-indexing-time", indexTimeTaken);
 
         log.info("Time taken for index building (end to end): {} ms", indexTimeTaken);
 
-        boolean usingFSDirectory = luceneHnswIndexWriter != null
-            ? luceneHnswIndexWriter.getDirectory() instanceof FSDirectory
-            : cuvsIndexWriter.getDirectory() instanceof FSDirectory;
-
         try {
-          if (usingFSDirectory) {
-            Path indexPath = writer == cuvsIndexWriter ? Paths.get(config.cuvsIndexDirPath)
-                : Paths.get(config.hnswIndexDirPath);
+          if (writer.getDirectory() instanceof FSDirectory) {
+            Path indexPath = Paths.get(config.indexDirPath);
             long directorySize;
             try (var stream = Files.walk(indexPath, FileVisitOption.FOLLOW_LINKS)) {
               directorySize = stream.filter(p -> p.toFile().isFile()).mapToLong(p -> p.toFile().length()).sum();
             }
+
             double directorySizeGB = directorySize / 1_073_741_824.0;
-            if (writer == cuvsIndexWriter) {
-              metrics.put("cuvs-index-size", directorySizeGB);
-            } else {
-              metrics.put("hnsw-index-size", directorySizeGB);
-            }
+            metrics.put(config.algoToRun + "-index-size", directorySizeGB);
+
             log.info("Size of {}: {} GB", indexPath.toString(), directorySizeGB);
           }
         } catch (IOException e) {
-          log.error("Failed to calculate directory size for {}",
-              writer == cuvsIndexWriter ? config.cuvsIndexDirPath : config.hnswIndexDirPath, e);
+          log.error("Failed to calculate directory size for {}", config.indexDirPath, e);
         }
        }
      	
-      Directory indexDir = MMapDirectory.open("CAGRA_HNSW".equals(config.algoToRun) ? Path.of(config.cuvsIndexDirPath) : Path.of(config.hnswIndexDirPath));
+      Directory indexDir = MMapDirectory.open(Path.of(config.indexDirPath));
       log.info("Index directory is: {} (using memory-mapped files)", indexDir);
       log.info("Querying documents using {} ...", config.algoToRun);
       // Always use standard Lucene search since we always create Lucene HNSW indexes
       search(indexDir, config, false, metrics, queryResults,
         Util.readGroundTruthFile(config.groundTruthFile));
 
-      Util.calculateRecallAccuracy(queryResults, metrics, "CAGRA_HNSW".equalsIgnoreCase(config.algoToRun));
+      Util.calculateRecallAccuracy(queryResults, metrics, config.algoToRun);
 
       String resultsJson = Util.newObjectMapper().writerWithDefaultPrettyPrinter()
           .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
@@ -377,12 +326,7 @@ public class LuceneCuvsBenchmarks {
       
       // Clean index directory after benchmarks complete if requested
       if (config.cleanIndexDirectory && !config.createIndexInMemory) {
-        Path indexPath = null;
-        if (config.algoToRun.equalsIgnoreCase("LUCENE_HNSW")) {
-          indexPath = Path.of(config.hnswIndexDirPath);
-        } else if (config.algoToRun.equalsIgnoreCase("CAGRA_HNSW")) {
-          indexPath = Path.of(config.cuvsIndexDirPath);
-        }
+        Path indexPath = Path.of(config.indexDirPath);
         
         if (indexPath != null) {
           try {
@@ -414,7 +358,6 @@ public class LuceneCuvsBenchmarks {
 
     for (int i = 0; i < threads; i++) {
       pool.submit(() -> {
-        int localCount = 0;
         while (true) {
           int id = numDocsIndexed.getAndIncrement();
           if (id >= numDocsToIndex) {
@@ -423,15 +366,12 @@ public class LuceneCuvsBenchmarks {
           float[] vector;
           try {
             vector = Objects.requireNonNull(vectorProvider.get(id));
-            localCount++;
           } catch (IOException e) {
             throw new UncheckedIOException("Failed to read vector at index " + id, e);
           }
           Document doc = new Document();
           doc.add(new StringField("id", String.valueOf(id), Field.Store.YES));
           doc.add(new KnnFloatVectorField(config.vectorColName, vector, EUCLIDEAN));
-          if (RESULTS_DEBUGGING)
-            doc.add(new StringField("title", titles.get(id), Field.Store.YES));
           try {
             writer.addDocument(doc);
             if ((id + 1) % 25000 == 0) {
@@ -451,12 +391,10 @@ public class LuceneCuvsBenchmarks {
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
     if (config.forceMerge > 0) {
-    	log.info("Force merge is enabled.");
+    	log.info("Force merge is enabled, force merging into " + config.forceMerge + " segments");
     	writer.forceMerge(config.forceMerge);
     }
     
-    // log.info("Calling forceMerge(1).");
-    // writer.forceMerge(1);
     log.info("Calling commit.");
     writer.commit();
     writer.close();
@@ -496,10 +434,7 @@ public class LuceneCuvsBenchmarks {
         log.info("{} queries available from the mapdb file", queries.size());
       }
 
-      int qThreads = config.queryThreads;
-      if (useCuVS)
-        qThreads = 1;
-      ExecutorService pool = Executors.newFixedThreadPool(qThreads);
+      ExecutorService pool = Executors.newFixedThreadPool(config.queryThreads);
       AtomicInteger queriesFinished = new AtomicInteger(0);
       ConcurrentHashMap<Integer, Double> queryLatencies = new ConcurrentHashMap<Integer, Double>();
       ConcurrentHashMap<Integer, Double> retrievalLatencies = new ConcurrentHashMap<Integer, Double>();
@@ -538,8 +473,8 @@ public class LuceneCuvsBenchmarks {
           }
           int finishedCount = queriesFinished.incrementAndGet();
 
-          // Log progress every 2 queries
-          if (finishedCount % 2 == 0 || finishedCount == config.numQueriesToRun) {
+          // Log progress every 1000 queries
+          if (finishedCount % 1000 == 0 || finishedCount == config.numQueriesToRun) {
             log.info("Done querying " + finishedCount + " out of " + config.numQueriesToRun + " queries.");
           }
 
@@ -570,14 +505,13 @@ public class LuceneCuvsBenchmarks {
           }          
           
           // Debug: Log results for all queries
-          log.info("Query " + currentQueryId + " - First 5 neighbors: " + neighbors.subList(0, Math.min(5, neighbors.size())));
-          log.info("Query " + currentQueryId + " - First 5 distances: " + scores.subList(0, Math.min(5, scores.size())));
-          int[] expectedNeighbors = groundTruth.get(currentQueryId);
-          log.info("Query " + currentQueryId + " - Expected neighbors: " + java.util.Arrays.toString(java.util.Arrays.copyOf(expectedNeighbors, Math.min(5, expectedNeighbors.length))));
+          // log.info("Query " + currentQueryId + " - First 5 neighbors: " + neighbors.subList(0, Math.min(5, neighbors.size())));
+          // log.info("Query " + currentQueryId + " - First 5 distances: " + scores.subList(0, Math.min(5, scores.size())));
+          // int[] expectedNeighbors = groundTruth.get(currentQueryId);
+          // log.info("Query " + currentQueryId + " - Expected neighbors: " + java.util.Arrays.toString(java.util.Arrays.copyOf(expectedNeighbors, Math.min(5, expectedNeighbors.length))));
 
-          var s = useCuVS ? "lucene_cuvs" : "lucene_hnsw";
           if (currentQueryId > config.numWarmUpQueries) {
-	          QueryResult result = new QueryResult(s, currentQueryId, neighbors, groundTruth.get(currentQueryId), scores,
+	          QueryResult result = new QueryResult(config.algoToRun.toString(), currentQueryId, neighbors, groundTruth.get(currentQueryId), scores,
 	              searchTimeTakenMs);          
 	          queryResults.add(result);
           } else {
@@ -591,20 +525,19 @@ public class LuceneCuvsBenchmarks {
 
       long endTime = System.currentTimeMillis();
 
-      metrics.put((useCuVS ? "cuvs" : "hnsw") + "-query-time", (endTime - startTime));
-      metrics.put((useCuVS ? "cuvs" : "hnsw") + "-query-throughput",
-          (queryLatencies.size() / ((endTime - startTime) / 1000.0)));
+      metrics.put(config.algoToRun + "-query-time", (endTime - startTime));
+      metrics.put(config.algoToRun + "-query-throughput",
+          (config.numQueriesToRun / ((endTime - startTime) / 1000.0)));
       double avgLatency = new ArrayList<>(queryLatencies.values()).stream().reduce(0.0, Double::sum)
           / queryLatencies.size();
       double avgRetLatency = new ArrayList<>(retrievalLatencies.values()).stream().reduce(0.0, Double::sum)
               / retrievalLatencies.size();
 
-      metrics.put((useCuVS ? "cuvs" : "hnsw") + "-mean-latency", avgLatency);
-      metrics.put((useCuVS ? "cuvs" : "hnsw") + "-mean-retrieval-latency", avgRetLatency);
+      metrics.put(config.algoToRun + "-mean-latency", avgLatency);
+      metrics.put(config.algoToRun + "-mean-retrieval-latency", avgRetLatency);
 
-      // Add segment count to metrics
       int segmentCount = indexReader.leaves().size();
-      metrics.put((useCuVS ? "cuvs" : "hnsw") + "-segment-count", segmentCount);
+      metrics.put(config.algoToRun + "-segment-count", segmentCount);
 
     } catch (Exception e) {
       e.printStackTrace();
@@ -616,29 +549,89 @@ public class LuceneCuvsBenchmarks {
     }
   }
 
-  private static Lucene101Codec getLuceneHnswCodec(BenchmarkConfiguration config) {
-    return new Lucene101Codec(Mode.BEST_SPEED) {
+  private static Codec getCodec(BenchmarkConfiguration config) throws Exception {
+	  if (config.algoToRun.equals(Codex.LUCENE_HNSW)) {
+  		    log.info("<<< Using Lucene101Codec >>>");
+		    return new Lucene101Codec(Mode.BEST_SPEED) {
+		        @Override
+		        public KnnVectorsFormat getKnnVectorsFormatForField(String field) {
+		            KnnVectorsFormat knnFormat;
+		            if (config.hnswMergeThreads > 1) {
+		              ExecutorService executorService = Executors.newFixedThreadPool(config.hnswMergeThreads);
+		              knnFormat =
+		                  new Lucene99HnswVectorsFormat(
+		                      config.hnswMaxConn,
+		                      config.hnswBeamWidth,
+		                      config.hnswMergeThreads,
+		                      executorService);
+		            } else {
+		              knnFormat = new Lucene99HnswVectorsFormat(config.hnswMaxConn, config.hnswBeamWidth);
+		            }
+		          return new HighDimensionKnnVectorsFormat(knnFormat, config.vectorDimension);
+		        }
+		      };
+	  } else { 
+		  
+		  CuVSIvfPqIndexParams ciip = new CuVSIvfPqIndexParams.Builder()
+				  .withAddDataOnBuild(config.cuVSIvfPqIndexParamsAddDataOnBuild)
+				  .withCodebookKind(config.cuVSIvfPqIndexParamsCodebookKind)
+				  .withConservativeMemoryAllocation(config.cuVSIvfPqIndexParamsConservativeMemoryAllocation)
+				  .withForceRandomRotation(config.cuVSIvfPqIndexParamsForceRandomRotation)
+				  .withKmeansNIters(config.cuVSIvfPqIndexParamsKmeansNIters)
+				  .withKmeansTrainsetFraction(config.cuVSIvfPqIndexParamsKmeansTrainsetFraction)
+				  .withMaxTrainPointsPerPqCode(config.cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode)
+				  .withMetric(config.cuVSIvfPqIndexParamsMetric)
+				  .withMetricArg(config.cuVSIvfPqIndexParamsMetricArg)
+				  .withNLists(config.cuVSIvfPqIndexParamsNLists)
+				  .withPqBits(config.cuVSIvfPqIndexParamsPqBits)
+				  .withPqDim(config.cuVSIvfPqIndexParamsPqDim)
+				  .build();
 
-      @Override
-      public KnnVectorsFormat getKnnVectorsFormatForField(String field) {
-        KnnVectorsFormat knnFormat = new Lucene99HnswVectorsFormat(config.hnswMaxConn, config.hnswBeamWidth);
-        // KnnVectorsFormat knnFormat = new Lucene99HnswVectorsFormat(DEFAULT_MAX_CONN,
-        // DEFAULT_BEAM_WIDTH);
-        return new HighDimensionKnnVectorsFormat(knnFormat, config.vectorDimension);
-      }
-    };
-  }
+		  CuVSIvfPqSearchParams cisp = new CuVSIvfPqSearchParams.Builder()
+				  .withInternalDistanceDtype(config.cuVSIvfPqSearchParamsInternalDistanceDtype)
+				  .withLutDtype(config.cuVSIvfPqSearchParamsLutDtype)
+				  .withNProbes(config.cuVSIvfPqSearchParamsNProbes)
+				  .withPreferredShmemCarveout(config.cuVSIvfPqSearchParamsPreferredShmemCarveout)
+				  .build();
+		  
+		  CuVSIvfPqParams cip = new CuVSIvfPqParams.Builder()
+				  .withCuVSIvfPqIndexParams(ciip)
+				  .withCuVSIvfPqSearchParams(cisp)
+				  .withRefinementRate(config.cuVSIvfPqParamsRefinementRate)
+				  .build();
+		  
+		  AcceleratedHNSWParams params = new AcceleratedHNSWParams.Builder()
+				  .withWriterThreads(config.cuvsWriterThreads)
+				  .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
+				  .withGraphDegree(config.cagraGraphDegree)
+				  .withHNSWLayer(config.cagraHnswLayers)
+				  .withMaxConn(config.hnswMaxConn)
+				  .withBeamWidth(config.hnswBeamWidth)
+				  .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
+				  .withCuVSIvfPqParams(cip)
+				  .build();
 
-  private static Codec getCuVSCodec(BenchmarkConfiguration config) throws Exception {
-    // Use Lucene101AcceleratedHNSWCodec with configurable parameters
-    // Constructor signature: (cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth)
-    return new Lucene101AcceleratedHNSWCodec(
-        config.cuvsWriterThreads,
-        config.cagraIntermediateGraphDegree,
-        config.cagraGraphDegree,
-        config.cagraHnswLayers,
-        config.hnswMaxConn,
-        config.hnswBeamWidth);
+		  if (config.algoToRun.equals(Codex.CAGRA_HNSW)) {
+    		  log.info("<<< Using Lucene101AcceleratedHNSWCodec >>>");
+			  return new Lucene101AcceleratedHNSWCodec(params);
+		  } else if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
+    		  log.info("<<< Using CuVS2510GPUSearchCodec >>>");
+			  GPUSearchParams gpuParams = new GPUSearchParams.Builder()
+					  .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
+					  .withWriterThreads(config.cuvsWriterThreads)
+					  .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
+					  .withGraphDegree(config.cagraGraphDegree)
+					  .build();		  
+			  return new CuVS2510GPUSearchCodec(gpuParams);
+		  } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_BINARY)) {
+    		  log.info("<<< Using LuceneAcceleratedHNSWBinaryQuantizedCodec >>>");
+			  return new LuceneAcceleratedHNSWBinaryQuantizedCodec(params);
+		  } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_SCALAR)) {
+    		  log.info("<<< Using LuceneAcceleratedHNSWScalarQuantizedCodec >>>");
+			  return new LuceneAcceleratedHNSWScalarQuantizedCodec(params);
+		  }
+	  }
+	  return null;
   }
 
   // Removed ConfigurableCuVSCodec - using CuVSCPUSearchCodec directly with better error handling
