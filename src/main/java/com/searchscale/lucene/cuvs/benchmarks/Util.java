@@ -1,5 +1,14 @@
 package com.searchscale.lucene.cuvs.benchmarks;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.MapperFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.dataformat.csv.CsvMapper;
+import com.fasterxml.jackson.dataformat.csv.CsvSchema;
+import com.opencsv.CSVReader;
+import com.opencsv.exceptions.CsvValidationException;
+import com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks.Codex;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -11,28 +20,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.ZipFile;
-
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.dataformat.csv.CsvMapper;
-import com.fasterxml.jackson.dataformat.csv.CsvSchema;
-import com.opencsv.CSVReader;
-import com.opencsv.exceptions.CsvValidationException;
-import com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks.Codex;
 
 public class Util {
 
   private static final Logger log = LoggerFactory.getLogger(Util.class.getName());
   public static final int DEFAULT_BUFFER_SIZE = 65536;
 
-  public static void parseCSVFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectors)
+  public static void parseCSVFile(
+      BenchmarkConfiguration config, List<String> titles, List<float[]> vectors)
       throws IOException, CsvValidationException {
     InputStreamReader isr = null;
     ZipFile zipFile = null;
@@ -55,7 +54,7 @@ public class Util {
       int countOfDocuments = 0;
       while ((csvLine = csvReader.readNext()) != null) {
         if ((countOfDocuments++) == 0) // skip the first line of the file, it is a header
-          continue;
+        continue;
         try {
           titles.add(csvLine[1]);
           vectors.add(Util.parseFloatArrayFromStringArray(csvLine[config.indexOfVector]));
@@ -63,16 +62,13 @@ public class Util {
           System.out.print("#");
           countOfDocuments -= 1;
         }
-        if (countOfDocuments % 1000 == 0)
-          System.out.print(".");
+        if (countOfDocuments % 1000 == 0) System.out.print(".");
 
-        if (countOfDocuments == config.numDocs + 1)
-          break;
+        if (countOfDocuments == config.numDocs + 1) break;
       }
       System.out.println();
     }
-    if (zipFile != null)
-      zipFile.close();
+    if (zipFile != null) zipFile.close();
   }
 
   public static void writeCSV(List<QueryResult> list, String filename) throws Exception {
@@ -85,9 +81,12 @@ public class Util {
     JsonNode jsonTree = newObjectMapper().readTree(newObjectMapper().writeValueAsString(list));
     CsvSchema.Builder csvSchemaBuilder = CsvSchema.builder();
     JsonNode firstObject = jsonTree.elements().next();
-    firstObject.fieldNames().forEachRemaining(fieldName -> {
-      csvSchemaBuilder.addColumn(fieldName);
-    });
+    firstObject
+        .fieldNames()
+        .forEachRemaining(
+            fieldName -> {
+              csvSchemaBuilder.addColumn(fieldName);
+            });
     CsvSchema csvSchema = csvSchemaBuilder.build().withHeader();
     CsvMapper csvMapper = new CsvMapper();
     csvMapper.writerFor(JsonNode.class).with(csvSchema).writeValue(new File(filename), jsonTree);
@@ -101,8 +100,11 @@ public class Util {
   }
 
   public static float[] parseFloatArrayFromStringArray(String str) {
-    float[] arr = ArrayUtils.toPrimitive(
-        Arrays.stream(str.replace("[", "").replace("]", "").split(", ")).map(Float::valueOf).toArray(Float[]::new));
+    float[] arr =
+        ArrayUtils.toPrimitive(
+            Arrays.stream(str.replace("[", "").replace("]", "").split(", "))
+                .map(Float::valueOf)
+                .toArray(Float[]::new));
     return arr;
   }
 
@@ -119,7 +121,8 @@ public class Util {
     List<int[]> rst = new ArrayList<int[]>();
     if (groundTruthFile.endsWith("csv")) {
       log.info("Seems like a csv groundtruth file. Reading ...");
-      for (String line : FileUtils.readFileToString(new File(groundTruthFile), "UTF-8").split("\n")) {
+      for (String line :
+          FileUtils.readFileToString(new File(groundTruthFile), "UTF-8").split("\n")) {
         rst.add(Util.parseIntArrayFromStringArray(line));
       }
     } else if (groundTruthFile.endsWith("ivecs")) {
@@ -129,13 +132,15 @@ public class Util {
       log.info("Seems like a ibin groundtruth file. Reading ...");
       rst = FBIvecsReader.readIbin(groundTruthFile, -1);
     } else {
-      throw new RuntimeException("Not parsing groundtruth file and stopping. Are you passing the correct file path?");
+      throw new RuntimeException(
+          "Not parsing groundtruth file and stopping. Are you passing the correct file path?");
     }
     log.info("{} number of entries in the groundtruth file.", rst.size());
     return rst;
   }
 
-  public static void readBaseFile(BenchmarkConfiguration config, List<String> titles, List<float[]> vectors) {
+  public static void readBaseFile(
+      BenchmarkConfiguration config, List<String> titles, List<float[]> vectors) {
     if (config.datasetFile.contains("fvecs")) {
       log.info("Seems like an fvecs base file. Reading ...");
       FBIvecsReader.readFvecs(config.datasetFile, config.numDocs, vectors);
@@ -167,19 +172,19 @@ public class Util {
 
   /**
    * Adds recall values to the metrics map
-   * 
+   *
    * @param queryResults
    * @param metrics
    */
-  public static void calculateRecallAccuracy(List<QueryResult> queryResults, Map<String, Object> metrics,
-      Codex codex) {
+  public static void calculateRecallAccuracy(
+      List<QueryResult> queryResults, Map<String, Object> metrics, Codex codex) {
 
     double totalRecall = 0;
     for (QueryResult result : queryResults) {
       totalRecall += result.getRecall();
     }
 
-    double percentRecallAccuracy = (totalRecall / (double)queryResults.size()) * 100.0;
+    double percentRecallAccuracy = (totalRecall / (double) queryResults.size()) * 100.0;
     metrics.put(codex + "-recall-accuracy", percentRecallAccuracy);
   }
 }
