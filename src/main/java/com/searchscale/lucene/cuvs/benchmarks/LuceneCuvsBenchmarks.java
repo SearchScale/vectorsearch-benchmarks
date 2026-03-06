@@ -72,6 +72,7 @@ import org.slf4j.LoggerFactory;
 public class LuceneCuvsBenchmarks {
 
   private static final Logger log = LoggerFactory.getLogger(LuceneCuvsBenchmarks.class.getName());
+  private static ExecutorService executorService = null;
 
   public enum Codex {
     LUCENE_HNSW,
@@ -358,6 +359,13 @@ public class LuceneCuvsBenchmarks {
         vectorProvider.close();
       }
     }
+    if (executorService != null && !executorService.isShutdown()) {
+      executorService.shutdown();
+      executorService.close();
+      // Need the following as a temporary fix for now as the process gets stuck in case of
+      // LUCENE_HNSW when using multiple merge threads
+      System.exit(0);
+    }
   }
 
   private static void indexDocuments(
@@ -638,7 +646,7 @@ public class LuceneCuvsBenchmarks {
         public KnnVectorsFormat getKnnVectorsFormatForField(String field) {
           KnnVectorsFormat knnFormat;
           if (config.hnswMergeThreads > 1) {
-            ExecutorService executorService = Executors.newFixedThreadPool(config.hnswMergeThreads);
+            executorService = Executors.newFixedThreadPool(config.hnswMergeThreads);
             knnFormat =
                 new Lucene99HnswVectorsFormat(
                     config.hnswMaxConn,
