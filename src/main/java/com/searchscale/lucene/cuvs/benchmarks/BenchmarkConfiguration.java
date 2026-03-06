@@ -35,11 +35,10 @@ public class BenchmarkConfiguration {
   public int forceMerge;
   public boolean enableTieredMerge;
   public boolean enableIndexWriterInfoStream;
-  public int ramBufferSizeMB;
 
   // Lucene HNSW parameters
-  public int hnswMaxConn; // 16 default (max 512)
-  public int hnswBeamWidth; // 100 default (max 3200)
+  public int hnswMaxConn = 16; // 16 default (max 512)
+  public int hnswBeamWidth = 100; // 100 default (max 3200)
   public int hnswMergeThreads;
 
   // CAGRA parameters
@@ -129,7 +128,6 @@ public class BenchmarkConfiguration {
     sb.append("Enable TieredMerge: ").append(enableTieredMerge).append('\n');
     sb.append("Num HNSW merge threads: ").append(hnswMergeThreads).append('\n');
     sb.append("enableIndexWriterInfoStream: ").append(enableIndexWriterInfoStream).append('\n');
-    sb.append("ramBufferSizeMB: ").append(ramBufferSizeMB).append('\n');
 
     sb.append("------- algo parameters ------\n");
     if (isLucene()) {

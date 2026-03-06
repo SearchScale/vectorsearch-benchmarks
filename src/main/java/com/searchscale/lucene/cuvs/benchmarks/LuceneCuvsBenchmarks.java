@@ -225,17 +225,13 @@ public class LuceneCuvsBenchmarks {
         vectorProvider = new MapDBVectorProvider(vectors, db);
       }
     }
+    log.info(
+        "Time taken for parsing/loading dataset is {} ms",
+        (System.currentTimeMillis() - parseStartTime));
 
     try {
-
-      log.info(
-          "Time taken for parsing/loading dataset is {} ms",
-          (System.currentTimeMillis() - parseStartTime));
-
       // [2] Benchmarking setup
-
       if (!config.skipIndexing) {
-
         IndexWriter writer;
 
         // HNSW Writer:
@@ -243,6 +239,7 @@ public class LuceneCuvsBenchmarks {
         indexWriterConfig.setCodec(getCodec(config));
         indexWriterConfig.setMaxBufferedDocs(config.flushFreq);
         indexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+
         if (config.forceMerge > 0 || config.enableTieredMerge) {
           indexWriterConfig.setMergePolicy(new TieredMergePolicy());
         } else {

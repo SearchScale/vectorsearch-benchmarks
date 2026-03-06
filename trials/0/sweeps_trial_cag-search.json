@@ -8,27 +8,24 @@
       "flushFreq": 500000,
       "topK": 100,
       "efSearch": 150,
-      "queryThreads": 8,
+      "queryThreads": 30,
       "vectorColName": "vector",
       "createIndexInMemory": false,
       "cleanIndexDirectory": true,
       "saveResultsOnDisk": true,
       "forceMerge": 0,
       "enableTieredMerge": true,
-      "enableIndexWriterInfoStream": false,
-      "ramBufferSizeMB": 8192
+      "enableIndexWriterInfoStream": false
     },
     "algorithms": {
       "CAGRA_SEARCH": {
         "indexDirPath": "cuvsIndex",
         "cagraGraphDegree": [64],
         "cagraIntermediateGraphDegree": [128],
-        "cagraHnswLayers": [2],
+        "cagraHnswLayers": [1],
         "cagraGraphBuildAlgo": "NN_DESCENT",
-        "cuvsWriterThreads": 16,
-        "numIndexThreads": 16,
-        "hnswMaxConn": 5,
-        "hnswBeamWidth": 5,
+        "cuvsWriterThreads": 30,
+        "numIndexThreads": 30,
         "cagraITopK": 100,
         "cagraSearchWidth": 5
       }
