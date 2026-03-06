@@ -19,7 +19,7 @@
       "ramBufferSizeMB": 8192
     },
     "algorithms": {
-      "CAGRA_HNSW": {
+      "CAGRA_HNSW_BINARY": {
         "indexDirPath": "cuvsIndex",
         "cagraGraphDegree": [64],
         "cagraIntermediateGraphDegree": [128],

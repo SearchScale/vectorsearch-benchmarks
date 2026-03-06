@@ -8,7 +8,7 @@
       "flushFreq": 500000,
       "topK": 100,
       "efSearch": 150,
-      "queryThreads": 16,
+      "queryThreads": 8,
       "vectorColName": "vector",
       "createIndexInMemory": false,
       "cleanIndexDirectory": true,
@@ -19,7 +19,7 @@
       "ramBufferSizeMB": 8192
     },
     "algorithms": {
-      "CAGRA_HNSW": {
+      "CAGRA_SEARCH": {
         "indexDirPath": "cuvsIndex",
         "cagraGraphDegree": [64],
         "cagraIntermediateGraphDegree": [128],
@@ -28,7 +28,9 @@
         "cuvsWriterThreads": 16,
         "numIndexThreads": 16,
         "hnswMaxConn": 5,
-        "hnswBeamWidth": 5
+        "hnswBeamWidth": 5,
+        "cagraITopK": 100,
+        "cagraSearchWidth": 5
       }
     }
   }

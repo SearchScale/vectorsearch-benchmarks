@@ -14,7 +14,6 @@ import java.util.zip.ZipFile;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.ArrayUtils;
-import org.mapdb.IndexTreeList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,6 +25,7 @@ import com.fasterxml.jackson.dataformat.csv.CsvMapper;
 import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 import com.opencsv.CSVReader;
 import com.opencsv.exceptions.CsvValidationException;
+import com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks.Codex;
 
 public class Util {
 
@@ -172,7 +172,7 @@ public class Util {
    * @param metrics
    */
   public static void calculateRecallAccuracy(List<QueryResult> queryResults, Map<String, Object> metrics,
-      boolean useCuVS) {
+      Codex codex) {
 
     double totalRecall = 0;
     for (QueryResult result : queryResults) {
@@ -180,6 +180,6 @@ public class Util {
     }
 
     double percentRecallAccuracy = (totalRecall / (double)queryResults.size()) * 100.0;
-    metrics.put((useCuVS ? "cuvs" : "hnsw") + "-recall-accuracy", percentRecallAccuracy);
+    metrics.put(codex + "-recall-accuracy", percentRecallAccuracy);
   }
 }

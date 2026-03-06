@@ -1,5 +1,11 @@
 package com.searchscale.lucene.cuvs.benchmarks;
 
+import com.nvidia.cuvs.CagraIndexParams.CagraGraphBuildAlgo;
+import com.nvidia.cuvs.CagraIndexParams.CodebookGen;
+import com.nvidia.cuvs.CagraIndexParams.CudaDataType;
+import com.nvidia.cuvs.CagraIndexParams.CuvsDistanceType;
+import com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks.Codex;
+
 public class BenchmarkConfiguration {
 
   public String benchmarkID;
@@ -21,19 +27,21 @@ public class BenchmarkConfiguration {
   public boolean saveResultsOnDisk;
   public String resultsDirectory;
   public boolean hasColNames;
-  public String algoToRun;              // keep as String
+  public Codex algoToRun;
   public String groundTruthFile;
-  public String cuvsIndexDirPath;
-  public String hnswIndexDirPath;
+  public String indexDirPath;
   public boolean loadVectorsInMemory;
   public boolean skipIndexing;
   public int forceMerge;
   public boolean enableTieredMerge;
+  public boolean enableIndexWriterInfoStream;
+  public int ramBufferSizeMB;
 
   // Lucene HNSW parameters
   public int hnswMaxConn;               // 16 default (max 512)
   public int hnswBeamWidth;             // 100 default (max 3200)
-
+  public int hnswMergeThreads;
+  
   // CAGRA parameters
   public int cagraIntermediateGraphDegree; // 128 default
   public int cagraGraphDegree;             // 64 default
@@ -41,12 +49,44 @@ public class BenchmarkConfiguration {
   public int cagraSearchWidth;
   public int cagraHnswLayers;             // layers in CAGRA->HNSW conversion
   public int efSearch;
-
-  private boolean isLucene() {
-    return "LUCENE_HNSW".equalsIgnoreCase(algoToRun);
+  public CagraGraphBuildAlgo cagraGraphBuildAlgo;
+  
+  // CAGRA IVF_PQ parameters
+  public int cuVSIvfPqParamsRefinementRate = 1;
+  public boolean cuVSIvfPqIndexParamsAddDataOnBuild = true;
+  public CodebookGen cuVSIvfPqIndexParamsCodebookKind = CodebookGen.PER_SUBSPACE;
+  public boolean cuVSIvfPqIndexParamsConservativeMemoryAllocation = false;
+  public boolean cuVSIvfPqIndexParamsForceRandomRotation = false;
+  public int cuVSIvfPqIndexParamsKmeansNIters = 20;
+  public double cuVSIvfPqIndexParamsKmeansTrainsetFraction = 0.5;
+  public int cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode = 256;
+  public CuvsDistanceType cuVSIvfPqIndexParamsMetric = CuvsDistanceType.L2Expanded;
+  public float cuVSIvfPqIndexParamsMetricArg = 2.0f;
+  public int cuVSIvfPqIndexParamsNLists = 1024;
+  public int cuVSIvfPqIndexParamsPqBits = 8;
+  public int cuVSIvfPqIndexParamsPqDim = 0;
+  public CudaDataType cuVSIvfPqSearchParamsInternalDistanceDtype = CudaDataType.CUDA_R_32F;
+  public CudaDataType cuVSIvfPqSearchParamsLutDtype = CudaDataType.CUDA_R_32F;
+  public int cuVSIvfPqSearchParamsNProbes = 20;
+  public double cuVSIvfPqSearchParamsPreferredShmemCarveout = 1.0;
+  
+  public boolean isLucene() {
+    return Codex.LUCENE_HNSW.equals(algoToRun);
   }
-  private boolean isCagra() {
-    return "CAGRA_HNSW".equalsIgnoreCase(algoToRun);
+  public boolean isCagra() {
+    return Codex.CAGRA_HNSW.equals(algoToRun);
+  }
+
+  public boolean isCagraSearch() {
+	return Codex.CAGRA_SEARCH.equals(algoToRun);
+  }  
+
+  public boolean isCagraHNSWBinary() {
+	return Codex.CAGRA_HNSW_BINARY.equals(algoToRun);
+  }
+
+  public boolean isCagraHNSWScalar() {
+	return Codex.CAGRA_HNSW_SCALAR.equals(algoToRun);
   }
 
   public int getEffectiveEfSearch() {
@@ -75,25 +115,29 @@ public class BenchmarkConfiguration {
     sb.append("Clean index directory: ").append(cleanIndexDirectory).append('\n');
     sb.append("Save results on disk: ").append(saveResultsOnDisk).append('\n');
     sb.append("Has column names in the dataset file: ").append(hasColNames).append('\n');
-    sb.append("algoToRun {Choices: HNSW | CAGRA}: ").append(algoToRun).append('\n');
+    sb.append("algoToRun: ").append(algoToRun).append('\n');
     sb.append("Ground Truth file used is: ").append(groundTruthFile).append('\n');
-    if (cuvsIndexDirPath != null) sb.append("CuVS index directory path is: ").append(cuvsIndexDirPath).append('\n');
-    if (hnswIndexDirPath != null) sb.append("HNSW index directory path is: ").append(hnswIndexDirPath).append('\n');
+    sb.append("index directory path is: ").append(indexDirPath).append('\n');
     sb.append("Load vectors in memory before indexing: ").append(loadVectorsInMemory).append('\n');
     sb.append("Skip indexing (and use existing index for search): ").append(skipIndexing).append('\n');
     sb.append("Do force merge while indexing documents [a value < 1 implies no force merge]: ").append(forceMerge).append('\n');
+    sb.append("Enable TieredMerge: ").append(enableTieredMerge).append('\n');
+    sb.append("Num HNSW merge threads: ").append(hnswMergeThreads).append('\n');
+    sb.append("enableIndexWriterInfoStream: ").append(enableIndexWriterInfoStream).append('\n');
+    sb.append("ramBufferSizeMB: ").append(ramBufferSizeMB).append('\n');
     
     sb.append("------- algo parameters ------\n");
     if (isLucene()) {
       sb.append("hnswMaxConn: ").append(hnswMaxConn).append('\n');
       sb.append("hnswBeamWidth: ").append(hnswBeamWidth).append('\n');
-    } else if (isCagra()) {
+    } else {
       sb.append("cagraIntermediateGraphDegree: ").append(cagraIntermediateGraphDegree).append('\n');
       sb.append("cagraGraphDegree: ").append(cagraGraphDegree).append('\n');
       sb.append("cuvsWriterThreads: ").append(cuvsWriterThreads).append('\n');
       sb.append("cagraITopK: ").append(cagraITopK).append('\n');
       sb.append("cagraSearchWidth: ").append(cagraSearchWidth).append('\n');
       sb.append("cagraHnswLayers: ").append(cagraHnswLayers).append('\n');
+      sb.append("cagraGraphBuildAlgo: ").append(cagraGraphBuildAlgo).append('\n');
     }
     return sb.toString();
   }
