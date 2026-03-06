@@ -38,19 +38,19 @@ public class BenchmarkConfiguration {
   public int ramBufferSizeMB;
 
   // Lucene HNSW parameters
-  public int hnswMaxConn;               // 16 default (max 512)
-  public int hnswBeamWidth;             // 100 default (max 3200)
+  public int hnswMaxConn; // 16 default (max 512)
+  public int hnswBeamWidth; // 100 default (max 3200)
   public int hnswMergeThreads;
-  
+
   // CAGRA parameters
   public int cagraIntermediateGraphDegree; // 128 default
-  public int cagraGraphDegree;             // 64 default
+  public int cagraGraphDegree; // 64 default
   public int cagraITopK;
   public int cagraSearchWidth;
-  public int cagraHnswLayers;             // layers in CAGRA->HNSW conversion
+  public int cagraHnswLayers; // layers in CAGRA->HNSW conversion
   public int efSearch;
   public CagraGraphBuildAlgo cagraGraphBuildAlgo;
-  
+
   // CAGRA IVF_PQ parameters
   public int cuVSIvfPqParamsRefinementRate = 1;
   public boolean cuVSIvfPqIndexParamsAddDataOnBuild = true;
@@ -69,24 +69,25 @@ public class BenchmarkConfiguration {
   public CudaDataType cuVSIvfPqSearchParamsLutDtype = CudaDataType.CUDA_R_32F;
   public int cuVSIvfPqSearchParamsNProbes = 20;
   public double cuVSIvfPqSearchParamsPreferredShmemCarveout = 1.0;
-  
+
   public boolean isLucene() {
     return Codex.LUCENE_HNSW.equals(algoToRun);
   }
+
   public boolean isCagra() {
     return Codex.CAGRA_HNSW.equals(algoToRun);
   }
 
   public boolean isCagraSearch() {
-	return Codex.CAGRA_SEARCH.equals(algoToRun);
-  }  
+    return Codex.CAGRA_SEARCH.equals(algoToRun);
+  }
 
   public boolean isCagraHNSWBinary() {
-	return Codex.CAGRA_HNSW_BINARY.equals(algoToRun);
+    return Codex.CAGRA_HNSW_BINARY.equals(algoToRun);
   }
 
   public boolean isCagraHNSWScalar() {
-	return Codex.CAGRA_HNSW_SCALAR.equals(algoToRun);
+    return Codex.CAGRA_HNSW_SCALAR.equals(algoToRun);
   }
 
   public int getEffectiveEfSearch() {
@@ -119,13 +120,17 @@ public class BenchmarkConfiguration {
     sb.append("Ground Truth file used is: ").append(groundTruthFile).append('\n');
     sb.append("index directory path is: ").append(indexDirPath).append('\n');
     sb.append("Load vectors in memory before indexing: ").append(loadVectorsInMemory).append('\n');
-    sb.append("Skip indexing (and use existing index for search): ").append(skipIndexing).append('\n');
-    sb.append("Do force merge while indexing documents [a value < 1 implies no force merge]: ").append(forceMerge).append('\n');
+    sb.append("Skip indexing (and use existing index for search): ")
+        .append(skipIndexing)
+        .append('\n');
+    sb.append("Do force merge while indexing documents [a value < 1 implies no force merge]: ")
+        .append(forceMerge)
+        .append('\n');
     sb.append("Enable TieredMerge: ").append(enableTieredMerge).append('\n');
     sb.append("Num HNSW merge threads: ").append(hnswMergeThreads).append('\n');
     sb.append("enableIndexWriterInfoStream: ").append(enableIndexWriterInfoStream).append('\n');
     sb.append("ramBufferSizeMB: ").append(ramBufferSizeMB).append('\n');
-    
+
     sb.append("------- algo parameters ------\n");
     if (isLucene()) {
       sb.append("hnswMaxConn: ").append(hnswMaxConn).append('\n');
@@ -142,7 +147,10 @@ public class BenchmarkConfiguration {
     return sb.toString();
   }
 
-  @Override public String toString() { return prettyString(); }
+  @Override
+  public String toString() {
+    return prettyString();
+  }
 
   public void debugPrintArguments() {
     // keep a single source of truth for printing
