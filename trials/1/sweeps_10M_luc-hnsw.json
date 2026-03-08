@@ -5,7 +5,7 @@
       "numDocs": 10000000,
       "numQueriesToRun": 10000,
       "numWarmUpQueries": 20,
-      "flushFreq": 1000000,
+      "flushFreq": 100000,
       "topK": 100,
       "efSearch": 100,
       "queryThreads": 30,

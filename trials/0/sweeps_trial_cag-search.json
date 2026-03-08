@@ -20,8 +20,8 @@
     "algorithms": {
       "CAGRA_SEARCH": {
         "indexDirPath": "cuvsIndex",
-        "cagraGraphDegree": [64],
-        "cagraIntermediateGraphDegree": [128],
+        "cagraGraphDegree": [96],
+        "cagraIntermediateGraphDegree": [96],
         "cagraHnswLayers": [1],
         "cagraGraphBuildAlgo": "NN_DESCENT",
         "cuvsWriterThreads": 30,
