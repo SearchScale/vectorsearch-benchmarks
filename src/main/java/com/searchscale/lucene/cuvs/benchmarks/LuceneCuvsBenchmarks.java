@@ -2,16 +2,6 @@ package com.searchscale.lucene.cuvs.benchmarks;
 
 import static org.apache.lucene.index.VectorSimilarityFunction.EUCLIDEAN;
 
-import com.nvidia.cuvs.CuVSIvfPqIndexParams;
-import com.nvidia.cuvs.CuVSIvfPqParams;
-import com.nvidia.cuvs.CuVSIvfPqSearchParams;
-import com.nvidia.cuvs.lucene.AcceleratedHNSWParams;
-import com.nvidia.cuvs.lucene.CuVS2510GPUSearchCodec;
-import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
-import com.nvidia.cuvs.lucene.GPUSearchParams;
-import com.nvidia.cuvs.lucene.Lucene101AcceleratedHNSWCodec;
-import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWBinaryQuantizedCodec;
-import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWScalarQuantizedCodec;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -485,22 +475,22 @@ public class LuceneCuvsBenchmarks {
                 int currentQueryId = queryId.get();
                 KnnFloatVectorQuery query;
 
-                if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
-                  int effectiveEfSearch = config.getEffectiveEfSearch();
-                  query =
-                      new GPUKnnFloatVectorQuery(
-                          config.vectorColName,
-                          queries.get(currentQueryId),
-                          effectiveEfSearch,
-                          null,
-                          config.cagraITopK,
-                          config.cagraSearchWidth);
-                } else {
-                  int effectiveEfSearch = config.getEffectiveEfSearch();
-                  query =
-                      new KnnFloatVectorQuery(
-                          config.vectorColName, queries.get(currentQueryId), effectiveEfSearch);
-                }
+                //                if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
+                //                  int effectiveEfSearch = config.getEffectiveEfSearch();
+                //                  query =
+                //                      new GPUKnnFloatVectorQuery(
+                //                          config.vectorColName,
+                //                          queries.get(currentQueryId),
+                //                          effectiveEfSearch,
+                //                          null,
+                //                          config.cagraITopK,
+                //                          config.cagraSearchWidth);
+                //                } else {
+                int effectiveEfSearch1 = config.getEffectiveEfSearch();
+                query =
+                    new KnnFloatVectorQuery(
+                        config.vectorColName, queries.get(currentQueryId), effectiveEfSearch1);
+                //                }
 
                 TopDocs topDocs;
                 long searchStartTime = System.nanoTime();
@@ -658,70 +648,72 @@ public class LuceneCuvsBenchmarks {
       };
     } else {
 
-      CuVSIvfPqIndexParams ciip =
-          new CuVSIvfPqIndexParams.Builder()
-              .withAddDataOnBuild(config.cuVSIvfPqIndexParamsAddDataOnBuild)
-              .withCodebookKind(config.cuVSIvfPqIndexParamsCodebookKind)
-              .withConservativeMemoryAllocation(
-                  config.cuVSIvfPqIndexParamsConservativeMemoryAllocation)
-              .withForceRandomRotation(config.cuVSIvfPqIndexParamsForceRandomRotation)
-              .withKmeansNIters(config.cuVSIvfPqIndexParamsKmeansNIters)
-              .withKmeansTrainsetFraction(config.cuVSIvfPqIndexParamsKmeansTrainsetFraction)
-              .withMaxTrainPointsPerPqCode(config.cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode)
-              .withMetric(config.cuVSIvfPqIndexParamsMetric)
-              .withMetricArg(config.cuVSIvfPqIndexParamsMetricArg)
-              .withNLists(config.cuVSIvfPqIndexParamsNLists)
-              .withPqBits(config.cuVSIvfPqIndexParamsPqBits)
-              .withPqDim(config.cuVSIvfPqIndexParamsPqDim)
-              .build();
-
-      CuVSIvfPqSearchParams cisp =
-          new CuVSIvfPqSearchParams.Builder()
-              .withInternalDistanceDtype(config.cuVSIvfPqSearchParamsInternalDistanceDtype)
-              .withLutDtype(config.cuVSIvfPqSearchParamsLutDtype)
-              .withNProbes(config.cuVSIvfPqSearchParamsNProbes)
-              .withPreferredShmemCarveout(config.cuVSIvfPqSearchParamsPreferredShmemCarveout)
-              .build();
-
-      CuVSIvfPqParams cip =
-          new CuVSIvfPqParams.Builder()
-              .withCuVSIvfPqIndexParams(ciip)
-              .withCuVSIvfPqSearchParams(cisp)
-              .withRefinementRate(config.cuVSIvfPqParamsRefinementRate)
-              .build();
-
-      AcceleratedHNSWParams params =
-          new AcceleratedHNSWParams.Builder()
-              .withWriterThreads(config.cuvsWriterThreads)
-              .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
-              .withGraphDegree(config.cagraGraphDegree)
-              .withHNSWLayer(config.cagraHnswLayers)
-              .withMaxConn(config.hnswMaxConn)
-              .withBeamWidth(config.hnswBeamWidth)
-              .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
-              .withCuVSIvfPqParams(cip)
-              .build();
-
-      if (config.algoToRun.equals(Codex.CAGRA_HNSW)) {
-        log.info("<<< Using Lucene101AcceleratedHNSWCodec >>>");
-        return new Lucene101AcceleratedHNSWCodec(params);
-      } else if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
-        log.info("<<< Using CuVS2510GPUSearchCodec >>>");
-        GPUSearchParams gpuParams =
-            new GPUSearchParams.Builder()
-                .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
-                .withWriterThreads(config.cuvsWriterThreads)
-                .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
-                .withGraphDegree(config.cagraGraphDegree)
-                .build();
-        return new CuVS2510GPUSearchCodec(gpuParams);
-      } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_BINARY)) {
-        log.info("<<< Using LuceneAcceleratedHNSWBinaryQuantizedCodec >>>");
-        return new LuceneAcceleratedHNSWBinaryQuantizedCodec(params);
-      } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_SCALAR)) {
-        log.info("<<< Using LuceneAcceleratedHNSWScalarQuantizedCodec >>>");
-        return new LuceneAcceleratedHNSWScalarQuantizedCodec(params);
-      }
+      //      CuVSIvfPqIndexParams ciip =
+      //          new CuVSIvfPqIndexParams.Builder()
+      //              .withAddDataOnBuild(config.cuVSIvfPqIndexParamsAddDataOnBuild)
+      //              .withCodebookKind(config.cuVSIvfPqIndexParamsCodebookKind)
+      //              .withConservativeMemoryAllocation(
+      //                  config.cuVSIvfPqIndexParamsConservativeMemoryAllocation)
+      //              .withForceRandomRotation(config.cuVSIvfPqIndexParamsForceRandomRotation)
+      //              .withKmeansNIters(config.cuVSIvfPqIndexParamsKmeansNIters)
+      //              .withKmeansTrainsetFraction(config.cuVSIvfPqIndexParamsKmeansTrainsetFraction)
+      //
+      // .withMaxTrainPointsPerPqCode(config.cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode)
+      //              .withMetric(config.cuVSIvfPqIndexParamsMetric)
+      //              .withMetricArg(config.cuVSIvfPqIndexParamsMetricArg)
+      //              .withNLists(config.cuVSIvfPqIndexParamsNLists)
+      //              .withPqBits(config.cuVSIvfPqIndexParamsPqBits)
+      //              .withPqDim(config.cuVSIvfPqIndexParamsPqDim)
+      //              .build();
+      //
+      //      CuVSIvfPqSearchParams cisp =
+      //          new CuVSIvfPqSearchParams.Builder()
+      //              .withInternalDistanceDtype(config.cuVSIvfPqSearchParamsInternalDistanceDtype)
+      //              .withLutDtype(config.cuVSIvfPqSearchParamsLutDtype)
+      //              .withNProbes(config.cuVSIvfPqSearchParamsNProbes)
+      //
+      // .withPreferredShmemCarveout(config.cuVSIvfPqSearchParamsPreferredShmemCarveout)
+      //              .build();
+      //
+      //      CuVSIvfPqParams cip =
+      //          new CuVSIvfPqParams.Builder()
+      //              .withCuVSIvfPqIndexParams(ciip)
+      //              .withCuVSIvfPqSearchParams(cisp)
+      //              .withRefinementRate(config.cuVSIvfPqParamsRefinementRate)
+      //              .build();
+      //
+      //      AcceleratedHNSWParams params =
+      //          new AcceleratedHNSWParams.Builder()
+      //              .withWriterThreads(config.cuvsWriterThreads)
+      //              .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
+      //              .withGraphDegree(config.cagraGraphDegree)
+      //              .withHNSWLayer(config.cagraHnswLayers)
+      //              .withMaxConn(config.hnswMaxConn)
+      //              .withBeamWidth(config.hnswBeamWidth)
+      //              .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
+      //              .withCuVSIvfPqParams(cip)
+      //              .build();
+      //
+      //      if (config.algoToRun.equals(Codex.CAGRA_HNSW)) {
+      //        log.info("<<< Using Lucene101AcceleratedHNSWCodec >>>");
+      //        return new Lucene101AcceleratedHNSWCodec(params);
+      //      } else if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
+      //        log.info("<<< Using CuVS2510GPUSearchCodec >>>");
+      //        GPUSearchParams gpuParams =
+      //            new GPUSearchParams.Builder()
+      //                .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
+      //                .withWriterThreads(config.cuvsWriterThreads)
+      //                .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
+      //                .withGraphDegree(config.cagraGraphDegree)
+      //                .build();
+      //        return new CuVS2510GPUSearchCodec(gpuParams);
+      //      } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_BINARY)) {
+      //        log.info("<<< Using LuceneAcceleratedHNSWBinaryQuantizedCodec >>>");
+      //        return new LuceneAcceleratedHNSWBinaryQuantizedCodec(params);
+      //      } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_SCALAR)) {
+      //        log.info("<<< Using LuceneAcceleratedHNSWScalarQuantizedCodec >>>");
+      //        return new LuceneAcceleratedHNSWScalarQuantizedCodec(params);
+      //      }
     }
     return null;
   }

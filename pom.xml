@@ -32,7 +32,7 @@
   </dependencyManagement>
 
     <dependencies>
-	<dependency>
+<!--        <dependency>
 		  <groupId>com.nvidia.cuvs.lucene</groupId>
 		    <artifactId>cuvs-lucene</artifactId>
 		      <version>26.04.0</version>
@@ -42,7 +42,7 @@
             <artifactId>cuvs-java</artifactId>
             <version>26.04.0</version>
         </dependency>
-        <dependency>
+-->        <dependency>
             <groupId>org.apache.lucene</groupId>
             <artifactId>lucene-core</artifactId>
             <version>10.2.0</version>

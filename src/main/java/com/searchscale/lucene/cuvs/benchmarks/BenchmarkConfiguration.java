@@ -1,9 +1,9 @@
 package com.searchscale.lucene.cuvs.benchmarks;
 
-import com.nvidia.cuvs.CagraIndexParams.CagraGraphBuildAlgo;
-import com.nvidia.cuvs.CagraIndexParams.CodebookGen;
-import com.nvidia.cuvs.CagraIndexParams.CudaDataType;
-import com.nvidia.cuvs.CagraIndexParams.CuvsDistanceType;
+// import com.nvidia.cuvs.CagraIndexParams.CagraGraphBuildAlgo;
+// import com.nvidia.cuvs.CagraIndexParams.CodebookGen;
+// import com.nvidia.cuvs.CagraIndexParams.CudaDataType;
+// import com.nvidia.cuvs.CagraIndexParams.CuvsDistanceType;
 import com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks.Codex;
 
 public class BenchmarkConfiguration {
@@ -48,24 +48,24 @@ public class BenchmarkConfiguration {
   public int cagraSearchWidth;
   public int cagraHnswLayers; // layers in CAGRA->HNSW conversion
   public int efSearch;
-  public CagraGraphBuildAlgo cagraGraphBuildAlgo;
+  // public CagraGraphBuildAlgo cagraGraphBuildAlgo;
 
   // CAGRA IVF_PQ parameters
   public int cuVSIvfPqParamsRefinementRate = 1;
   public boolean cuVSIvfPqIndexParamsAddDataOnBuild = true;
-  public CodebookGen cuVSIvfPqIndexParamsCodebookKind = CodebookGen.PER_SUBSPACE;
+  // public CodebookGen cuVSIvfPqIndexParamsCodebookKind = CodebookGen.PER_SUBSPACE;
   public boolean cuVSIvfPqIndexParamsConservativeMemoryAllocation = false;
   public boolean cuVSIvfPqIndexParamsForceRandomRotation = false;
   public int cuVSIvfPqIndexParamsKmeansNIters = 20;
   public double cuVSIvfPqIndexParamsKmeansTrainsetFraction = 0.5;
   public int cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode = 256;
-  public CuvsDistanceType cuVSIvfPqIndexParamsMetric = CuvsDistanceType.L2Expanded;
+  // public CuvsDistanceType cuVSIvfPqIndexParamsMetric = CuvsDistanceType.L2Expanded;
   public float cuVSIvfPqIndexParamsMetricArg = 2.0f;
   public int cuVSIvfPqIndexParamsNLists = 1024;
   public int cuVSIvfPqIndexParamsPqBits = 8;
   public int cuVSIvfPqIndexParamsPqDim = 0;
-  public CudaDataType cuVSIvfPqSearchParamsInternalDistanceDtype = CudaDataType.CUDA_R_32F;
-  public CudaDataType cuVSIvfPqSearchParamsLutDtype = CudaDataType.CUDA_R_32F;
+  // public CudaDataType cuVSIvfPqSearchParamsInternalDistanceDtype = CudaDataType.CUDA_R_32F;
+  // public CudaDataType cuVSIvfPqSearchParamsLutDtype = CudaDataType.CUDA_R_32F;
   public int cuVSIvfPqSearchParamsNProbes = 20;
   public double cuVSIvfPqSearchParamsPreferredShmemCarveout = 1.0;
 
@@ -140,7 +140,7 @@ public class BenchmarkConfiguration {
       sb.append("cagraITopK: ").append(cagraITopK).append('\n');
       sb.append("cagraSearchWidth: ").append(cagraSearchWidth).append('\n');
       sb.append("cagraHnswLayers: ").append(cagraHnswLayers).append('\n');
-      sb.append("cagraGraphBuildAlgo: ").append(cagraGraphBuildAlgo).append('\n');
+      // sb.append("cagraGraphBuildAlgo: ").append(cagraGraphBuildAlgo).append('\n');
     }
     return sb.toString();
   }
