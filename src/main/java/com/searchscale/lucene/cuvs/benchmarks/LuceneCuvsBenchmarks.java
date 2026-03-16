@@ -2,9 +2,15 @@ package com.searchscale.lucene.cuvs.benchmarks;
 
 import static org.apache.lucene.index.VectorSimilarityFunction.EUCLIDEAN;
 
+import com.nvidia.cuvs.CagraIndex;
+import com.nvidia.cuvs.CagraIndexParams;
+import com.nvidia.cuvs.CagraQuery;
+import com.nvidia.cuvs.CagraSearchParams;
 import com.nvidia.cuvs.CuVSIvfPqIndexParams;
 import com.nvidia.cuvs.CuVSIvfPqParams;
 import com.nvidia.cuvs.CuVSIvfPqSearchParams;
+import com.nvidia.cuvs.CuVSMatrix;
+import com.nvidia.cuvs.CuVSResources;
 import com.nvidia.cuvs.lucene.AcceleratedHNSWParams;
 import com.nvidia.cuvs.lucene.CuVS2510GPUSearchCodec;
 import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
@@ -13,7 +19,10 @@ import com.nvidia.cuvs.lucene.Lucene101AcceleratedHNSWCodec;
 import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWBinaryQuantizedCodec;
 import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWScalarQuantizedCodec;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.nio.file.FileVisitOption;
@@ -79,7 +88,8 @@ public class LuceneCuvsBenchmarks {
     CAGRA_HNSW,
     CAGRA_SEARCH,
     CAGRA_HNSW_BINARY,
-    CAGRA_HNSW_SCALAR
+    CAGRA_HNSW_SCALAR,
+    CUVS_JAVA
   }
 
   /**
@@ -229,6 +239,11 @@ public class LuceneCuvsBenchmarks {
         "Time taken for parsing/loading dataset is {} ms",
         (System.currentTimeMillis() - parseStartTime));
 
+    // Just get the numbers for end-to-end CAGRA indexing and searching with cuvs-java only
+    if (config.algoToRun.equals(Codex.CUVS_JAVA)) {
+      gaugeCuVSJavaIndexingAndSearch(config, metrics, vectorProvider);
+    }
+
     try {
       // [2] Benchmarking setup
       if (!config.skipIndexing) {
@@ -363,6 +378,181 @@ public class LuceneCuvsBenchmarks {
       // LUCENE_HNSW when using multiple merge threads
       System.exit(0);
     }
+  }
+
+  private static void gaugeCuVSJavaIndexingAndSearch(
+      BenchmarkConfiguration config, Map<String, Object> metrics, VectorProvider vectorProvider)
+      throws Throwable {
+
+    // Indexing
+    long indexStartTime = System.currentTimeMillis();
+    final int numDocsToIndex = Math.min(config.numDocs, vectorProvider.size());
+    try (CuVSResources resources = CuVSResources.create()) {
+      // Load data
+      CuVSMatrix.Builder<?> builder =
+          CuVSMatrix.deviceBuilder(
+              resources, numDocsToIndex, config.vectorDimension, CuVSMatrix.DataType.FLOAT);
+
+      for (int i = 0; i < numDocsToIndex; i++) {
+        builder.addVector(vectorProvider.get(i));
+      }
+
+      CuVSMatrix dataset = builder.build();
+
+      // Index
+      CagraIndexParams params =
+          new CagraIndexParams.Builder()
+              .withNumWriterThreads(config.cuvsWriterThreads)
+              .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
+              .withGraphDegree(config.cagraGraphDegree)
+              .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
+              .build();
+
+      CagraIndex index =
+          CagraIndex.newBuilder(resources).withDataset(dataset).withIndexParams(params).build();
+
+      // Serialize
+      index.serialize(new FileOutputStream(new File(config.indexDirPath)));
+      index.close();
+    }
+
+    long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
+    metrics.put(config.algoToRun + "-indexing-time", indexTimeTaken);
+
+    IndexTreeList<float[]> queries;
+    String queryMapdbFile = config.queryFile + ".mapdb";
+
+    // Get query data
+    DB db = null;
+    try {
+      if (new File(queryMapdbFile).exists() == false) {
+        log.info("No mapdb file found for queries. Reading source files to build one ...");
+        db = DBMaker.fileDB(queryMapdbFile).make();
+        queries = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
+
+        if (config.queryFile.endsWith(".csv")) {
+          for (String line :
+              FileUtils.readFileToString(new File(config.queryFile), "UTF-8").split("\n")) {
+            queries.add(Util.parseFloatArrayFromStringArray(line));
+          }
+        } else if (config.queryFile.contains("fvecs")) {
+          FBIvecsReader.readFvecs(config.queryFile, -1, queries);
+        } else if (config.queryFile.contains("fbin")) {
+          FBIvecsReader.readFbin(config.queryFile, -1, queries);
+        } else if (config.queryFile.contains("bvecs")) {
+          FBIvecsReader.readBvecs(config.queryFile, -1, queries);
+        }
+        log.info("Mapdb file created with {} number of queries", queries.size());
+      } else {
+        log.info("Mapdb file found for queries. Loading ...");
+        db = DBMaker.fileDB(queryMapdbFile).make();
+        queries = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
+        log.info("{} queries available from the mapdb file", queries.size());
+      }
+
+      // Searching
+      long searchStartTime = System.currentTimeMillis();
+      List<Map<Integer, Float>> searchResult;
+      try (CuVSResources resources = CuVSResources.create()) {
+        InputStream is = new FileInputStream(config.indexDirPath);
+        CagraIndex cagraIndex = CagraIndex.newBuilder(resources).from(is).build();
+
+        CagraSearchParams searchParams =
+            new CagraSearchParams.Builder()
+                .withItopkSize(config.cagraITopK)
+                .withSearchWidth(config.cagraSearchWidth)
+                .build();
+
+        CuVSMatrix.Builder<?> queryBuilder =
+            CuVSMatrix.deviceBuilder(
+                resources,
+                config.numQueriesToRun,
+                config.vectorDimension,
+                CuVSMatrix.DataType.FLOAT);
+
+        for (int i = 0; i < config.numQueriesToRun; i++) {
+          queryBuilder.addVector(queries.get(i));
+        }
+
+        CuVSMatrix queriesM = queryBuilder.build();
+
+        CagraQuery query =
+            new CagraQuery.Builder(resources)
+                .withTopK(config.topK)
+                .withSearchParams(searchParams)
+                .withQueryVectors(queriesM)
+                .build();
+
+        searchResult = cagraIndex.search(query).getResults();
+      }
+      long searchTimeTaken = System.currentTimeMillis() - searchStartTime;
+
+      metrics.put(config.algoToRun + "-search-time-ms", searchTimeTaken);
+      double sts = searchTimeTaken / 1000.0;
+      double qps = config.numQueriesToRun / sts;
+      metrics.put(config.algoToRun + "-query-throughput-qps", qps);
+
+      // Calculate recall
+      List<int[]> groundTruths = Util.readGroundTruthFile(config.groundTruthFile);
+      List<QueryResult> results = new ArrayList<QueryResult>();
+      for (int i = 0; i < config.numQueriesToRun; i++) {
+        QueryResult result =
+            new QueryResult(
+                config.algoToRun.toString(),
+                i,
+                List.copyOf(searchResult.get(i).keySet()),
+                groundTruths.get(i),
+                null,
+                -1);
+        results.add(result);
+      }
+
+      Util.calculateRecallAccuracy(results, metrics, config.algoToRun);
+
+    } finally {
+      if (db != null) {
+        db.close();
+      }
+    }
+
+    String resultsJson =
+        Util.newObjectMapper()
+            .writerWithDefaultPrettyPrinter()
+            .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
+    System.out.println(resultsJson);
+
+    if (config.saveResultsOnDisk) {
+      // Use the resultsDirectory directly if provided
+      String resultsDir = config.resultsDirectory != null ? config.resultsDirectory : "results";
+      File results = new File(resultsDir);
+      if (!results.exists()) {
+        results.mkdirs();
+      }
+
+      // Save results.json directly to the specified directory
+      FileUtils.write(
+          new File(results.toString() + "/results.json"), resultsJson, Charset.forName("UTF-8"));
+
+      log.info("Results saved to directory: {}", resultsDir);
+    }
+
+    // Clean index directory after benchmarks complete if requested
+    if (config.cleanIndexDirectory && !config.createIndexInMemory) {
+      Path indexPath = Path.of(config.indexDirPath);
+
+      if (indexPath != null) {
+        try {
+          log.info("Cleaning index directory: {}", indexPath);
+          FileUtils.delete(indexPath.toFile());
+          log.info("Successfully cleaned index directory: {}", indexPath);
+        } catch (IOException e) {
+          log.error("Failed to clean index directory: {}", indexPath, e);
+        }
+      }
+    }
+
+    // End here only.
+    System.exit(0);
   }
 
   private static void indexDocuments(

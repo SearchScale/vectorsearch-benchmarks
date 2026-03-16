@@ -1,0 +1,32 @@
+{
+  "wiki1m": {
+    "dataset": "wiki-1m",
+    "common-params": {
+      "numDocs": 1000000,
+      "numQueriesToRun": 10000,
+      "numWarmUpQueries": 20,
+      "flushFreq": 500000,
+      "topK": 100,
+      "efSearch": 150,
+      "queryThreads": 30,
+      "vectorColName": "vector",
+      "createIndexInMemory": false,
+      "cleanIndexDirectory": true,
+      "saveResultsOnDisk": true,
+      "forceMerge": 0,
+      "enableTieredMerge": true,
+      "enableIndexWriterInfoStream": false
+    },
+    "algorithms": {
+      "CUVS_JAVA": {
+        "indexDirPath": "cuvsIndex",
+        "cagraGraphDegree": [8],
+        "cagraIntermediateGraphDegree": [8],
+        "cagraGraphBuildAlgo": "NN_DESCENT",
+        "cuvsWriterThreads": 30,
+        "cagraITopK": 100,
+        "cagraSearchWidth": 5
+      }
+    }
+  }
+}
