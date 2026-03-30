@@ -5,6 +5,7 @@ import com.nvidia.cuvs.CagraIndexParams.CodebookGen;
 import com.nvidia.cuvs.CagraIndexParams.CudaDataType;
 import com.nvidia.cuvs.CagraIndexParams.CuvsDistanceType;
 import com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks.Codex;
+import java.util.List;
 
 public class BenchmarkConfiguration {
 
@@ -47,7 +48,7 @@ public class BenchmarkConfiguration {
   public int cagraITopK;
   public int cagraSearchWidth;
   public int cagraHnswLayers; // layers in CAGRA->HNSW conversion
-  public int efSearch;
+  public List<Integer> efSearch; // e.g. [64] or [64, 128, 256]
   public CagraGraphBuildAlgo cagraGraphBuildAlgo;
 
   // CAGRA IVF_PQ parameters
@@ -89,11 +90,22 @@ public class BenchmarkConfiguration {
     return Codex.CAGRA_HNSW_SCALAR.equals(algoToRun);
   }
 
-  public int getEffectiveEfSearch() {
-    if (efSearch > 0) {
+  /**
+   * Returns the list of efSearch values to use during search.
+   *
+   * <p>If {@code efSearch} is set in the config JSON (e.g. [64, 128, 256]),
+   * those values are returned directly. Otherwise, falls back to a single-element
+   * list containing a default derived from topK.
+   *
+   * <p>The benchmark runner iterates over these values and runs search once per value
+   * against the <b>same</b> index — no rebuild is needed.
+   */
+  public List<Integer> getEfSearchValues() {
+    if (efSearch != null && !efSearch.isEmpty()) {
       return efSearch;
     }
-    return Math.max(topK, (int) Math.ceil(topK * 1.5));
+    // Default: 1.5x topK, but at least topK
+    return List.of(Math.max(topK, (int) Math.ceil(topK * 1.5)));
   }
 
   public String prettyString() {
@@ -128,6 +140,7 @@ public class BenchmarkConfiguration {
     sb.append("Enable TieredMerge: ").append(enableTieredMerge).append('\n');
     sb.append("Num HNSW merge threads: ").append(hnswMergeThreads).append('\n');
     sb.append("enableIndexWriterInfoStream: ").append(enableIndexWriterInfoStream).append('\n');
+    sb.append("efSearch: ").append(getEfSearchValues()).append('\n');
 
     sb.append("------- algo parameters ------\n");
     if (isLucene()) {
