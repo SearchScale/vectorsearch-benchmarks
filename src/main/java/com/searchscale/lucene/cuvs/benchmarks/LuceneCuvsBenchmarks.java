@@ -571,7 +571,7 @@ public class LuceneCuvsBenchmarks {
                   double searchTimeTakenMs =
                       TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - searchStartTime);
                   if (currentQueryId > config.numWarmUpQueries) {
-                    queryLatencies.put(queryId.get(), searchTimeTakenMs);
+                    queryLatencies.put(currentQueryId, searchTimeTakenMs);
                   }
                   int finishedCount = queriesFinished.incrementAndGet();
 
@@ -617,7 +617,7 @@ public class LuceneCuvsBenchmarks {
                   double retrievalTimeTakenMs =
                       TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - retrievalStartTime);
                   if (currentQueryId > config.numWarmUpQueries) {
-                    retrievalLatencies.put(queryId.get(), retrievalTimeTakenMs);
+                    retrievalLatencies.put(currentQueryId, retrievalTimeTakenMs);
                   }
 
                   // Debug: Log results for all queries
