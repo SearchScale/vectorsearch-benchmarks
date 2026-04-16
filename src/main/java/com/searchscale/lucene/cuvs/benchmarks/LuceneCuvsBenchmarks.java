@@ -2,9 +2,9 @@ package com.searchscale.lucene.cuvs.benchmarks;
 
 import static org.apache.lucene.index.VectorSimilarityFunction.EUCLIDEAN;
 
-import com.nvidia.cuvs.CuVSIvfPqIndexParams;
-import com.nvidia.cuvs.CuVSIvfPqParams;
-import com.nvidia.cuvs.CuVSIvfPqSearchParams;
+import com.nvidia.cuvs.CagraIndexParams;
+import com.nvidia.cuvs.CagraIndexParams.CuvsDistanceType;
+import com.nvidia.cuvs.CagraIndexParams.HnswHeuristicType;
 import com.nvidia.cuvs.lucene.AcceleratedHNSWParams;
 import com.nvidia.cuvs.lucene.CuVS2510GPUSearchCodec;
 import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
@@ -658,37 +658,48 @@ public class LuceneCuvsBenchmarks {
       };
     } else {
 
-      CuVSIvfPqIndexParams ciip =
-          new CuVSIvfPqIndexParams.Builder()
-              .withAddDataOnBuild(config.cuVSIvfPqIndexParamsAddDataOnBuild)
-              .withCodebookKind(config.cuVSIvfPqIndexParamsCodebookKind)
-              .withConservativeMemoryAllocation(
-                  config.cuVSIvfPqIndexParamsConservativeMemoryAllocation)
-              .withForceRandomRotation(config.cuVSIvfPqIndexParamsForceRandomRotation)
-              .withKmeansNIters(config.cuVSIvfPqIndexParamsKmeansNIters)
-              .withKmeansTrainsetFraction(config.cuVSIvfPqIndexParamsKmeansTrainsetFraction)
-              .withMaxTrainPointsPerPqCode(config.cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode)
-              .withMetric(config.cuVSIvfPqIndexParamsMetric)
-              .withMetricArg(config.cuVSIvfPqIndexParamsMetricArg)
-              .withNLists(config.cuVSIvfPqIndexParamsNLists)
-              .withPqBits(config.cuVSIvfPqIndexParamsPqBits)
-              .withPqDim(config.cuVSIvfPqIndexParamsPqDim)
-              .build();
+      //      CuVSIvfPqIndexParams ciip =
+      //          new CuVSIvfPqIndexParams.Builder()
+      //              .withAddDataOnBuild(config.cuVSIvfPqIndexParamsAddDataOnBuild)
+      //              .withCodebookKind(config.cuVSIvfPqIndexParamsCodebookKind)
+      //              .withConservativeMemoryAllocation(
+      //                  config.cuVSIvfPqIndexParamsConservativeMemoryAllocation)
+      //              .withForceRandomRotation(config.cuVSIvfPqIndexParamsForceRandomRotation)
+      //              .withKmeansNIters(config.cuVSIvfPqIndexParamsKmeansNIters)
+      //              .withKmeansTrainsetFraction(config.cuVSIvfPqIndexParamsKmeansTrainsetFraction)
+      //
+      // .withMaxTrainPointsPerPqCode(config.cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode)
+      //              .withMetric(config.cuVSIvfPqIndexParamsMetric)
+      //              .withMetricArg(config.cuVSIvfPqIndexParamsMetricArg)
+      //              .withNLists(config.cuVSIvfPqIndexParamsNLists)
+      //              .withPqBits(config.cuVSIvfPqIndexParamsPqBits)
+      //              .withPqDim(config.cuVSIvfPqIndexParamsPqDim)
+      //              .build();
+      //
+      //      CuVSIvfPqSearchParams cisp =
+      //          new CuVSIvfPqSearchParams.Builder()
+      //              .withInternalDistanceDtype(config.cuVSIvfPqSearchParamsInternalDistanceDtype)
+      //              .withLutDtype(config.cuVSIvfPqSearchParamsLutDtype)
+      //              .withNProbes(config.cuVSIvfPqSearchParamsNProbes)
+      //
+      // .withPreferredShmemCarveout(config.cuVSIvfPqSearchParamsPreferredShmemCarveout)
+      //              .build();
+      //
+      //      CuVSIvfPqParams cip =
+      //          new CuVSIvfPqParams.Builder()
+      //              .withCuVSIvfPqIndexParams(ciip)
+      //              .withCuVSIvfPqSearchParams(cisp)
+      //              .withRefinementRate(config.cuVSIvfPqParamsRefinementRate)
+      //              .build();
 
-      CuVSIvfPqSearchParams cisp =
-          new CuVSIvfPqSearchParams.Builder()
-              .withInternalDistanceDtype(config.cuVSIvfPqSearchParamsInternalDistanceDtype)
-              .withLutDtype(config.cuVSIvfPqSearchParamsLutDtype)
-              .withNProbes(config.cuVSIvfPqSearchParamsNProbes)
-              .withPreferredShmemCarveout(config.cuVSIvfPqSearchParamsPreferredShmemCarveout)
-              .build();
-
-      CuVSIvfPqParams cip =
-          new CuVSIvfPqParams.Builder()
-              .withCuVSIvfPqIndexParams(ciip)
-              .withCuVSIvfPqSearchParams(cisp)
-              .withRefinementRate(config.cuVSIvfPqParamsRefinementRate)
-              .build();
+      CagraIndexParams cxp =
+          CagraIndexParams.fromHnswParams(
+              config.numDocs,
+              config.vectorDimension,
+              0,
+              0,
+              HnswHeuristicType.SAME_GRAPH_FOOTPRINT,
+              CuvsDistanceType.L2Expanded);
 
       AcceleratedHNSWParams params =
           new AcceleratedHNSWParams.Builder()
@@ -699,7 +710,7 @@ public class LuceneCuvsBenchmarks {
               .withMaxConn(config.hnswMaxConn)
               .withBeamWidth(config.hnswBeamWidth)
               .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
-              .withCuVSIvfPqParams(cip)
+              .withCuVSIvfPqParams(cxp.getCuVSIvfPqParams())
               .build();
 
       if (config.algoToRun.equals(Codex.CAGRA_HNSW)) {
