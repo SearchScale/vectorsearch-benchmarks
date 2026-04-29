@@ -70,6 +70,32 @@ public class BenchmarkConfiguration {
   public int cuVSIvfPqSearchParamsNProbes = 20;
   public double cuVSIvfPqSearchParamsPreferredShmemCarveout = 1.0;
 
+  // ── IVF-PQ overrides for the forceMerge phase ──────────────────────────────
+  /**
+   * nLists to use when building the CAGRA graph during {@code forceMerge}.
+   *
+   * <p>During flush, segments are small so {@link #cuVSIvfPqIndexParamsNLists} is
+   * sized accordingly.  A force-merged segment can be 4-8x larger; using the flush
+   * value here leaves too few vectors per cluster, degrading graph quality.
+   *
+   * <p>Per the NVIDIA cuVS documentation, {@code n_rows / n_lists} should fall in
+   * the range 1,000–10,000.  Set this to match your merged segment size, e.g.
+   * 10 M vectors / 5,000 nLists ≈ 2,000 vectors/cluster.
+   *
+   * <p>{@code 0} (default) = use {@link #cuVSIvfPqIndexParamsNLists} unchanged.
+   */
+  public int cuVSIvfPqIndexParamsForceMergeNLists = 0;
+
+  /**
+   * nProbes to use when searching the IVF-PQ index during {@code forceMerge}.
+   *
+   * <p>With a larger nLists at merge time, nProbes should be scaled proportionally
+   * to maintain the same recall during CAGRA graph construction.
+   *
+   * <p>{@code 0} (default) = use {@link #cuVSIvfPqSearchParamsNProbes} unchanged.
+   */
+  public int cuVSIvfPqSearchParamsForceMergeNProbes = 0;
+
   public boolean isLucene() {
     return Codex.LUCENE_HNSW.equals(algoToRun);
   }
@@ -141,6 +167,16 @@ public class BenchmarkConfiguration {
     sb.append("Num HNSW merge threads: ").append(hnswMergeThreads).append('\n');
     sb.append("enableIndexWriterInfoStream: ").append(enableIndexWriterInfoStream).append('\n');
     sb.append("efSearch: ").append(getEfSearchValues()).append('\n');
+    sb.append("nLists (flush):            ").append(cuVSIvfPqIndexParamsNLists).append('\n');
+    sb.append("nLists (forceMerge):       ")
+        .append(cuVSIvfPqIndexParamsForceMergeNLists)
+        .append(cuVSIvfPqIndexParamsForceMergeNLists == 0 ? "  (same as flush)" : "")
+        .append('\n');
+    sb.append("nProbes (flush):           ").append(cuVSIvfPqSearchParamsNProbes).append('\n');
+    sb.append("nProbes (forceMerge):      ")
+        .append(cuVSIvfPqSearchParamsForceMergeNProbes)
+        .append(cuVSIvfPqSearchParamsForceMergeNProbes == 0 ? "  (same as flush)" : "")
+        .append('\n');
 
     sb.append("------- algo parameters ------\n");
     if (isLucene()) {
