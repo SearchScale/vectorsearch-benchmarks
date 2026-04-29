@@ -73,8 +73,6 @@ for sweep in sweeps:
             for combination in itertools.product(*variant_values):
                 current_variants = dict(zip(variant_keys, combination))
                 
-                hash_id = hashlib.md5(json.dumps(current_variants, sort_keys=True).encode()).hexdigest()[:8]
-                
                 config = algo_invariants.copy()
                 config.update(current_variants)
 
@@ -91,6 +89,8 @@ for sweep in sweeps:
                     continue
 
                 # Set indexDirPath based on hash
+                hash_input = {k: v for k, v in config.items() if k != 'indexDirPath'}
+                hash_id = hashlib.md5(json.dumps(hash_input, sort_keys=True, default=str).encode()).hexdigest()[:8]
                 config['indexDirPath'] = f"index-{hash_id}"
 
                 filename = f"{algo}-{hash_id}.json"
