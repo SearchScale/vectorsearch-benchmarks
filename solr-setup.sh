@@ -108,7 +108,7 @@ JFG_GITHUB_URL="https://github.com/SearchScale/solr-javabin-generator.git"
 SOLR_DIR="solr"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
 SOLR_CUVS_MODULE_BRANCH="main"
-SOLR_ROOT=solr-10.0.0-SNAPSHOT
+SOLR_ROOT=${SOLR_ROOT:-solr-11.0.0-SNAPSHOT}
 JAVABIN_FILES_DIR="${DATASET_FROM_SWEEP}_batches"
 SOLR_URL="http://localhost:8983"
 URL="$SOLR_URL/solr/test/update?commit=true&overwrite=false"
@@ -131,16 +131,48 @@ if [ ! -d "$JFG_DIR" ]; then
   cd ..
 fi
 
-# Get Solr's PR branch containing the cuvs module if not already existing
-if [ ! -d "$SOLR_DIR" ]; then
+# Solr distribution tarball: solr-benchmarks.sh extracts $SOLR_ROOT.tgz from this directory.
+# Options (first match wins):
+#   SOLR_TGZ_SOURCE  - path to an existing solr-11.0.0-SNAPSHOT.tgz (copy only, no build)
+#   SOLR_BUILD_DIR   - path to a Solr checkout with gradlew (e.g. integration-solr/solr) so
+#                      ./gradlew distTar runs with your gradle.properties / mavenLocal() cuvs-lucene
+#   default          - clone apache/solr to ./solr on first run, else reuse ./solr and existing tgz
+BENCH_ROOT="$(pwd)"
+if [ -n "${SOLR_TGZ_SOURCE:-}" ]; then
+  echo "Using SOLR_TGZ_SOURCE=$SOLR_TGZ_SOURCE -> $SOLR_ROOT.tgz"
+  DST_TGZ="$BENCH_ROOT/$SOLR_ROOT.tgz"
+  if [ "$(readlink -f "$SOLR_TGZ_SOURCE")" != "$(readlink -f "$DST_TGZ" 2>/dev/null || echo "")" ]; then
+    cp -f "$SOLR_TGZ_SOURCE" "$DST_TGZ" || { echo "Error: copy failed"; exit 1; }
+  else
+    echo "Solr tarball already at $DST_TGZ, skipping copy"
+  fi
+elif [ -n "${SOLR_BUILD_DIR:-}" ]; then
+  echo "Building Solr from SOLR_BUILD_DIR=$SOLR_BUILD_DIR (install cuvs-lucene to ~/.m2 first; use mavenLocal in Gradle)..."
+  (cd "$SOLR_BUILD_DIR" && ./gradlew clean distTar) || { echo "Error: gradlew distTar failed"; exit 1; }
+  SRC_TAR="$SOLR_BUILD_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz"
+  DST_TAR="$BENCH_ROOT/$SOLR_ROOT.tgz"
+  if [ ! -f "$SRC_TAR" ]; then
+    echo "Error: tarball missing after build: $SRC_TAR"
+    exit 1
+  fi
+  # cp fails with "same file" if DST is a symlink to SRC (or identical path)
+  if [ "$(readlink -f "$SRC_TAR")" != "$(readlink -f "$DST_TAR" 2>/dev/null || echo "")" ]; then
+    cp -f "$SRC_TAR" "$DST_TAR" || { echo "Error: could not copy Solr tarball to $DST_TAR"; exit 1; }
+  else
+    echo "Solr tarball already at $DST_TAR (same as build output), skipping copy"
+  fi
+elif [ ! -d "$SOLR_DIR" ]; then
   echo "repo '$SOLR_DIR' does not exist."
   git clone $SOLR_GITHUB_REPO $SOLR_DIR
-  # build
   cd $SOLR_DIR
   git checkout $SOLR_CUVS_MODULE_BRANCH
   ./gradlew clean distTar
-  mv solr/packaging/build/distributions/$SOLR_ROOT.tgz ../
-  cd ..
+  mv solr/packaging/build/distributions/$SOLR_ROOT.tgz "$BENCH_ROOT/"
+  cd "$BENCH_ROOT"
+elif [ ! -f "$SOLR_ROOT.tgz" ]; then
+  echo "Building Solr tarball from existing $SOLR_DIR (no $SOLR_ROOT.tgz yet)..."
+  (cd "$SOLR_DIR" && ./gradlew clean distTar) || { echo "Error: gradlew distTar failed"; exit 1; }
+  mv "$SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz" "$BENCH_ROOT/"
 fi
 
 # Use the javabin file generator to generate javabin files

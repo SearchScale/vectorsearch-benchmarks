@@ -10,16 +10,26 @@ while getopts ":-:" opt; do
         results-dir) RESULTS_DIR="${!OPTIND}"; OPTIND=$((OPTIND+1)) ;;
         mode) MODE="${!OPTIND}"; OPTIND=$((OPTIND+1)) ;;
         run-benchmarks) RUN_BENCHMARKS="true" ;;
+        skip-pareto) SKIP_PARETO="true" ;;
         help)
             echo "Usage: $0 [OPTIONS]"
             echo "Options:"
             echo "  --data-dir DIR        Directory containing datasets (default: datasets)"
             echo "  --datasets FILE       Datasets JSON file (default: datasets.json)"
-            echo "  --sweeps FILE         Sweeps JSON file (default: sweeps.json)"
+            echo "  --sweeps FILE         Sweeps JSON file (default: sweeps.json for lucene, solr-sweeps.json for solr)"
             echo "  --configs-dir DIR     Directory to store generated configs (default: configs)"
             echo "  --results-dir DIR     Directory to store benchmark results (default: results/sweep_<timestamp>)"
             echo "  --mode MODE           Benchmark mode: lucene or solr (default: lucene)"
             echo "  --run-benchmarks      Run benchmarks after generating configs"
+            echo "  --skip-pareto         Do not run Pareto / plot step after benchmarks"
+            echo ""
+            echo "Solr mode: run from the benchmarks repo root. Set LIBCUVS_DIRS (and optionally"
+            echo "SOLR_HEAP, RAM_BUFFER_SIZE_MB, NPARALLEL, SOLR_UPDATE_URL, QUERY_TIMEOUT_SEC) before --run-benchmarks."
+            echo "Solr tarball: default clone/build apache/solr; or SOLR_BUILD_DIR=/path/to/integration-solr/solr"
+            echo "  (uses your Gradle + mavenLocal cuvs-lucene), or SOLR_TGZ_SOURCE=/path/to/solr-11*.tgz"
+            echo "Batches directory is {dataset}_batches from the sweep entry (see solr-setup.sh)."
+            echo "IVF-PQ sweeps: solr-sweeps-ivfpq.json (grid), solr-sweeps-ivfpq-wiki1m-smoke.json,"
+            echo "  solr-sweeps-ivfpq-wiki10m-smoke.json (10M single config). Use lists on cuVSIvfPq* in JSON to sweep."
             echo "  --help               Show this help message"
             exit 0
             ;;
@@ -31,21 +41,21 @@ done
 DATA_DIR=${DATA_DIR:-datasets}
 DATASETS_FILE=${DATASETS_FILE:-datasets.json}
 MODE=${MODE:-lucene}
-SWEEPS_FILE=${SWEEPS_FILE:-sweeps.json}
+if [ "$MODE" = "solr" ]; then
+    SWEEPS_FILE=${SWEEPS_FILE:-solr-sweeps.json}
+else
+    SWEEPS_FILE=${SWEEPS_FILE:-sweeps.json}
+fi
 CONFIGS_DIR=${CONFIGS_DIR:-configs}
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 RESULTS_DIR=${RESULTS_DIR:-results}
 RUN_BENCHMARKS=${RUN_BENCHMARKS:-false}
+SKIP_PARETO=${SKIP_PARETO:-false}
 
 # Validate mode
 if [ "$MODE" != "lucene" ] && [ "$MODE" != "solr" ]; then
     echo "Error: Invalid mode '$MODE'. Must be 'lucene' or 'solr'."
     exit 1
-fi
-
-# Set mode-specific defaults
-if [ "$MODE" = "solr" ]; then
-    SWEEPS_FILE=${SWEEPS_FILE:-solr-sweeps.json}
 fi
 
 BENCHMARKID=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 6)
@@ -59,11 +69,12 @@ echo "  Sweeps file: $SWEEPS_FILE"
 echo "  Configs directory: $CONFIGS_DIR"
 echo "  Results directory: $RESULTS_DIR"
 echo "  Run benchmarks: $RUN_BENCHMARKS"
+echo "  Skip Pareto: $SKIP_PARETO"
 echo "  BenchmarkID: $BENCHMARKID"
 echo ""
 
 # Prepare datasets
-./prepare-datasets.sh --data-dir "$DATA_DIR" --datasets "$DATASETS_FILE" || exit 1
+#./prepare-datasets.sh --data-dir "$DATA_DIR" --datasets "$DATASETS_FILE" || exit 1
 
 # Generate configurations
 python3 generate-combinations.py --data-dir "$DATA_DIR" --datasets "$DATASETS_FILE" --sweeps "$SWEEPS_FILE" --configs-dir "$CONFIGS_DIR" || exit 1
@@ -136,8 +147,8 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                     # Run the benchmark and capture output
                     LOG_FILE="$CONFIG_RESULTS_DIR/benchmark.log"
                     echo "Starting benchmark at $(date)" > "$LOG_FILE"
-                    
                     if [ "$MODE" = "lucene" ]; then
+                        export MAVEN_OPTS="-Xms90g -Xmx90g"
                         # Run benchmark with Maven, redirecting output to log file
                         # Pass CONFIG_RESULTS_DIR as third argument to Java program
                         if mvn exec:java -Dexec.mainClass="com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks" \
@@ -155,10 +166,15 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                             echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
                         fi
                     elif [ "$MODE" = "solr" ]; then
-                        # Extract dataset name from sweeps file
-                        DATASET_NAME=$(jq -r '.wiki10m.dataset' "$SWEEPS_FILE")
-                        BATCHES_DIR="${DATASET_NAME}_batches"
-                        SOLR_UPDATE_URL="http://localhost:8983/solr/test/update?commit=true&overwrite=false"
+                        # Batches folder matches solr-setup.sh: ${dataset_slug}_batches where dataset_slug
+                        # comes from this sweep's entry in the sweeps file.
+                        DATASET_SLUG=$(jq -r ".[\"$SWEEP_NAME\"].dataset" "$SWEEPS_FILE")
+                        if [ "$DATASET_SLUG" = "null" ] || [ -z "$DATASET_SLUG" ]; then
+                            echo "Error: No .dataset for sweep \"$SWEEP_NAME\" in $SWEEPS_FILE"
+                            exit 1
+                        fi
+                        BATCHES_DIR="${DATASET_SLUG}_batches"
+                        SOLR_UPDATE_URL=${SOLR_UPDATE_URL:-"http://localhost:8983/solr/test/update?commit=true&overwrite=false"}
                         
                         # Run Solr benchmark using the new format: config batches_dir solr_url results_dir
                         if ./solr-benchmarks.sh "$CONFIG_FILE" "$BATCHES_DIR" "$SOLR_UPDATE_URL" "$CONFIG_RESULTS_DIR" \
@@ -213,11 +229,8 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                                 fi
                             fi
                         fi
-                    else
-                        echo "✗ Benchmark failed (check log for details)"
-                        echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
                     fi
-                    
+
                     echo "Log saved to: $LOG_FILE"
             done
         fi
@@ -232,26 +245,31 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
     echo "Finished at: $(date)"
     echo "========================================="
     
-    # Generate Pareto analysis plots
-    echo ""
-    echo "========================================="
-    echo "Generating Pareto analysis plots"
-    echo "========================================="
-    
-    # Process each dataset found in the results
-    for dataset_dir in $(find "$RESULTS_DIR" -maxdepth 1 -type d ! -name ".*" ! -name "$(basename "$RESULTS_DIR")" | sed 's|.*/||' | sort | uniq); do
-        if [ -d "$RESULTS_DIR/$dataset_dir" ]; then
-            result_count=$(find "$RESULTS_DIR/$dataset_dir" -name "results.json" 2>/dev/null | wc -l)
-            if [ "$result_count" -gt 0 ]; then
-                echo "Processing dataset: $dataset_dir ($result_count results)"
-                if ./run_pareto_analysis.sh "$BENCHMARKID" "$dataset_dir"; then
-                    echo "Pareto analysis completed for $dataset_dir"
-                else
-                    echo "Pareto analysis failed for $dataset_dir"
+    if [ "$SKIP_PARETO" = "true" ]; then
+        echo ""
+        echo "Skipping Pareto analysis (--skip-pareto)."
+    else
+        # Generate Pareto analysis plots
+        echo ""
+        echo "========================================="
+        echo "Generating Pareto analysis plots"
+        echo "========================================="
+
+        # Process each dataset found in the results
+        for dataset_dir in $(find "$RESULTS_DIR" -maxdepth 1 -type d ! -name ".*" ! -name "$(basename "$RESULTS_DIR")" | sed 's|.*/||' | sort | uniq); do
+            if [ -d "$RESULTS_DIR/$dataset_dir" ]; then
+                result_count=$(find "$RESULTS_DIR/$dataset_dir" -name "results.json" 2>/dev/null | wc -l)
+                if [ "$result_count" -gt 0 ]; then
+                    echo "Processing dataset: $dataset_dir ($result_count results)"
+                    if ./run_pareto_analysis.sh "$BENCHMARKID" "$dataset_dir"; then
+                        echo "Pareto analysis completed for $dataset_dir"
+                    else
+                        echo "Pareto analysis failed for $dataset_dir"
+                    fi
                 fi
             fi
-        fi
-    done
+        done
+    fi
     
     # Update sweeps-list.json in the parent results directory
     PARENT_RESULTS_DIR=$(dirname "$RESULTS_DIR")

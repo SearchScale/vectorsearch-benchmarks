@@ -60,6 +60,9 @@ import org.mapdb.QueueLong.Node.SERIALIZER;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.nvidia.cuvs.CuVSIvfPqIndexParams;
+import com.nvidia.cuvs.CuVSIvfPqParams;
+import com.nvidia.cuvs.CuVSIvfPqSearchParams;
 import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
 
 public class LuceneCuvsBenchmarks {
@@ -630,15 +633,47 @@ public class LuceneCuvsBenchmarks {
   }
 
   private static Codec getCuVSCodec(BenchmarkConfiguration config) throws Exception {
-    // Use Lucene101AcceleratedHNSWCodec with configurable parameters
-    // Constructor signature: (cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth)
+    CuVSIvfPqParams ivfPqParams = null;
+    if (config.cagraGraphBuildAlgo != null &&
+        config.cagraGraphBuildAlgo == com.nvidia.cuvs.CagraIndexParams.CagraGraphBuildAlgo.IVF_PQ) {
+      CuVSIvfPqIndexParams indexParams = new CuVSIvfPqIndexParams.Builder()
+          .withAddDataOnBuild(config.cuVSIvfPqIndexParamsAddDataOnBuild)
+          .withCodebookKind(config.cuVSIvfPqIndexParamsCodebookKind)
+          .withConservativeMemoryAllocation(config.cuVSIvfPqIndexParamsConservativeMemoryAllocation)
+          .withForceRandomRotation(config.cuVSIvfPqIndexParamsForceRandomRotation)
+          .withKmeansNIters(config.cuVSIvfPqIndexParamsKmeansNIters)
+          .withKmeansTrainsetFraction(config.cuVSIvfPqIndexParamsKmeansTrainsetFraction)
+          .withMaxTrainPointsPerPqCode(config.cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode)
+          .withMetric(config.cuVSIvfPqIndexParamsMetric)
+          .withMetricArg(config.cuVSIvfPqIndexParamsMetricArg)
+          .withNLists(config.cuVSIvfPqIndexParamsNLists)
+          .withPqBits(config.cuVSIvfPqIndexParamsPqBits)
+          .withPqDim(config.cuVSIvfPqIndexParamsPqDim)
+          .build();
+
+      CuVSIvfPqSearchParams searchParams = new CuVSIvfPqSearchParams.Builder()
+          .withInternalDistanceDtype(config.cuVSIvfPqSearchParamsInternalDistanceDtype)
+          .withLutDtype(config.cuVSIvfPqSearchParamsLutDtype)
+          .withNProbes(config.cuVSIvfPqSearchParamsNProbes)
+          .withPreferredShmemCarveout(config.cuVSIvfPqSearchParamsPreferredShmemCarveout)
+          .build();
+
+      ivfPqParams = new CuVSIvfPqParams.Builder()
+          .withCuVSIvfPqIndexParams(indexParams)
+          .withCuVSIvfPqSearchParams(searchParams)
+          .withRefinementRate(config.cuVSIvfPqParamsRefinementRate)
+          .build();
+    }
+
     return new Lucene101AcceleratedHNSWCodec(
         config.cuvsWriterThreads,
         config.cagraIntermediateGraphDegree,
         config.cagraGraphDegree,
         config.cagraHnswLayers,
         config.hnswMaxConn,
-        config.hnswBeamWidth);
+        config.hnswBeamWidth,
+        config.cagraGraphBuildAlgo,
+        ivfPqParams);
   }
 
   // Removed ConfigurableCuVSCodec - using CuVSCPUSearchCodec directly with better error handling

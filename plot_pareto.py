@@ -102,6 +102,31 @@ def create_linestyles(unique_algorithms):
     )
 
 
+def _as_search_point_matrix(points):
+    """Convert list of rows [algo, index, recall, y] to (n, 4) ndarray, or None if not plottable."""
+    if not points:
+        return None
+    arr = np.asarray(points, dtype=object)
+    if arr.size == 0:
+        return None
+    if arr.ndim == 1:
+        arr = arr.reshape(1, -1)
+    if arr.ndim != 2 or arr.shape[1] < 4:
+        return None
+    if arr.shape[0] == 0:
+        return None
+    return arr
+
+
+def _mean_log_y_sort_key(points_matrix):
+    """Mean(-log(y)) for sorting algos; stable fallback when ys invalid or empty."""
+    ys = np.asarray(points_matrix[:, 3], dtype=np.float64)
+    ys = ys[np.isfinite(ys) & (ys > 0)]
+    if ys.size == 0:
+        return float("inf")
+    return float(-np.log(ys).mean())
+
+
 def create_plot_search(
     all_data,
     x_scale,
@@ -118,6 +143,11 @@ def create_plot_search(
     xn = "k-nn"
     xm, ym = (metrics[xn], metrics[mode])
     xm["lim"][0] = x_start
+
+    if not all_data:
+        print("No plottable search Pareto points; skipping search plot.")
+        return
+
     # Now generate each plot
     handles = []
     labels = []
@@ -125,13 +155,12 @@ def create_plot_search(
 
     # Sorting by mean y-value helps aligning plots with labels
     def mean_y(algo):
-        points = np.array(all_data[algo], dtype=object)
-        return -np.log(np.array(points[:, 3], dtype=np.float32)).mean()
+        return _mean_log_y_sort_key(all_data[algo])
 
     # Find range for logit x-scale
     min_x, max_x = 1, 0
     for algo in sorted(all_data.keys(), key=mean_y):
-        points = np.array(all_data[algo], dtype=object)
+        points = all_data[algo]
         xs = points[:, 2]
         ys = points[:, 3]
         min_x = min([min_x] + [x for x in xs if x > 0])
@@ -225,11 +254,10 @@ def create_plot_build(
 
     # Sorting by mean y-value helps aligning plots with labels
     def mean_y(algo):
-        points = np.array(search_results[algo], dtype=object)
-        return -np.log(np.array(points[:, 3], dtype=np.float32)).mean()
+        return _mean_log_y_sort_key(search_results[algo])
 
     for pos, algo in enumerate(sorted(search_results.keys(), key=mean_y)):
-        points = np.array(search_results[algo], dtype=object)
+        points = search_results[algo]
         # x is recall, ls is algo_name, idxs is index_name
         xs = points[:, 2]
         ls = points[:, 0]
@@ -590,21 +618,35 @@ def main(
         args["mode"],
         args["time_unit"],
     )
-    linestyles = create_linestyles(sorted(search_results.keys()))
+    search_plottable = {}
+    for algo, rows in search_results.items():
+        mat = _as_search_point_matrix(rows)
+        if mat is not None:
+            search_plottable[algo] = mat
+
+    linestyles = None
+    if search_plottable:
+        linestyles = create_linestyles(sorted(search_plottable.keys()))
     if search:
-        create_plot_search(
-            search_results,
-            args["x_scale"],
-            args["y_scale"],
-            search_output_filepath,
-            linestyles,
-            args["dataset"],
-            k,
-            n_queries,
-            args["mode"],
-            args["time_unit"],
-            args["x_start"],
-        )
+        if not search_plottable:
+            print(
+                "No plottable search Pareto points (missing or empty CSV rows); "
+                "skipping search plot."
+            )
+        else:
+            create_plot_search(
+                search_plottable,
+                args["x_scale"],
+                args["y_scale"],
+                search_output_filepath,
+                linestyles,
+                args["dataset"],
+                k,
+                n_queries,
+                args["mode"],
+                args["time_unit"],
+                args["x_start"],
+            )
     if build:
         build_results = load_all_results(
             os.path.join(args["dataset_path"], args["dataset"]),
@@ -619,15 +661,21 @@ def main(
             args["mode"],
             args["time_unit"],
         )
-        create_plot_build(
-            build_results,
-            search_results,
-            linestyles,
-            build_output_filepath,
-            args["dataset"],
-            k,
-            n_queries,
-        )
+        if not search_plottable or linestyles is None:
+            print(
+                "No plottable search curves for build/recall correlation; "
+                "skipping build plot."
+            )
+        else:
+            create_plot_build(
+                build_results,
+                search_plottable,
+                linestyles,
+                build_output_filepath,
+                args["dataset"],
+                k,
+                n_queries,
+            )
 
 
 if __name__ == "__main__":

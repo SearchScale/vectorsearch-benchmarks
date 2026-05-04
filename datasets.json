@@ -14,6 +14,20 @@
       "vector_dimension": 768,
       "top_k_ground_truth": 100
     },
+    "wiki-all-1m": {
+      "description": "Wikipedia 768-dim, 1M vectors (wiki_all_1M)",
+      "download-url": "",
+      "preparation-commands": "tar -xzf dataset.tar.gz",
+      "base_file": "wiki_all_1M/base.1M.fbin",
+      "base_checksum": "",
+      "query_file": "wiki_all_1M/queries.fbin",
+      "query_checksum": "",
+      "ground_truth_file": "wiki_all_1M/groundtruth.1M.neighbors.ibin",
+      "ground_truth_checksum": "",
+      "num_docs": 1000000,
+      "vector_dimension": 768,
+      "top_k_ground_truth": 100
+    },
     "sift-1m": {
       "description": "1 million 128-dimensional SIFT vectors",
       "download-url": "ftp://ftp.irisa.fr/local/texmex/corpus/sift.tar.gz",
