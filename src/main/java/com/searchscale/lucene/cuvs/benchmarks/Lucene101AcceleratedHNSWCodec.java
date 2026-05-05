@@ -12,10 +12,7 @@ import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.codecs.FilterCodec;
 import org.apache.lucene.codecs.KnnVectorsFormat;
 
-import com.nvidia.cuvs.CuVSIvfPqParams;
-import com.nvidia.cuvs.CagraIndexParams.CagraGraphBuildAlgo;
 import com.nvidia.cuvs.LibraryException;
-import com.nvidia.cuvs.lucene.AcceleratedHNSWParams;
 import com.nvidia.cuvs.lucene.Lucene99AcceleratedHNSWVectorsFormat;
 import com.nvidia.cuvs.lucene.LuceneProvider;
 
@@ -81,30 +78,7 @@ public class Lucene101AcceleratedHNSWCodec extends FilterCodec {
           InvocationTargetException {
     this(NAME, LuceneProvider.getCodec("101"));
     initializeFormat(
-        cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth,
-        null, null);
-  }
-
-  public Lucene101AcceleratedHNSWCodec(
-      int cuvsWriterThreads,
-      int intGraphDegree,
-      int graphDegree,
-      int hnswLayers,
-      int maxConn,
-      int beamWidth,
-      CagraGraphBuildAlgo cagraGraphBuildAlgo,
-      CuVSIvfPqParams cuVSIvfPqParams)
-      throws ClassNotFoundException,
-          NoSuchMethodException,
-          SecurityException,
-          InstantiationException,
-          IllegalAccessException,
-          IllegalArgumentException,
-          InvocationTargetException {
-    this(NAME, LuceneProvider.getCodec("101"));
-    initializeFormat(
-        cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth,
-        cagraGraphBuildAlgo, cuVSIvfPqParams);
+        cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth);
   }
 
   private void initializeFormatDefaultValues() {
@@ -114,8 +88,7 @@ public class Lucene101AcceleratedHNSWCodec extends FilterCodec {
         DEFAULT_GRAPH_DEGREE,
         DEFAULT_HNSW_LAYERS,
         maxConn,
-        beamWidth,
-        null, null);
+        beamWidth);
   }
 
   private void initializeFormat(
@@ -124,24 +97,11 @@ public class Lucene101AcceleratedHNSWCodec extends FilterCodec {
       int graphDegree,
       int hnswLayers,
       int maxConn,
-      int beamWidth,
-      CagraGraphBuildAlgo cagraGraphBuildAlgo,
-      CuVSIvfPqParams cuVSIvfPqParams) {
+      int beamWidth) {
     try {
-      AcceleratedHNSWParams.Builder paramsBuilder = new AcceleratedHNSWParams.Builder()
-          .withWriterThreads(cuvsWriterThreads)
-          .withIntermediateGraphDegree(intGraphDegree)
-          .withGraphDegree(graphDegree)
-          .withHNSWLayer(hnswLayers)
-          .withMaxConn(maxConn)
-          .withBeamWidth(beamWidth);
-      if (cagraGraphBuildAlgo != null) {
-        paramsBuilder.withCagraGraphBuildAlgo(cagraGraphBuildAlgo);
-      }
-      if (cuVSIvfPqParams != null) {
-        paramsBuilder.withCuVSIvfPqParams(cuVSIvfPqParams);
-      }
-      format = new Lucene99AcceleratedHNSWVectorsFormat(paramsBuilder.build());
+      format =
+          new Lucene99AcceleratedHNSWVectorsFormat(
+              cuvsWriterThreads, intGraphDegree, graphDegree, hnswLayers, maxConn, beamWidth);
       setKnnFormat(format);
     } catch (LibraryException ex) {
       log.log(

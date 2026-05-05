@@ -45,7 +45,7 @@ BEAM_WIDTH=$(jq -r 'if .hnswBeamWidth == null or .hnswBeamWidth == "null" then "
 CLEAN_INDEX_DIRECTORY=$(jq -r 'if has("cleanIndexDirectory") then .cleanIndexDirectory else true end' "$CONFIG_FILE")
 SKIP_INDEXING=$(jq -r 'if has("skipIndexing") then .skipIndexing else false end' "$CONFIG_FILE")
 CAGRA_GRAPH_BUILD_ALGO=$(jq -r 'if has("cuvsCagraGraphBuildAlgo") then .cuvsCagraGraphBuildAlgo else "NN_DESCENT" end' "$CONFIG_FILE")
-# Emit one managed-schema attribute per top-level key starting with cuVSIvfPq (values must be scalar).
+# One managed-schema attribute per top-level cuVSIvfPq* key (scalar values only; IVF-PQ).
 IVF_PQ_SCHEMA_ATTRS=$(jq -r '
   to_entries
   | map(select(.key | startswith("cuVSIvfPq")))
@@ -65,65 +65,15 @@ SOLR_URL=$(echo "$URL" | sed 's|/solr/.*||')
 DATA_DIR="data"
 DATASET_FILENAME="wiki_all_10M.tar"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
-SOLR_ROOT=${SOLR_ROOT:-solr-11.0.0-SNAPSHOT}
-NPARALLEL=${NPARALLEL:-8}
+SOLR_ROOT=solr-10.0.0-SNAPSHOT
+NPARALLEL=8
 SIMILARITY_FUNCTION=${SIMILARITY_FUNCTION:-euclidean}
 RAM_BUFFER_SIZE_MB=${RAM_BUFFER_SIZE_MB:-20000}
 
-# cuVS Java loads libcuvs_c.so through the system dynamic loader. RAPIDS pip
-# packages install cuVS and its native dependencies in separate directories, so
-# all of those directories must be on LD_LIBRARY_PATH. If installed somewhere
-# non-standard, pass LIBCUVS_DIRS=/path/one:/path/two or LIBCUVS_DIR=/path/one.
-CUVS_NATIVE_DIRS=${LIBCUVS_DIRS:-${LIBCUVS_DIR:-}}
-if [ -z "$CUVS_NATIVE_DIRS" ]; then
-CUVS_NATIVE_DIRS=$(python3 <<'PY'
-import pathlib
-import site
-
-roots = []
-try:
-    roots.extend(site.getsitepackages())
-except Exception:
-    pass
-try:
-    roots.append(site.getusersitepackages())
-except Exception:
-    pass
-
-dirs = []
-for root in roots:
-    path = pathlib.Path(root)
-    if not path.exists():
-        continue
-    for pattern in (
-        "**/libcuvs_c.so",
-        "**/libcuvs.so",
-        "**/libraft.so",
-        "**/librmm.so",
-        "**/librapids_logger.so",
-        "**/lib*_cu12.libs/*.so*",
-        "**/libcudart.so*",
-        "**/libnvJitLink.so*",
-        "**/libnccl.so*",
-        "**/libcublas.so*",
-        "**/libcublasLt.so*",
-        "**/libcusolver.so*",
-        "**/libcusparse.so*",
-        "**/libcurand.so*",
-    ):
-        dirs.extend(str(p.parent) for p in path.glob(pattern))
-
-print(":".join(dict.fromkeys(dirs)))
-PY
-)
-fi
-if [ -n "$CUVS_NATIVE_DIRS" ]; then
-    export LD_LIBRARY_PATH="$CUVS_NATIVE_DIRS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-    export SOLR_OPTS="-Djava.library.path=$CUVS_NATIVE_DIRS${SOLR_OPTS:+ $SOLR_OPTS}"
-    echo "Using LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
-    echo "Using SOLR_OPTS=$SOLR_OPTS"
-else
-    echo "WARN: cuVS native libraries not found. Set LIBCUVS_DIRS=/path/one:/path/two or install libcuvs-cu12 if cuVS indexing fails."
+# Optional: cuVS native libs for Solr (export explicitly; e.g. export LIBCUVS_DIRS=/path/cuvs/lib:/path/cuda/lib64).
+if [ -n "${LIBCUVS_DIRS:-}" ]; then
+    export LD_LIBRARY_PATH="$LIBCUVS_DIRS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    export SOLR_OPTS="-Djava.library.path=$LIBCUVS_DIRS${SOLR_OPTS:+ $SOLR_OPTS}"
 fi
 
 # Only proceed with indexing if skipIndexing is false
@@ -154,7 +104,7 @@ if [ "$KNN_ALGORITHM" = "hnsw" ]; then
 </schema>
 EOF
 else
-    # For CAGRA_HNSW: Keep original format; include cuvsCagraGraphBuildAlgo attribute
+    # For CAGRA_HNSW: graph build algo + optional IVF-PQ params from generated config JSON.
     cat > temp-configset/managed-schema << EOF
 <?xml version="1.0" ?>
 <schema name="schema-densevector" version="1.7">
@@ -268,68 +218,13 @@ fi
 pkill -9 java; rm -rf $SOLR_ROOT
 tar -xf $SOLR_ROOT.tgz
 cd $SOLR_ROOT
-cp ../log4j2.xml server/resources/log4j2.xml
+cp log4j2.xml solr-10.0.0-SNAPSHOT/server/resources/log4j2.xml
 cp modules/cuvs/lib/*.jar server/solr-webapp/webapp/WEB-INF/lib/
-# Remove any stale duplicate lucene-backward-codecs jars (keep only the one from cuvs module)
-ls server/solr-webapp/webapp/WEB-INF/lib/lucene-backward-codecs-*.jar 2>/dev/null | \
-  sort -V | head -n -1 | xargs rm -f
-# cuvs-lucene publishes legacy Lucene 9.9 KnnVectorsFormat providers in some
-# releases that are not present in Lucene 10.x. Solr's ServiceLoader eagerly loads
-# every provider in this file, so remove only those stale entries from the copied
-# webapp jar. Lucene/Solr already supplies the valid providers from lucene-core
-# and lucene-backward-codecs.
-python3 <<'PY'
-import pathlib
-import shutil
-import tempfile
-import zipfile
-
-lib = pathlib.Path("server/solr-webapp/webapp/WEB-INF/lib")
-candidates = sorted(lib.glob("cuvs-lucene-*.jar"), key=lambda p: p.name)
-jar = candidates[-1] if candidates else None
-service = "META-INF/services/org.apache.lucene.codecs.KnnVectorsFormat"
-remove = {
-    "org.apache.lucene.codecs.lucene99.Lucene99HnswVectorsFormat",
-    "org.apache.lucene.codecs.lucene99.Lucene99HnswScalarQuantizedVectorsFormat",
-}
-
-if jar is not None and jar.exists():
-    with zipfile.ZipFile(jar, "r") as zin:
-        if service in zin.namelist():
-            fd, tmp_name = tempfile.mkstemp(suffix=".jar")
-            pathlib.Path(tmp_name).unlink()
-            with zipfile.ZipFile(tmp_name, "w", zipfile.ZIP_DEFLATED) as zout:
-                for item in zin.infolist():
-                    data = zin.read(item.filename)
-                    if item.filename == service:
-                        lines = data.decode().splitlines()
-                        data = ("\n".join(line for line in lines if line.strip() not in remove) + "\n").encode()
-                    zout.writestr(item, data)
-            shutil.move(tmp_name, jar)
-PY
-SOLR_SECURITY_MANAGER_ENABLED=false bin/solr start -m ${SOLR_HEAP:-8G}
+bin/solr start -m 29G
 cd ..
-# Wait for Solr Cloud API to be ready (embedded ZK needs a few seconds)
-echo "Waiting for Solr to be ready..."
-for i in $(seq 1 60); do
-    STATUS=$(curl -sf "$SOLR_URL/solr/admin/collections?action=LIST" 2>/dev/null)
-    if echo "$STATUS" | grep -q '"status":0'; then
-        echo "Solr is ready."
-        break
-    fi
-    if [ "$i" -eq 60 ]; then
-        echo "Error: Solr not ready after 60 seconds."
-        exit 1
-    fi
-    sleep 2
-done
 # Create collection with dynamically generated configset
-echo "Uploading configset..."
 (cd temp-configset && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs"
-echo ""
-echo "Creating collection..."
 curl "$SOLR_URL/solr/admin/collections?action=CREATE&name=test&numShards=1&collection.configName=cuvs"
-echo ""
 
 # Create results file with configuration object
 python3 << EOF
@@ -362,7 +257,9 @@ EOF
 
 start_time=$(date +%s%N) # Record start time in nanoseconds
 
-# Loop through each file in the directory and post it in batches using Python
+# Upload javabin batches. curl --data-binary @file buffers the whole file (OOM on large batches); stream with -T.
+CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-600}"
+CURL_MAX_TIME="${CURL_MAX_TIME:-0}"
 python3 << EOF || { echo "ERROR: Solr javabin batch upload failed." >&2; exit 1; }
 import os
 import subprocess
@@ -370,33 +267,27 @@ import tempfile
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
-files = sorted(Path("$JAVABIN_FILES_DIR").glob("*"))
+files = sorted(Path("$JAVABIN_FILES_DIR").glob("batch.*")) or sorted(Path("$JAVABIN_FILES_DIR").iterdir())
+
 def upload(f):
     print(f"Uploading {f}...")
     fd, rsp_path = tempfile.mkstemp(prefix="solr-update-", suffix=".rsp")
     os.close(fd)
     try:
-        result = subprocess.run(
-            ["curl", "-s", "-S", "-w", "%{http_code}", "-o", rsp_path,
-             "-X", "POST", "$URL",
-             "-H", "Content-Type:application/javabin", "--data-binary", f"@{f}"],
-            capture_output=True, text=True)
-        http_code = result.stdout.strip()
-        if http_code not in ("200", "201"):
-            print(f"  WARNING: {f} upload returned HTTP {http_code or '<no response>'}, curl exit {result.returncode}")
-            if result.stderr:
-                print(result.stderr.strip())
-            try:
-                body = Path(rsp_path).read_bytes()
-                txt = body[:16384].decode("utf-8", errors="replace")
-                if txt.strip():
-                    print(f"  Solr response body (first 16k, utf-8):\\n{txt}")
-                elif body:
-                    print(f"  Solr response: <non-text or empty, {len(body)} bytes>")
-            except OSError as e:
-                print(f"  (could not read Solr response body: {e})")
+        r = subprocess.run(
+            ["curl", "-s", "-S", "--connect-timeout", "$CURL_CONNECT_TIMEOUT", "--max-time", "$CURL_MAX_TIME",
+             "-w", "%{http_code}", "-o", rsp_path,
+             "-X", "POST", "-H", "Expect:", "-H", "Content-Type:application/javabin",
+             "-T", str(f), "$URL"],
+            capture_output=True, text=True,
+        )
+        code = r.stdout.strip()
+        if code not in ("200", "201"):
+            print(f"  WARNING: {f} HTTP {code or '<none>'}, curl exit {r.returncode}")
+            if r.stderr:
+                print(r.stderr.strip())
             raise RuntimeError(f"Upload failed for {f}")
-        print(f"Completed {f} (HTTP {http_code})")
+        print(f"Completed {f} (HTTP {code})")
     finally:
         try:
             os.unlink(rsp_path)
@@ -416,7 +307,7 @@ echo "Done!"
 
 fi # End of skipIndexing check
 
-# Run query benchmarks (raise QUERY_TIMEOUT_SEC for 10M+ or slow IVF-PQ; default 120s)
+# Run query benchmarks (IVF-PQ / large indices: raise QUERY_TIMEOUT_SEC; default 120s)
 QUERY_TIMEOUT_SEC=${QUERY_TIMEOUT_SEC:-120}
 echo "Running query benchmarks..."
 python3 run_queries.py \

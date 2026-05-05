@@ -1,6 +1,6 @@
 {
   "wiki1m": {
-    "dataset": "wiki-all-1m",
+    "dataset": "wiki-10m",
     "common-params": {
       "numDocs": 1000000,
       "numQueriesToRun": 50,

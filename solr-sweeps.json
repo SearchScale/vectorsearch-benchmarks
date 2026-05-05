@@ -30,8 +30,7 @@
           128
         ],
         "cuvsWriterThreads": 8,
-        "cagraHnswLayers": 1,
-        "cuvsCagraGraphBuildAlgo": "NN_DESCENT"
+        "cagraHnswLayers": 1
       },
       "hnsw": {
         "hnswMaxConn": [

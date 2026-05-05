@@ -1,10 +1,5 @@
 package com.searchscale.lucene.cuvs.benchmarks;
 
-import com.nvidia.cuvs.CagraIndexParams.CagraGraphBuildAlgo;
-import com.nvidia.cuvs.CagraIndexParams.CodebookGen;
-import com.nvidia.cuvs.CagraIndexParams.CudaDataType;
-import com.nvidia.cuvs.CagraIndexParams.CuvsDistanceType;
-
 public class BenchmarkConfiguration {
 
   public String benchmarkID;
@@ -46,26 +41,6 @@ public class BenchmarkConfiguration {
   public int cagraSearchWidth;
   public int cagraHnswLayers;             // layers in CAGRA->HNSW conversion
   public int efSearch;
-  public CagraGraphBuildAlgo cagraGraphBuildAlgo;
-
-  // CAGRA IVF_PQ parameters
-  public float cuVSIvfPqParamsRefinementRate = 1.0f;
-  public boolean cuVSIvfPqIndexParamsAddDataOnBuild = true;
-  public CodebookGen cuVSIvfPqIndexParamsCodebookKind = CodebookGen.PER_SUBSPACE;
-  public boolean cuVSIvfPqIndexParamsConservativeMemoryAllocation = false;
-  public boolean cuVSIvfPqIndexParamsForceRandomRotation = false;
-  public int cuVSIvfPqIndexParamsKmeansNIters = 20;
-  public double cuVSIvfPqIndexParamsKmeansTrainsetFraction = 0.5;
-  public int cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode = 256;
-  public CuvsDistanceType cuVSIvfPqIndexParamsMetric = CuvsDistanceType.L2Expanded;
-  public float cuVSIvfPqIndexParamsMetricArg = 0.0f;
-  public int cuVSIvfPqIndexParamsNLists = 1024;
-  public int cuVSIvfPqIndexParamsPqBits = 8;
-  public int cuVSIvfPqIndexParamsPqDim = 0;
-  public CudaDataType cuVSIvfPqSearchParamsInternalDistanceDtype = CudaDataType.CUDA_R_16F;
-  public CudaDataType cuVSIvfPqSearchParamsLutDtype = CudaDataType.CUDA_R_16F;
-  public int cuVSIvfPqSearchParamsNProbes = 50;
-  public double cuVSIvfPqSearchParamsPreferredShmemCarveout = 1.0;
 
   private boolean isLucene() {
     return "LUCENE_HNSW".equalsIgnoreCase(algoToRun);
