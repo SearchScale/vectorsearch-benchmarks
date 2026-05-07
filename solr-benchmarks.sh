@@ -13,6 +13,7 @@ CONFIG_FILE="$1"
 JAVABIN_FILES_DIR="$2"
 URL="$3"
 RESULTS_DIR="$4"
+BENCH_ROOT="$(pwd)"
 
 # Check if config file exists
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -25,6 +26,11 @@ if [ ! -d "$JAVABIN_FILES_DIR" ]; then
     echo "Error: Batches directory '$JAVABIN_FILES_DIR' not found"
     exit 1
 fi
+
+CONFIG_FILE=$(realpath "$CONFIG_FILE")
+JAVABIN_FILES_DIR=$(realpath "$JAVABIN_FILES_DIR")
+mkdir -p "$RESULTS_DIR"
+RESULTS_DIR=$(realpath "$RESULTS_DIR")
 
 # Extract variables from config file using jq
 VECTOR_DIMENSION=$(jq -r '.vectorDimension' "$CONFIG_FILE")
@@ -65,7 +71,8 @@ SOLR_URL=$(echo "$URL" | sed 's|/solr/.*||')
 DATA_DIR="data"
 DATASET_FILENAME="wiki_all_10M.tar"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
-SOLR_ROOT=solr-10.0.0-SNAPSHOT
+# Must match solr-setup tarball basename. Override: export SOLR_ROOT=solr-11.0.0-SNAPSHOT
+SOLR_ROOT=${SOLR_ROOT:-solr-10.0.0-SNAPSHOT}
 NPARALLEL=8
 SIMILARITY_FUNCTION=${SIMILARITY_FUNCTION:-euclidean}
 RAM_BUFFER_SIZE_MB=${RAM_BUFFER_SIZE_MB:-20000}
@@ -97,7 +104,7 @@ if [ "$KNN_ALGORITHM" = "hnsw" ]; then
     <fieldType name="plong" class="solr.LongPointField" useDocValuesAsStored="false"/>
 
     <field name="id" type="string" indexed="true" stored="true" multiValued="false" required="false"/>
-    <field name="article_vector" type="knn_vector" indexed="true" stored="false"/>
+    <field name="$VECTOR_COL_NAME" type="knn_vector" indexed="true" stored="false"/>
     <field name="_version_" type="plong" indexed="true" stored="true" multiValued="false" />
 
     <uniqueKey>id</uniqueKey>
@@ -119,7 +126,7 @@ $IVF_PQ_SCHEMA_ATTRS
     <fieldType name="plong" class="solr.LongPointField" useDocValuesAsStored="false"/>
 
     <field name="id" type="string" indexed="true" stored="true" multiValued="false" required="false"/>
-    <field name="article_vector" type="knn_vector" indexed="true" stored="false"/>
+    <field name="$VECTOR_COL_NAME" type="knn_vector" indexed="true" stored="false"/>
     <field name="_version_" type="plong" indexed="true" stored="true" multiValued="false" />
 
     <uniqueKey>id</uniqueKey>
@@ -215,15 +222,22 @@ fi
 
 
 # Load cuvs module, start Solr
-pkill -9 java; rm -rf $SOLR_ROOT
-tar -xf $SOLR_ROOT.tgz
-cd $SOLR_ROOT
-cp log4j2.xml solr-10.0.0-SNAPSHOT/server/resources/log4j2.xml
+SOLR_TGZ="$BENCH_ROOT/$SOLR_ROOT.tgz"
+if [ ! -f "$SOLR_TGZ" ]; then
+    echo "Error: Solr tarball not found: $SOLR_TGZ"
+    echo "Run ./solr-setup.sh first (from this repo root) so distTar produces $SOLR_ROOT.tgz here, or build in ./solr and: mv solr/packaging/build/distributions/$SOLR_ROOT.tgz ."
+    exit 1
+fi
+pkill -9 java || true
+rm -rf "$BENCH_ROOT/$SOLR_ROOT"
+tar -xf "$SOLR_TGZ" -C "$BENCH_ROOT" || exit 1
+cd "$BENCH_ROOT/$SOLR_ROOT" || exit 1
+cp "$BENCH_ROOT/log4j2.xml" server/resources/log4j2.xml
 cp modules/cuvs/lib/*.jar server/solr-webapp/webapp/WEB-INF/lib/
 bin/solr start -m 29G
-cd ..
+cd "$BENCH_ROOT" || exit 1
 # Create collection with dynamically generated configset
-(cd temp-configset && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs"
+(cd "$BENCH_ROOT/temp-configset" && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs"
 curl "$SOLR_URL/solr/admin/collections?action=CREATE&name=test&numShards=1&collection.configName=cuvs"
 
 # Create results file with configuration object
@@ -258,9 +272,10 @@ EOF
 start_time=$(date +%s%N) # Record start time in nanoseconds
 
 # Upload javabin batches. curl --data-binary @file buffers the whole file (OOM on large batches); stream with -T.
+echo "Indexing javabin: vector field=$VECTOR_COL_NAME dim=$VECTOR_DIMENSION update URL=${URL%%\?*}..."
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-600}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-0}"
-python3 << EOF || { echo "ERROR: Solr javabin batch upload failed." >&2; exit 1; }
+python3 << EOF || { echo "ERROR: Solr javabin batch upload failed. For HTTP 400, read the Solr response body printed above (common: incorrect vector dimension vs config, wrong field name, or stale batches from a different dataset)." >&2; exit 1; }
 import os
 import subprocess
 import tempfile
@@ -284,6 +299,14 @@ def upload(f):
         code = r.stdout.strip()
         if code not in ("200", "201"):
             print(f"  WARNING: {f} HTTP {code or '<none>'}, curl exit {r.returncode}")
+            try:
+                with open(rsp_path, "r", errors="replace") as rf:
+                    body = rf.read(16384)
+                if body.strip():
+                    print("  Solr response body:")
+                    print(body[:8000] if len(body) > 8000 else body)
+            except OSError:
+                pass
             if r.stderr:
                 print(r.stderr.strip())
             raise RuntimeError(f"Upload failed for {f}")
@@ -339,15 +362,15 @@ with open('$RESULTS_DIR/results.json', 'r+') as f:
 fi
 
 # Cleanup
-rm -rf temp-configset
+rm -rf "$BENCH_ROOT/temp-configset"
 
 echo "DEBUG: About to check CLEAN_INDEX_DIRECTORY condition: '$CLEAN_INDEX_DIRECTORY'"
 if [ "$CLEAN_INDEX_DIRECTORY" = "true" ]; then
     echo "DEBUG: CLEAN_INDEX_DIRECTORY is true, stopping and cleaning Solr"
-    cd $SOLR_ROOT
+    cd "$BENCH_ROOT/$SOLR_ROOT" || exit 1
     bin/solr stop -p 8983
-    cd ..
-    rm -rf $SOLR_ROOT
+    cd "$BENCH_ROOT" || exit 1
+    rm -rf "$BENCH_ROOT/$SOLR_ROOT"
     echo "Stopped Solr and cleaned it up..."
 else
     echo "DEBUG: CLEAN_INDEX_DIRECTORY is false, preserving Solr for reuse"

@@ -108,7 +108,8 @@ JFG_GITHUB_URL="https://github.com/SearchScale/solr-javabin-generator.git"
 SOLR_DIR="solr"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
 SOLR_CUVS_MODULE_BRANCH="main"
-SOLR_ROOT=solr-10.0.0-SNAPSHOT
+# Must match the distTar basename (no .tgz). Override for Solr 11: export SOLR_ROOT=solr-11.0.0-SNAPSHOT
+SOLR_ROOT=${SOLR_ROOT:-solr-10.0.0-SNAPSHOT}
 JAVABIN_FILES_DIR="${DATASET_FROM_SWEEP}_batches"
 SOLR_URL="http://localhost:8983"
 URL="$SOLR_URL/solr/test/update?commit=true&overwrite=false"
@@ -132,15 +133,22 @@ if [ ! -d "$JFG_DIR" ]; then
 fi
 
 # Get Solr's PR branch containing the cuvs module if not already existing
+BENCH_ROOT="$(pwd)"
 if [ ! -d "$SOLR_DIR" ]; then
   echo "repo '$SOLR_DIR' does not exist."
   git clone $SOLR_GITHUB_REPO $SOLR_DIR
-  # build
   cd $SOLR_DIR
   git checkout $SOLR_CUVS_MODULE_BRANCH
   ./gradlew clean distTar
-  mv solr/packaging/build/distributions/$SOLR_ROOT.tgz ../
-  cd ..
+  mv solr/packaging/build/distributions/$SOLR_ROOT.tgz "$BENCH_ROOT/"
+  cd "$BENCH_ROOT"
+elif [ ! -f "$BENCH_ROOT/$SOLR_ROOT.tgz" ]; then
+  echo "Solr repo '$SOLR_DIR' exists but $SOLR_ROOT.tgz missing in repo root; running distTar..."
+  (cd "$SOLR_DIR" && ./gradlew clean distTar) || { echo "Error: gradlew distTar failed"; exit 1; }
+  mv "$SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz" "$BENCH_ROOT/" || {
+    echo "Error: expected $SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz — adjust SOLR_ROOT if your build uses a different tarball name."
+    exit 1
+  }
 fi
 
 # Use the javabin file generator to generate javabin files
