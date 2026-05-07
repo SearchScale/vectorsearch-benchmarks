@@ -6,6 +6,7 @@
 if [ $# -ne 4 ]; then
     echo "Usage: $0 <config_file> <batches_dir> <solr_update_url> <results_dir>"
     echo "Example: $0 configs/wiki10m/cagra_hnsw-08f8e8a1-ef800.json wiki-10m_batches http://localhost:8983/solr/test/update?commit=true&overwrite=false /path/to/results"
+    echo "Note: bulk load uses commit=false per batch + one final commit (commit=true in the URL is ignored during uploads). Set NPARALLEL (>1) only if stable for your cuVS build."
     exit 1
 fi
 
@@ -66,6 +67,11 @@ echo "DEBUG: SKIP_INDEXING=$SKIP_INDEXING"
 
 # Extract Solr URL from the update URL parameter
 SOLR_URL=$(echo "$URL" | sed 's|/solr/.*||')
+# Per-batch commit=true + parallel javabin posts overlap GPU CAGRA graph builds (RAFT graph_core failures)
+# and can close the IndexWriter (HTTP 500 / AlreadyClosedException). Bulk POSTs use commit=false; see final commit after upload.
+SOLR_UPDATE_BASE="${URL%%\?*}"
+SOLR_BULK_UPDATE_URL="${SOLR_UPDATE_BASE}?commit=false&overwrite=false"
+export SOLR_BULK_UPDATE_URL
 
 # Static variables and defaults
 DATA_DIR="data"
@@ -73,7 +79,7 @@ DATASET_FILENAME="wiki_all_10M.tar"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
 # Must match solr-setup tarball basename. Override: export SOLR_ROOT=solr-11.0.0-SNAPSHOT
 SOLR_ROOT=${SOLR_ROOT:-solr-10.0.0-SNAPSHOT}
-NPARALLEL=8
+NPARALLEL=${NPARALLEL:-1}
 SIMILARITY_FUNCTION=${SIMILARITY_FUNCTION:-euclidean}
 RAM_BUFFER_SIZE_MB=${RAM_BUFFER_SIZE_MB:-20000}
 
@@ -234,6 +240,12 @@ tar -xf "$SOLR_TGZ" -C "$BENCH_ROOT" || exit 1
 cd "$BENCH_ROOT/$SOLR_ROOT" || exit 1
 cp "$BENCH_ROOT/log4j2.xml" server/resources/log4j2.xml
 cp modules/cuvs/lib/*.jar server/solr-webapp/webapp/WEB-INF/lib/
+# Solr 11+ enables the Java Security Manager by default. The bundled policy only grants loadLibrary.cudart;
+# cuVS/CUDA loads many other JNI libraries -> root-error-class java.security.AccessControlException while indexing.
+# Default off for this GPU benchmark; set SOLR_SECURITY_MANAGER_ENABLED=true only if you extend server/etc/security.policy.
+SOLR_SECURITY_MANAGER_ENABLED="${SOLR_SECURITY_MANAGER_ENABLED:-false}"
+export SOLR_SECURITY_MANAGER_ENABLED
+echo "DEBUG: SOLR_SECURITY_MANAGER_ENABLED=$SOLR_SECURITY_MANAGER_ENABLED"
 bin/solr start -m 29G
 cd "$BENCH_ROOT" || exit 1
 # Create collection with dynamically generated configset
@@ -272,16 +284,17 @@ EOF
 start_time=$(date +%s%N) # Record start time in nanoseconds
 
 # Upload javabin batches. curl --data-binary @file buffers the whole file (OOM on large batches); stream with -T.
-echo "Indexing javabin: vector field=$VECTOR_COL_NAME dim=$VECTOR_DIMENSION update URL=${URL%%\?*}..."
+echo "Indexing javabin: vector field=$VECTOR_COL_NAME dim=$VECTOR_DIMENSION workers=$NPARALLEL bulk=$SOLR_BULK_UPDATE_URL"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-600}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-0}"
-python3 << EOF || { echo "ERROR: Solr javabin batch upload failed. For HTTP 400, read the Solr response body printed above (common: incorrect vector dimension vs config, wrong field name, or stale batches from a different dataset)." >&2; exit 1; }
+python3 << EOF || { echo "ERROR: Solr javabin batch upload failed. See Solr response body above (HTTP 400: schema/vectors; HTTP 500: cuVS/RAFT or IndexWriter closed—try NPARALLEL=1 and no per-batch commits)." >&2; exit 1; }
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
+bulk_url = os.environ["SOLR_BULK_UPDATE_URL"]
 files = sorted(Path("$JAVABIN_FILES_DIR").glob("batch.*")) or sorted(Path("$JAVABIN_FILES_DIR").iterdir())
 
 def upload(f):
@@ -293,7 +306,7 @@ def upload(f):
             ["curl", "-s", "-S", "--connect-timeout", "$CURL_CONNECT_TIMEOUT", "--max-time", "$CURL_MAX_TIME",
              "-w", "%{http_code}", "-o", rsp_path,
              "-X", "POST", "-H", "Expect:", "-H", "Content-Type:application/javabin",
-             "-T", str(f), "$URL"],
+             "-T", str(f), bulk_url],
             capture_output=True, text=True,
         )
         code = r.stdout.strip()
@@ -322,7 +335,13 @@ with ThreadPoolExecutor(max_workers=$NPARALLEL) as ex:
     list(ex.map(upload, files))
 print("All uploads completed")
 EOF
-end_time=$(date +%s%N)   # Record end time in nanoseconds
+
+echo "Final Solr commit (openSearcher=true)..."
+curl -sS -f -w "Final commit HTTP %{http_code}\n" -o /dev/null \
+  "${SOLR_UPDATE_BASE}?commit=true&openSearcher=true" \
+  || { echo "ERROR: Final Solr commit failed." >&2; exit 1; }
+
+end_time=$(date +%s%N)   # Record end time in nanoseconds (includes final commit)
 
 duration=$(( (end_time - start_time) / 1000000 )) # Calculate duration in milliseconds
 echo "Execution time: $duration ms"
