@@ -1,3 +1,4 @@
+
 import itertools
 import argparse
 import sys
@@ -49,13 +50,23 @@ for sweep in sweeps:
             invariants[param] = value
         else:
             variants[param] = value
-    for algo in sweeps[sweep].get("algorithms", []):
-        algorithms = sweeps[sweep].get("algorithms", [])
+    # Normalize algorithms to a list of (name, params) tuples.
+    # Supports both the original dict format:
+    #   "algorithms": { "LUCENE_HNSW": {...}, "CAGRA_HNSW": {...} }
+    # and the new list format (allows duplicate algorithm names):
+    #   "algorithms": [ { "name": "LUCENE_HNSW", ... }, { "name": "LUCENE_HNSW", ... } ]
+    raw_algorithms = sweeps[sweep].get("algorithms", [])
+    if isinstance(raw_algorithms, dict):
+        algo_list = [(name, params) for name, params in raw_algorithms.items()]
+    else:
+        algo_list = [(entry.pop("name"), entry) for entry in [dict(e) for e in raw_algorithms]]
+
+    for algo, algo_params in algo_list:
         algo_variants = variants.copy()
         algo_invariants = invariants.copy()
         algo_invariants["algoToRun"] = algo
 
-        for param, value in algorithms[algo].items():
+        for param, value in algo_params.items():
             if param not in ["params"]:
                 # efSearch is always passed through as a list — Java handles the iteration
                 if param == 'efSearch':
