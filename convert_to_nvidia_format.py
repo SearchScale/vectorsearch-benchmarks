@@ -97,7 +97,7 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
         json.dump(data, f, indent=2)
 
     build_filepath = None
-    build_time_key = next((key for key in metrics.keys() if 'indexing-time' in key.lower()), None)
+    build_time_key = next((key for key in metrics.keys() if 'indexing-time-total' in key.lower()), None)
 
     if build_time_key:
         build_time_ms = float(metrics[build_time_key])

@@ -14,6 +14,7 @@ import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWBinaryQuantizedCodec;
 import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWScalarQuantizedCodec;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.nio.file.FileVisitOption;
@@ -119,6 +120,57 @@ public class LuceneCuvsBenchmarks {
     }
   }
 
+  // ── Page cache management ─────────────────────────────────────────────────
+
+  /**
+   * Drops the OS page cache to ensure cold-cache measurements.
+   * Requires root or passwordless sudo for tee.
+   */
+  private static void dropPageCache() {
+    try {
+      log.info("Dropping OS page cache...");
+      ProcessBuilder pb =
+          new ProcessBuilder("bash", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches");
+      pb.inheritIO();
+      Process p = pb.start();
+      int exit = p.waitFor();
+      if (exit == 0) {
+        log.info("Page cache dropped successfully");
+      } else {
+        log.warn("Failed to drop page cache (exit code {}). Are you running as root?", exit);
+      }
+    } catch (Exception e) {
+      log.error("Failed to drop page cache", e);
+    }
+  }
+
+  /**
+   * Sequentially reads all files in the index directory to pull them into the
+   * OS page cache. This ensures warm-cache measurements that are not dependent
+   * on indexing-phase memory pressure.
+   */
+  private static void prewarmIndex(String indexDirPath) throws IOException {
+    log.info("Pre-warming index files into page cache...");
+    long start = System.currentTimeMillis();
+    Path indexPath = Path.of(indexDirPath);
+    byte[] buffer = new byte[1024 * 1024]; // 1MB read buffer
+    try (var stream = Files.walk(indexPath)) {
+      stream
+          .filter(Files::isRegularFile)
+          .forEach(
+              file -> {
+                try (InputStream fis = Files.newInputStream(file)) {
+                  while (fis.read(buffer) != -1) {
+                    // just reading — forces pages into OS cache
+                  }
+                } catch (IOException e) {
+                  log.warn("Failed to prewarm file: {}", file, e);
+                }
+              });
+    }
+    log.info("Index pre-warm completed in {} ms", System.currentTimeMillis() - start);
+  }
+
   // ── Writer-config helpers ──────────────────────────────────────────────────
 
   /**
@@ -168,7 +220,7 @@ public class LuceneCuvsBenchmarks {
       // silently caps forceMerge(1) at ~6 segments.
       tmp.setMaxMergedSegmentMB(150 * 1024); // 150 GiB in MB
       tmp.setSegmentsPerTier(2);
-      tmp.setMaxMergeAtOnce(20);
+      tmp.setMaxMergeAtOnce(500); // merge all segments in one round
     }
     iwc.setMergePolicy(tmp);
     setPerThreadRAMLimit(iwc, 10240);
@@ -296,11 +348,13 @@ public class LuceneCuvsBenchmarks {
         var formatName = flushWriter.getConfig().getCodec().knnVectorsFormat().getName();
         log.info("Indexing documents using {} ...", formatName);
 
+        long totalBuildStartTime = System.currentTimeMillis();
+
         long indexStartTime = System.currentTimeMillis();
         indexDocuments(flushWriter, config, titles, vectorProvider);
         long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
         metrics.put(config.algoToRun + "-indexing-time", indexTimeTaken);
-        log.info("Time taken for index building (end to end): {} ms", indexTimeTaken);
+        log.info("Time taken for flush phase: {} ms", indexTimeTaken);
 
         // ── Phase 2: forceMerge with merge-time codec ──────────────────────────
         // Opens a fresh IndexWriter on the same directory so the codec — and
@@ -331,8 +385,14 @@ public class LuceneCuvsBenchmarks {
           mergeWriter.forceMerge(config.forceMerge);
           mergeWriter.commit();
           mergeWriter.close();
-          log.info("forceMerge completed in {} ms", (System.currentTimeMillis() - mergeStart));
+          long mergeTimeTaken = System.currentTimeMillis() - mergeStart;
+          metrics.put(config.algoToRun + "-forceMerge-time", mergeTimeTaken);
+          log.info("forceMerge completed in {} ms", mergeTimeTaken);
         }
+
+        long totalBuildTimeTaken = System.currentTimeMillis() - totalBuildStartTime;
+        metrics.put(config.algoToRun + "-indexing-time-total", totalBuildTimeTaken);
+        log.info("Total index build time (flush + forceMerge): {} ms", totalBuildTimeTaken);
 
         // ── Index size reporting ───────────────────────────────────────────────
         try {
@@ -352,6 +412,18 @@ public class LuceneCuvsBenchmarks {
         }
       }
 
+      // ── Shrink JVM heap before search ──────────────────────────────────────
+      // After indexing, the DWPT buffers are garbage. Trigger GC so the JVM
+      // returns that physical RAM to the OS, making it available for the page
+      // cache during search.
+      log.info("Triggering GC to release heap before search...");
+      System.gc();
+      Thread.sleep(5000);
+      log.info(
+          "Heap after GC: committed={}MB, used={}MB",
+          Runtime.getRuntime().totalMemory() / (1024 * 1024),
+          (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024));
+
       // [3] Search — one run per efSearch value
       List<Integer> efSearchValues = config.getEfSearchValues();
       log.info(
@@ -365,6 +437,10 @@ public class LuceneCuvsBenchmarks {
 
       for (int efSearch : efSearchValues) {
         log.info("--- Running search with efSearch={} ---", efSearch);
+
+        // ── Deterministic cache state for each efSearch run ──────────────────
+        dropPageCache();
+        prewarmIndex(config.indexDirPath);
 
         List<QueryResult> efSearchQueryResults =
             Collections.synchronizedList(new ArrayList<QueryResult>());
@@ -607,7 +683,7 @@ public class LuceneCuvsBenchmarks {
                   }
                   double searchTimeTakenMs = (System.nanoTime() - searchStartTime) / 1_000_000.0;
 
-                  if (currentQueryId > config.numWarmUpQueries) {
+                  if (currentQueryId >= config.numWarmUpQueries) {
                     queryLatencies.put(currentQueryId, searchTimeTakenMs);
                   }
                   int finishedCount = queriesFinished.incrementAndGet();
@@ -650,7 +726,7 @@ public class LuceneCuvsBenchmarks {
                   }
                   double retrievalTimeTakenMs =
                       (System.nanoTime() - retrievalStartTime) / 1_000_000.0;
-                  if (currentQueryId > config.numWarmUpQueries) {
+                  if (currentQueryId >= config.numWarmUpQueries) {
                     retrievalLatencies.put(currentQueryId, retrievalTimeTakenMs);
                   }
 
@@ -673,7 +749,7 @@ public class LuceneCuvsBenchmarks {
                               java.util.Arrays.copyOf(
                                   expectedNeighbors, Math.min(5, expectedNeighbors.length))));
 
-                  if (currentQueryId > config.numWarmUpQueries) {
+                  if (currentQueryId >= config.numWarmUpQueries) {
                     QueryResult result =
                         new QueryResult(
                             config.algoToRun.toString(),
