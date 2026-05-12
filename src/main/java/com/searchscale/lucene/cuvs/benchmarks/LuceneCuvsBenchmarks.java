@@ -14,6 +14,7 @@ import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWBinaryQuantizedCodec;
 import com.nvidia.cuvs.lucene.LuceneAcceleratedHNSWScalarQuantizedCodec;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.Charset;
 import java.nio.file.FileVisitOption;
@@ -88,22 +89,16 @@ public class LuceneCuvsBenchmarks {
    */
   private static void setPerThreadRAMLimit(IndexWriterConfig config, int limitMB) {
     try {
-      // First, try to find the field in IndexWriterConfig
       java.lang.reflect.Field field = null;
       Class<?> clazz = config.getClass();
-
-      // Try to find the field in the class hierarchy
       while (clazz != null && field == null) {
         try {
           field = clazz.getDeclaredField("perThreadHardLimitMB");
         } catch (NoSuchFieldException e) {
-          // Try superclass
           clazz = clazz.getSuperclass();
         }
       }
-
       if (field == null) {
-        // If not found in IndexWriterConfig, try LiveIndexWriterConfig
         clazz = config.getClass().getSuperclass();
         while (clazz != null && field == null) {
           try {
@@ -113,7 +108,6 @@ public class LuceneCuvsBenchmarks {
           }
         }
       }
-
       if (field != null) {
         field.setAccessible(true);
         field.setInt(config, limitMB);
@@ -126,6 +120,118 @@ public class LuceneCuvsBenchmarks {
     }
   }
 
+  // ── Page cache management ─────────────────────────────────────────────────
+
+  /**
+   * Drops the OS page cache to ensure cold-cache measurements.
+   * Requires root or passwordless sudo for tee.
+   */
+  private static void dropPageCache() {
+    try {
+      log.info("Dropping OS page cache...");
+      ProcessBuilder pb =
+          new ProcessBuilder("bash", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches");
+      pb.inheritIO();
+      Process p = pb.start();
+      int exit = p.waitFor();
+      if (exit == 0) {
+        log.info("Page cache dropped successfully");
+      } else {
+        log.warn("Failed to drop page cache (exit code {}). Are you running as root?", exit);
+      }
+    } catch (Exception e) {
+      log.error("Failed to drop page cache", e);
+    }
+  }
+
+  /**
+   * Sequentially reads all files in the index directory to pull them into the
+   * OS page cache. This ensures warm-cache measurements that are not dependent
+   * on indexing-phase memory pressure.
+   */
+  private static void prewarmIndex(String indexDirPath) throws IOException {
+    log.info("Pre-warming index files into page cache...");
+    long start = System.currentTimeMillis();
+    Path indexPath = Path.of(indexDirPath);
+    byte[] buffer = new byte[1024 * 1024]; // 1MB read buffer
+    try (var stream = Files.walk(indexPath)) {
+      stream
+          .filter(Files::isRegularFile)
+          .forEach(
+              file -> {
+                try (InputStream fis = Files.newInputStream(file)) {
+                  while (fis.read(buffer) != -1) {
+                    // just reading — forces pages into OS cache
+                  }
+                } catch (IOException e) {
+                  log.warn("Failed to prewarm file: {}", file, e);
+                }
+              });
+    }
+    log.info("Index pre-warm completed in {} ms", System.currentTimeMillis() - start);
+  }
+
+  // ── Writer-config helpers ──────────────────────────────────────────────────
+
+  /**
+   * Builds an {@link IndexWriterConfig} for the flush phase.
+   * Uses {@link NoMergePolicy} unless {@code enableTieredMerge} is set,
+   * in which case background auto-merges are allowed during indexing.
+   * forceMerge is never triggered here — that is the responsibility of
+   * the separate merge writer created in {@code main()}.
+   */
+  private static IndexWriterConfig buildFlushWriterConfig(
+      BenchmarkConfiguration config, Codec codec) {
+    IndexWriterConfig iwc = new IndexWriterConfig(new StandardAnalyzer());
+    iwc.setCodec(codec);
+    iwc.setMaxBufferedDocs(config.flushFreq);
+    iwc.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+    if (config.enableTieredMerge) {
+      iwc.setMergePolicy(new TieredMergePolicy());
+    } else {
+      iwc.setMergePolicy(NoMergePolicy.INSTANCE);
+    }
+    setPerThreadRAMLimit(iwc, 10240); // 10 GB per thread
+    if (config.enableIndexWriterInfoStream) {
+      iwc.setInfoStream(new PrintStreamInfoStream(System.out));
+    }
+    log.info(
+        "Configured flush writer — MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {}"
+            + " MB",
+        iwc.getMaxBufferedDocs(),
+        iwc.getRAMBufferSizeMB(),
+        iwc.getRAMPerThreadHardLimitMB());
+    return iwc;
+  }
+
+  /**
+   * Builds an {@link IndexWriterConfig} for the forceMerge phase.
+   * Always uses a {@link TieredMergePolicy} tuned so that the policy ceiling
+   * never silently caps a single-segment merge of a large index.
+   */
+  private static IndexWriterConfig buildMergeWriterConfig(
+      BenchmarkConfiguration config, Codec mergeCodec) {
+    IndexWriterConfig iwc = new IndexWriterConfig(new StandardAnalyzer());
+    iwc.setCodec(mergeCodec);
+    TieredMergePolicy tmp = new TieredMergePolicy();
+    if (config.forceMerge == 1) {
+      // With 10M x 1536-dim vectors the full index is ~60+ GiB.
+      // Raise the ceiling above the full index size so the policy never
+      // silently caps forceMerge(1) at ~6 segments.
+      tmp.setMaxMergedSegmentMB(150 * 1024); // 150 GiB in MB
+      tmp.setSegmentsPerTier(2);
+      tmp.setMaxMergeAtOnce(500); // merge all segments in one round
+    }
+    iwc.setMergePolicy(tmp);
+    setPerThreadRAMLimit(iwc, 10240);
+    if (config.enableIndexWriterInfoStream) {
+      iwc.setInfoStream(new PrintStreamInfoStream(System.out));
+    }
+    return iwc;
+  }
+
+  // ── Main ──────────────────────────────────────────────────────────────────
+
   public static void main(String[] args) throws Throwable {
 
     if (args.length < 1 || args.length > 3) {
@@ -136,15 +242,13 @@ public class LuceneCuvsBenchmarks {
     BenchmarkConfiguration config =
         Util.newObjectMapper().readValue(new File(args[0]), BenchmarkConfiguration.class);
 
-    // Override benchmarkID if provided as command line argument
     if (args.length >= 2) {
       config.benchmarkID = args[1];
     }
-
-    // Override resultsDirectory if provided as command line argument
     if (args.length >= 3) {
       config.resultsDirectory = args[2];
     }
+
     Map<String, Object> metrics = new LinkedHashMap<String, Object>();
     List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
     config.debugPrintArguments();
@@ -160,21 +264,17 @@ public class LuceneCuvsBenchmarks {
 
     long parseStartTime = System.currentTimeMillis();
 
-    // Check if dataset is .fvecs or .fbin format and handle it directly
     if (config.datasetFile.contains("fvecs") || config.datasetFile.contains("fbin")) {
       log.info("Detected .fvecs or .fbin file format. Loading directly without MapDB...");
-
       if (config.loadVectorsInMemory) {
         log.info("Loading all vectors in memory (loadVectorsInMemory is enabled)");
         long start = System.currentTimeMillis();
         List<float[]> loadedVectors = new ArrayList<float[]>();
-
         if (config.datasetFile.contains("fbin")) {
           FBIvecsReader.readFbin(config.datasetFile, config.numDocs, loadedVectors);
         } else {
           FBIvecsReader.readFvecs(config.datasetFile, config.numDocs, loadedVectors);
         }
-
         vectorProvider = new MemoryVectorProvider(loadedVectors);
         log.info(
             "Time taken to load {} vectors in-memory: {} ms",
@@ -184,13 +284,10 @@ public class LuceneCuvsBenchmarks {
         log.info("Creating streaming vector provider (loadVectorsInMemory is disabled)");
         vectorProvider = new StreamingVectorProvider(config.datasetFile, config.numDocs);
       }
-
       titles.add(config.vectorColName);
     } else {
-      // Use MapDB for non-.fvecs files (CSV, bvecs, etc.)
       DB db;
       IndexTreeList<float[]> vectors;
-
       if (new File(datasetMapdbFile).exists() == false) {
         log.info("Mapdb file not found for dataset. Preparing one ...");
         db = DBMaker.fileDB(datasetMapdbFile).make();
@@ -207,7 +304,6 @@ public class LuceneCuvsBenchmarks {
         vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
         log.info("{} vectors available from the mapdb file", vectors.size());
       }
-
       if (config.loadVectorsInMemory) {
         log.info(
             "Mapdb loaded. Now loading all vectors in memory (loadVectorsInMemory is enabled)");
@@ -230,65 +326,85 @@ public class LuceneCuvsBenchmarks {
         (System.currentTimeMillis() - parseStartTime));
 
     try {
-      // [2] Benchmarking setup
+      // [2] Benchmarking setup — indexing
       if (!config.skipIndexing) {
-        IndexWriter writer;
 
-        // HNSW Writer:
-        IndexWriterConfig indexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
-        indexWriterConfig.setCodec(getCodec(config));
-        indexWriterConfig.setMaxBufferedDocs(config.flushFreq);
-        indexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
+        // ── Phase 1: flush (no forceMerge) ────────────────────────────────────
+        // Build the flush writer with the flush-time codec. The merge policy is
+        // NoMergePolicy (or TieredMergePolicy if enableTieredMerge), but forceMerge
+        // is never called on this writer. That happens in Phase 2 below, using a
+        // separate writer that carries the merge-time nLists/nProbes.
+        Codec flushCodec = getCodec(config, false);
+        IndexWriterConfig flushWriterConfig = buildFlushWriterConfig(config, flushCodec);
 
-        if (config.forceMerge > 0 || config.enableTieredMerge) {
-          indexWriterConfig.setMergePolicy(new TieredMergePolicy());
-        } else {
-          indexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
-        }
-
-        // Use reflection to bypass the 2048MB per-thread limit and set it to 10GB
-        setPerThreadRAMLimit(indexWriterConfig, 10240); // 10GB per thread
-        log.info(
-            "Configured HNSW writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit:"
-                + " {} MB",
-            config.flushFreq,
-            indexWriterConfig.getRAMBufferSizeMB(),
-            indexWriterConfig.getRAMPerThreadHardLimitMB());
-
+        Directory indexDirectory;
         if (!config.createIndexInMemory) {
-          Path hnswIndex = Path.of(config.indexDirPath);
-          writer = new IndexWriter(FSDirectory.open(hnswIndex), indexWriterConfig);
+          indexDirectory = FSDirectory.open(Path.of(config.indexDirPath));
         } else {
-          writer = new IndexWriter(new ByteBuffersDirectory(), indexWriterConfig);
+          indexDirectory = new ByteBuffersDirectory();
         }
 
-        if (config.enableIndexWriterInfoStream) {
-          indexWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
-        }
-
-        var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
-
+        IndexWriter flushWriter = new IndexWriter(indexDirectory, flushWriterConfig);
+        var formatName = flushWriter.getConfig().getCodec().knnVectorsFormat().getName();
         log.info("Indexing documents using {} ...", formatName);
+
+        long totalBuildStartTime = System.currentTimeMillis();
+
         long indexStartTime = System.currentTimeMillis();
-        indexDocuments(writer, config, titles, vectorProvider);
+        indexDocuments(flushWriter, config, titles, vectorProvider);
         long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
-
         metrics.put(config.algoToRun + "-indexing-time", indexTimeTaken);
+        log.info("Time taken for flush phase: {} ms", indexTimeTaken);
 
-        log.info("Time taken for index building (end to end): {} ms", indexTimeTaken);
+        // ── Phase 2: forceMerge with merge-time codec ──────────────────────────
+        // Opens a fresh IndexWriter on the same directory so the codec — and
+        // therefore nLists/nProbes — can differ from the flush writer above.
+        // Only runs when forceMerge > 0.
+        if (config.forceMerge > 0) {
+          int effectiveNLists =
+              config.cuVSIvfPqIndexParamsForceMergeNLists > 0
+                  ? config.cuVSIvfPqIndexParamsForceMergeNLists
+                  : config.cuVSIvfPqIndexParamsNLists;
+          int effectiveNProbes =
+              config.cuVSIvfPqSearchParamsForceMergeNProbes > 0
+                  ? config.cuVSIvfPqSearchParamsForceMergeNProbes
+                  : config.cuVSIvfPqSearchParamsNProbes;
+          log.info(
+              "Starting forceMerge phase — target segments: {}, nLists: {} (flush was: {}),"
+                  + " nProbes: {} (flush was: {})",
+              config.forceMerge,
+              effectiveNLists,
+              config.cuVSIvfPqIndexParamsNLists,
+              effectiveNProbes,
+              config.cuVSIvfPqSearchParamsNProbes);
 
+          Codec mergeCodec = getCodec(config, true);
+          IndexWriterConfig mergeWriterConfig = buildMergeWriterConfig(config, mergeCodec);
+          IndexWriter mergeWriter = new IndexWriter(indexDirectory, mergeWriterConfig);
+          long mergeStart = System.currentTimeMillis();
+          mergeWriter.forceMerge(config.forceMerge);
+          mergeWriter.commit();
+          mergeWriter.close();
+          long mergeTimeTaken = System.currentTimeMillis() - mergeStart;
+          metrics.put(config.algoToRun + "-forceMerge-time", mergeTimeTaken);
+          log.info("forceMerge completed in {} ms", mergeTimeTaken);
+        }
+
+        long totalBuildTimeTaken = System.currentTimeMillis() - totalBuildStartTime;
+        metrics.put(config.algoToRun + "-indexing-time-total", totalBuildTimeTaken);
+        log.info("Total index build time (flush + forceMerge): {} ms", totalBuildTimeTaken);
+
+        // ── Index size reporting ───────────────────────────────────────────────
         try {
-          if (writer.getDirectory() instanceof FSDirectory) {
+          if (indexDirectory instanceof FSDirectory) {
             Path indexPath = Paths.get(config.indexDirPath);
             long directorySize;
             try (var stream = Files.walk(indexPath, FileVisitOption.FOLLOW_LINKS)) {
               directorySize =
                   stream.filter(p -> p.toFile().isFile()).mapToLong(p -> p.toFile().length()).sum();
             }
-
             double directorySizeGB = directorySize / 1_073_741_824.0;
             metrics.put(config.algoToRun + "-index-size", directorySizeGB);
-
             log.info("Size of {}: {} GB", indexPath.toString(), directorySizeGB);
           }
         } catch (IOException e) {
@@ -296,51 +412,89 @@ public class LuceneCuvsBenchmarks {
         }
       }
 
+      // ── Shrink JVM heap before search ──────────────────────────────────────
+      // After indexing, the DWPT buffers are garbage. Trigger GC so the JVM
+      // returns that physical RAM to the OS, making it available for the page
+      // cache during search.
+      log.info("Triggering GC to release heap before search...");
+      System.gc();
+      Thread.sleep(5000);
+      log.info(
+          "Heap after GC: committed={}MB, used={}MB",
+          Runtime.getRuntime().totalMemory() / (1024 * 1024),
+          (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024));
+
+      // [3] Search — one run per efSearch value
+      List<Integer> efSearchValues = config.getEfSearchValues();
+      log.info(
+          "Will run search with {} efSearch value(s): {}", efSearchValues.size(), efSearchValues);
+
+      List<int[]> groundTruth = Util.readGroundTruthFile(config.groundTruthFile);
       Directory indexDir = MMapDirectory.open(Path.of(config.indexDirPath));
       log.info("Index directory is: {} (using memory-mapped files)", indexDir);
-      log.info("Querying documents using {} ...", config.algoToRun);
-      // Always use standard Lucene search since we always create Lucene HNSW indexes
-      search(
-          indexDir,
-          config,
-          metrics,
-          queryResults,
-          Util.readGroundTruthFile(config.groundTruthFile));
 
-      Util.calculateRecallAccuracy(queryResults, metrics, config.algoToRun);
+      Map<String, Object> indexingMetrics = new LinkedHashMap<>(metrics);
 
-      String resultsJson =
-          Util.newObjectMapper()
-              .writerWithDefaultPrettyPrinter()
-              .writeValueAsString(Map.of("configuration", config, "metrics", metrics));
+      for (int efSearch : efSearchValues) {
+        log.info("--- Running search with efSearch={} ---", efSearch);
 
-      if (config.saveResultsOnDisk) {
-        // Use the resultsDirectory directly if provided
-        String resultsDir = config.resultsDirectory != null ? config.resultsDirectory : "results";
-        File results = new File(resultsDir);
-        if (!results.exists()) {
-          results.mkdirs();
+        // ── Deterministic cache state for each efSearch run ──────────────────
+        dropPageCache();
+        prewarmIndex(config.indexDirPath);
+
+        List<QueryResult> efSearchQueryResults =
+            Collections.synchronizedList(new ArrayList<QueryResult>());
+        Map<String, Object> efSearchMetrics = new LinkedHashMap<String, Object>();
+        efSearchMetrics.putAll(indexingMetrics);
+        efSearchMetrics.put("efSearch", efSearch);
+
+        log.info("Querying documents using {} with efSearch={} ...", config.algoToRun, efSearch);
+        search(indexDir, config, efSearchMetrics, efSearchQueryResults, groundTruth, efSearch);
+
+        Util.calculateRecallAccuracy(efSearchQueryResults, efSearchMetrics, config.algoToRun);
+
+        String resultsJson =
+            Util.newObjectMapper()
+                .writerWithDefaultPrettyPrinter()
+                .writeValueAsString(Map.of("configuration", config, "metrics", efSearchMetrics));
+
+        if (config.saveResultsOnDisk) {
+          String resultsDir = config.resultsDirectory != null ? config.resultsDirectory : "results";
+          if (efSearchValues.size() > 1) {
+            resultsDir = resultsDir + "/efSearch_" + efSearch;
+          }
+          File results = new File(resultsDir);
+          if (!results.exists()) {
+            results.mkdirs();
+          }
+          FileUtils.write(
+              new File(results.toString() + "/results.json"),
+              resultsJson,
+              Charset.forName("UTF-8"));
+          Util.writeCSV(efSearchQueryResults, results.toString() + "/neighbors.csv");
+          log.info("Results for efSearch={} saved to directory: {}", efSearch, resultsDir);
         }
 
-        // Save results.json directly to the specified directory
-        FileUtils.write(
-            new File(results.toString() + "/results.json"), resultsJson, Charset.forName("UTF-8"));
+        log.info(
+            "\n-----\nMetrics for efSearch={}: {}\n{}\n-----",
+            efSearch,
+            efSearchMetrics,
+            resultsJson);
 
-        // Save CSV with neighbors data
-        Util.writeCSV(queryResults, results.toString() + "/neighbors.csv");
-
-        log.info("Results saved to directory: {}", resultsDir);
+        for (Map.Entry<String, Object> entry : efSearchMetrics.entrySet()) {
+          if (efSearchValues.size() > 1) {
+            metrics.put("efSearch_" + efSearch + "/" + entry.getKey(), entry.getValue());
+          } else {
+            metrics.put(entry.getKey(), entry.getValue());
+          }
+        }
       }
 
-      log.info("\n-----\nOverall metrics: " + metrics + "\nMetrics: \n" + resultsJson + "\n-----");
-
-      // Close the index directory before cleaning
+      log.info("\n-----\nOverall metrics: {}\n-----", metrics);
       indexDir.close();
 
-      // Clean index directory after benchmarks complete if requested
       if (config.cleanIndexDirectory && !config.createIndexInMemory) {
         Path indexPath = Path.of(config.indexDirPath);
-
         if (indexPath != null) {
           try {
             log.info("Cleaning index directory: {}", indexPath);
@@ -356,15 +510,24 @@ public class LuceneCuvsBenchmarks {
         vectorProvider.close();
       }
     }
+
     if (executorService != null && !executorService.isShutdown()) {
       executorService.shutdown();
       executorService.close();
-      // Need the following as a temporary fix for now as the process gets stuck in case of
-      // LUCENE_HNSW when using multiple merge threads
+      // Temporary fix: prevents process getting stuck on LUCENE_HNSW with multiple merge threads
       System.exit(0);
     }
   }
 
+  // ── Indexing (flush only — forceMerge intentionally removed) ──────────────
+
+  /**
+   * Indexes all documents into the given writer, commits, and closes it.
+   *
+   * <p>forceMerge is intentionally <b>not</b> called here. It is handled in
+   * {@code main()} by a separate {@link IndexWriter} that carries different
+   * IVF-PQ parameters (nLists / nProbes) via the merge codec.
+   */
   private static void indexDocuments(
       IndexWriter writer,
       BenchmarkConfiguration config,
@@ -388,7 +551,7 @@ public class LuceneCuvsBenchmarks {
             while (true) {
               int id = numDocsIndexed.getAndIncrement();
               if (id >= numDocsToIndex) {
-                break; // done
+                break;
               }
               float[] vector;
               try {
@@ -407,7 +570,6 @@ public class LuceneCuvsBenchmarks {
                       (id + 1),
                       writer.getPendingNumDocs());
                 }
-                // Log when we expect a flush
                 if ((id + 1) == config.flushFreq || (id + 1) == 2 * config.flushFreq) {
                   log.info("Expected flush point reached at {} documents", (id + 1));
                 }
@@ -420,22 +582,30 @@ public class LuceneCuvsBenchmarks {
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
-    if (config.forceMerge > 0) {
-      log.info("Force merge is enabled, force merging into " + config.forceMerge + " segments");
-      writer.forceMerge(config.forceMerge);
-    }
-
     log.info("Calling commit.");
     writer.commit();
     writer.close();
   }
 
+  // ── Search ────────────────────────────────────────────────────────────────
+
+  /**
+   * Runs search queries against the given index directory using the specified efSearch value.
+   *
+   * @param directory    the Lucene index directory to search
+   * @param config       benchmark configuration
+   * @param metrics      map to populate with search performance metrics
+   * @param queryResults list to populate with per-query results
+   * @param groundTruth  ground truth neighbor lists for recall calculation
+   * @param efSearch     the efSearch (number of candidates) to use for this search run
+   */
   private static void search(
       Directory directory,
       BenchmarkConfiguration config,
       Map<String, Object> metrics,
       List<QueryResult> queryResults,
-      List<int[]> groundTruth) {
+      List<int[]> groundTruth,
+      int efSearch) {
 
     DB db = null;
     try (IndexReader indexReader = DirectoryReader.open(directory)) {
@@ -448,7 +618,6 @@ public class LuceneCuvsBenchmarks {
         log.info("No mapdb file found for queries. Reading source files to build one ...");
         db = DBMaker.fileDB(queryMapdbFile).make();
         queries = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
-
         if (config.queryFile.endsWith(".csv")) {
           for (String line :
               FileUtils.readFileToString(new File(config.queryFile), "UTF-8").split("\n")) {
@@ -481,123 +650,125 @@ public class LuceneCuvsBenchmarks {
       for (int t = 0; t < config.queryThreads; t++) {
         pool.submit(
             () -> {
-              while (queryId.getAndIncrement() <= config.numQueriesToRun) {
-                int currentQueryId = queryId.get();
-                KnnFloatVectorQuery query;
-
-                if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
-                  int effectiveEfSearch = config.getEffectiveEfSearch();
-                  query =
-                      new GPUKnnFloatVectorQuery(
-                          config.vectorColName,
-                          queries.get(currentQueryId),
-                          effectiveEfSearch,
-                          null,
-                          config.cagraITopK,
-                          config.cagraSearchWidth);
-                } else {
-                  int effectiveEfSearch = config.getEffectiveEfSearch();
-                  query =
-                      new KnnFloatVectorQuery(
-                          config.vectorColName, queries.get(currentQueryId), effectiveEfSearch);
+              while (true) {
+                int currentQueryId = queryId.getAndIncrement();
+                if (currentQueryId >= config.numQueriesToRun) {
+                  break;
                 }
-
-                TopDocs topDocs;
-                long searchStartTime = System.nanoTime();
                 try {
-                  int effectiveEfSearch = config.getEffectiveEfSearch();
-                  TopScoreDocCollectorManager collectorManager =
-                      new TopScoreDocCollectorManager(
-                          effectiveEfSearch, null, Integer.MAX_VALUE, true);
-                  topDocs = indexSearcher.search(query, collectorManager);
-                } catch (IOException e) {
-                  throw new RuntimeException("Problem during executing a query: ", e);
-                }
-                double searchTimeTakenMs =
-                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - searchStartTime);
-                // log.info("End to end search took: " + searchTimeTakenMs);
-                if (currentQueryId > config.numWarmUpQueries) {
-                  queryLatencies.put(queryId.get(), searchTimeTakenMs);
-                }
-                int finishedCount = queriesFinished.incrementAndGet();
-
-                // Log progress every 1000 queries
-                if (finishedCount % 1000 == 0 || finishedCount == config.numQueriesToRun) {
-                  log.info(
-                      "Done querying "
-                          + finishedCount
-                          + " out of "
-                          + config.numQueriesToRun
-                          + " queries.");
-                }
-
-                ScoreDoc[] hits = topDocs.scoreDocs;
-                List<Integer> neighbors = new ArrayList<>();
-                List<Float> scores = new ArrayList<>();
-
-                // Debug: Log search results for first query
-                if (queryId.get() == 0) {
-                  log.info(
-                      "Debug: First query returned "
-                          + hits.length
-                          + " hits (ef-search candidates)");
-                  log.info(
-                      "Debug: Will select top "
-                          + config.topK
-                          + " from "
-                          + hits.length
-                          + " candidates");
-                }
-                int numResultsToTake = Math.min(config.topK, hits.length);
-                long retrievalStartTime = System.nanoTime();
-                for (int i = 0; i < numResultsToTake; i++) {
-                  ScoreDoc hit = hits[i];
-                  try {
-                    Document d = indexReader.storedFields().document(hit.doc);
-                    neighbors.add(Integer.parseInt(d.get("id")));
-                  } catch (IOException e) {
-                    e.printStackTrace();
+                  KnnFloatVectorQuery query;
+                  if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
+                    query =
+                        new GPUKnnFloatVectorQuery(
+                            config.vectorColName,
+                            queries.get(currentQueryId),
+                            efSearch,
+                            null,
+                            config.cagraITopK,
+                            config.cagraSearchWidth);
+                  } else {
+                    query =
+                        new KnnFloatVectorQuery(
+                            config.vectorColName, queries.get(currentQueryId), efSearch);
                   }
-                  scores.add(hit.score);
-                }
-                double retrievalTimeTakenMs =
-                    TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - retrievalStartTime);
-                if (currentQueryId > config.numWarmUpQueries) {
-                  retrievalLatencies.put(queryId.get(), retrievalTimeTakenMs);
-                }
 
-                // Debug: Log results for all queries
-                log.debug(
-                    "Query "
-                        + currentQueryId
-                        + " - First 5 neighbors: "
-                        + neighbors.subList(0, Math.min(5, neighbors.size())));
-                log.debug(
-                    "Query "
-                        + currentQueryId
-                        + " - First 5 distances: "
-                        + scores.subList(0, Math.min(5, scores.size())));
-                int[] expectedNeighbors = groundTruth.get(currentQueryId);
-                log.debug(
-                    "Query "
-                        + currentQueryId
-                        + " - Expected neighbors: "
-                        + java.util.Arrays.toString(
-                            java.util.Arrays.copyOf(
-                                expectedNeighbors, Math.min(5, expectedNeighbors.length))));
+                  TopDocs topDocs;
+                  long searchStartTime = System.nanoTime();
+                  try {
+                    TopScoreDocCollectorManager collectorManager =
+                        new TopScoreDocCollectorManager(efSearch, null, Integer.MAX_VALUE, true);
+                    topDocs = indexSearcher.search(query, collectorManager);
+                  } catch (IOException e) {
+                    throw new RuntimeException("Problem during executing a query: ", e);
+                  }
+                  double searchTimeTakenMs = (System.nanoTime() - searchStartTime) / 1_000_000.0;
 
-                if (currentQueryId > config.numWarmUpQueries) {
-                  QueryResult result =
-                      new QueryResult(
-                          config.algoToRun.toString(),
-                          currentQueryId,
-                          neighbors,
-                          groundTruth.get(currentQueryId),
-                          scores,
-                          searchTimeTakenMs);
-                  queryResults.add(result);
-                } else {
-                  log.info("Skipping warmup query: {}", currentQueryId);
+                  if (currentQueryId >= config.numWarmUpQueries) {
+                    queryLatencies.put(currentQueryId, searchTimeTakenMs);
+                  }
+                  int finishedCount = queriesFinished.incrementAndGet();
+                  if (finishedCount % 1000 == 0 || finishedCount == config.numQueriesToRun) {
+                    log.info(
+                        "Done querying "
+                            + finishedCount
+                            + " out of "
+                            + config.numQueriesToRun
+                            + " queries.");
+                  }
+
+                  ScoreDoc[] hits = topDocs.scoreDocs;
+                  List<Integer> neighbors = new ArrayList<>();
+                  List<Float> scores = new ArrayList<>();
+
+                  if (queryId.get() == 0) {
+                    log.info(
+                        "Debug: First query returned "
+                            + hits.length
+                            + " hits (ef-search candidates)");
+                    log.info(
+                        "Debug: Will select top "
+                            + config.topK
+                            + " from "
+                            + hits.length
+                            + " candidates");
+                  }
+                  int numResultsToTake = Math.min(config.topK, hits.length);
+                  long retrievalStartTime = System.nanoTime();
+                  for (int i = 0; i < numResultsToTake; i++) {
+                    ScoreDoc hit = hits[i];
+                    try {
+                      Document d = indexReader.storedFields().document(hit.doc);
+                      neighbors.add(Integer.parseInt(d.get("id")));
+                    } catch (IOException e) {
+                      e.printStackTrace();
+                    }
+                    scores.add(hit.score);
+                  }
+                  double retrievalTimeTakenMs =
+                      (System.nanoTime() - retrievalStartTime) / 1_000_000.0;
+                  if (currentQueryId >= config.numWarmUpQueries) {
+                    retrievalLatencies.put(currentQueryId, retrievalTimeTakenMs);
+                  }
+
+                  log.debug(
+                      "Query "
+                          + currentQueryId
+                          + " - First 5 neighbors: "
+                          + neighbors.subList(0, Math.min(5, neighbors.size())));
+                  log.debug(
+                      "Query "
+                          + currentQueryId
+                          + " - First 5 distances: "
+                          + scores.subList(0, Math.min(5, scores.size())));
+                  int[] expectedNeighbors = groundTruth.get(currentQueryId);
+                  log.debug(
+                      "Query "
+                          + currentQueryId
+                          + " - Expected neighbors: "
+                          + java.util.Arrays.toString(
+                              java.util.Arrays.copyOf(
+                                  expectedNeighbors, Math.min(5, expectedNeighbors.length))));
+
+                  if (currentQueryId >= config.numWarmUpQueries) {
+                    QueryResult result =
+                        new QueryResult(
+                            config.algoToRun.toString(),
+                            currentQueryId,
+                            neighbors,
+                            groundTruth.get(currentQueryId),
+                            scores,
+                            searchTimeTakenMs);
+                    queryResults.add(result);
+                  } else {
+                    log.info("Skipping warmup query: {}", currentQueryId);
+                  }
+                } catch (Exception e) {
+                  log.error(
+                      "Exception during query {}: {} - {}",
+                      currentQueryId,
+                      e.getClass().getSimpleName(),
+                      e.getMessage(),
+                      e);
                 }
               }
             });
@@ -605,22 +776,35 @@ public class LuceneCuvsBenchmarks {
 
       pool.shutdown();
       pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
-
       long endTime = System.currentTimeMillis();
 
       metrics.put(config.algoToRun + "-query-time", (endTime - startTime));
       metrics.put(
           config.algoToRun + "-query-throughput",
-          (config.numQueriesToRun / ((endTime - startTime) / 1000.0)));
+          (endTime - startTime) > 0
+              ? (config.numQueriesToRun / ((endTime - startTime) / 1000.0))
+              : 0.0);
       double avgLatency =
-          new ArrayList<>(queryLatencies.values()).stream().reduce(0.0, Double::sum)
-              / queryLatencies.size();
+          queryLatencies.isEmpty()
+              ? 0.0
+              : new ArrayList<>(queryLatencies.values()).stream().reduce(0.0, Double::sum)
+                  / queryLatencies.size();
       double avgRetLatency =
-          new ArrayList<>(retrievalLatencies.values()).stream().reduce(0.0, Double::sum)
-              / retrievalLatencies.size();
-
+          retrievalLatencies.isEmpty()
+              ? 0.0
+              : new ArrayList<>(retrievalLatencies.values()).stream().reduce(0.0, Double::sum)
+                  / retrievalLatencies.size();
       metrics.put(config.algoToRun + "-mean-latency", avgLatency);
       metrics.put(config.algoToRun + "-mean-retrieval-latency", avgRetLatency);
+
+      if (queryLatencies.isEmpty()) {
+        log.error(
+            "WARNING: Zero queries completed successfully! "
+                + "Check the query thread exception logs above for the root cause. "
+                + "queriesFinished={}, queryResults.size={}",
+            queriesFinished.get(),
+            queryResults.size());
+      }
 
       int segmentCount = indexReader.leaves().size();
       metrics.put(config.algoToRun + "-segment-count", segmentCount);
@@ -635,7 +819,19 @@ public class LuceneCuvsBenchmarks {
     }
   }
 
-  private static Codec getCodec(BenchmarkConfiguration config) throws Exception {
+  // ── Codec factory ─────────────────────────────────────────────────────────
+
+  /**
+   * Builds the Lucene {@link Codec} for the given phase.
+   *
+   * @param config   benchmark configuration
+   * @param forMerge {@code true}  → substitute
+   *                 {@link BenchmarkConfiguration#cuVSIvfPqIndexParamsForceMergeNLists} and
+   *                 {@link BenchmarkConfiguration#cuVSIvfPqSearchParamsForceMergeNProbes}
+   *                 when non-zero (merge-time codec);
+   *                 {@code false} → always use the flush-time values.
+   */
+  private static Codec getCodec(BenchmarkConfiguration config, boolean forMerge) throws Exception {
     if (config.algoToRun.equals(Codex.LUCENE_HNSW)) {
       log.info("<<< Using Lucene101Codec >>>");
       return new Lucene101Codec(Mode.BEST_SPEED) {
@@ -656,75 +852,97 @@ public class LuceneCuvsBenchmarks {
           return new HighDimensionKnnVectorsFormat(knnFormat, config.vectorDimension);
         }
       };
-    } else {
+    }
 
-      CuVSIvfPqIndexParams ciip =
-          new CuVSIvfPqIndexParams.Builder()
-              .withAddDataOnBuild(config.cuVSIvfPqIndexParamsAddDataOnBuild)
-              .withCodebookKind(config.cuVSIvfPqIndexParamsCodebookKind)
-              .withConservativeMemoryAllocation(
-                  config.cuVSIvfPqIndexParamsConservativeMemoryAllocation)
-              .withForceRandomRotation(config.cuVSIvfPqIndexParamsForceRandomRotation)
-              .withKmeansNIters(config.cuVSIvfPqIndexParamsKmeansNIters)
-              .withKmeansTrainsetFraction(config.cuVSIvfPqIndexParamsKmeansTrainsetFraction)
-              .withMaxTrainPointsPerPqCode(config.cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode)
-              .withMetric(config.cuVSIvfPqIndexParamsMetric)
-              .withMetricArg(config.cuVSIvfPqIndexParamsMetricArg)
-              .withNLists(config.cuVSIvfPqIndexParamsNLists)
-              .withPqBits(config.cuVSIvfPqIndexParamsPqBits)
-              .withPqDim(config.cuVSIvfPqIndexParamsPqDim)
-              .build();
+    // ── Resolve effective nLists / nProbes ─────────────────────────────────
+    int effectiveNLists =
+        (forMerge && config.cuVSIvfPqIndexParamsForceMergeNLists > 0)
+            ? config.cuVSIvfPqIndexParamsForceMergeNLists
+            : config.cuVSIvfPqIndexParamsNLists;
 
-      CuVSIvfPqSearchParams cisp =
-          new CuVSIvfPqSearchParams.Builder()
-              .withInternalDistanceDtype(config.cuVSIvfPqSearchParamsInternalDistanceDtype)
-              .withLutDtype(config.cuVSIvfPqSearchParamsLutDtype)
-              .withNProbes(config.cuVSIvfPqSearchParamsNProbes)
-              .withPreferredShmemCarveout(config.cuVSIvfPqSearchParamsPreferredShmemCarveout)
-              .build();
+    int effectiveNProbes =
+        (forMerge && config.cuVSIvfPqSearchParamsForceMergeNProbes > 0)
+            ? config.cuVSIvfPqSearchParamsForceMergeNProbes
+            : config.cuVSIvfPqSearchParamsNProbes;
 
-      CuVSIvfPqParams cip =
-          new CuVSIvfPqParams.Builder()
-              .withCuVSIvfPqIndexParams(ciip)
-              .withCuVSIvfPqSearchParams(cisp)
-              .withRefinementRate(config.cuVSIvfPqParamsRefinementRate)
-              .build();
+    if (forMerge) {
+      log.info(
+          "<<< Merge codec — nLists: {} (flush: {}), nProbes: {} (flush: {}) >>>",
+          effectiveNLists,
+          config.cuVSIvfPqIndexParamsNLists,
+          effectiveNProbes,
+          config.cuVSIvfPqSearchParamsNProbes);
+    }
 
-      AcceleratedHNSWParams params =
-          new AcceleratedHNSWParams.Builder()
+    CuVSIvfPqIndexParams ciip =
+        new CuVSIvfPqIndexParams.Builder()
+            .withAddDataOnBuild(config.cuVSIvfPqIndexParamsAddDataOnBuild)
+            .withCodebookKind(config.cuVSIvfPqIndexParamsCodebookKind)
+            .withConservativeMemoryAllocation(
+                config.cuVSIvfPqIndexParamsConservativeMemoryAllocation)
+            .withForceRandomRotation(config.cuVSIvfPqIndexParamsForceRandomRotation)
+            .withKmeansNIters(config.cuVSIvfPqIndexParamsKmeansNIters)
+            .withKmeansTrainsetFraction(config.cuVSIvfPqIndexParamsKmeansTrainsetFraction)
+            .withMaxTrainPointsPerPqCode(config.cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode)
+            .withMetric(config.cuVSIvfPqIndexParamsMetric)
+            .withMetricArg(config.cuVSIvfPqIndexParamsMetricArg)
+            .withNLists(effectiveNLists) // ← flush or merge value
+            .withPqBits(config.cuVSIvfPqIndexParamsPqBits)
+            .withPqDim(config.cuVSIvfPqIndexParamsPqDim)
+            .build();
+
+    CuVSIvfPqSearchParams cisp =
+        new CuVSIvfPqSearchParams.Builder()
+            .withInternalDistanceDtype(config.cuVSIvfPqSearchParamsInternalDistanceDtype)
+            .withLutDtype(config.cuVSIvfPqSearchParamsLutDtype)
+            .withNProbes(effectiveNProbes) // ← flush or merge value
+            .withPreferredShmemCarveout(config.cuVSIvfPqSearchParamsPreferredShmemCarveout)
+            .build();
+
+    CuVSIvfPqParams cip =
+        new CuVSIvfPqParams.Builder()
+            .withCuVSIvfPqIndexParams(ciip)
+            .withCuVSIvfPqSearchParams(cisp)
+            .withRefinementRate(config.cuVSIvfPqParamsRefinementRate)
+            .build();
+
+    AcceleratedHNSWParams params =
+        new AcceleratedHNSWParams.Builder()
+            .withWriterThreads(config.cuvsWriterThreads)
+            .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
+            .withGraphDegree(config.cagraGraphDegree)
+            .withHNSWLayer(config.cagraHnswLayers)
+            .withMaxConn(config.hnswMaxConn)
+            .withBeamWidth(config.hnswBeamWidth)
+            .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
+            .withCuVSIvfPqParams(cip)
+            .build();
+
+    if (config.algoToRun.equals(Codex.CAGRA_HNSW)) {
+      log.info("<<< Using Lucene101AcceleratedHNSWCodec >>>");
+      return new Lucene101AcceleratedHNSWCodec(params);
+    } else if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
+      log.info("<<< Using CuVS2510GPUSearchCodec >>>");
+      GPUSearchParams gpuParams =
+          new GPUSearchParams.Builder()
+              .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
               .withWriterThreads(config.cuvsWriterThreads)
               .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
               .withGraphDegree(config.cagraGraphDegree)
-              .withHNSWLayer(config.cagraHnswLayers)
-              .withMaxConn(config.hnswMaxConn)
-              .withBeamWidth(config.hnswBeamWidth)
-              .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
-              .withCuVSIvfPqParams(cip)
               .build();
-
-      if (config.algoToRun.equals(Codex.CAGRA_HNSW)) {
-        log.info("<<< Using Lucene101AcceleratedHNSWCodec >>>");
-        return new Lucene101AcceleratedHNSWCodec(params);
-      } else if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
-        log.info("<<< Using CuVS2510GPUSearchCodec >>>");
-        GPUSearchParams gpuParams =
-            new GPUSearchParams.Builder()
-                .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
-                .withWriterThreads(config.cuvsWriterThreads)
-                .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
-                .withGraphDegree(config.cagraGraphDegree)
-                .build();
-        return new CuVS2510GPUSearchCodec(gpuParams);
-      } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_BINARY)) {
-        log.info("<<< Using LuceneAcceleratedHNSWBinaryQuantizedCodec >>>");
-        return new LuceneAcceleratedHNSWBinaryQuantizedCodec(params);
-      } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_SCALAR)) {
-        log.info("<<< Using LuceneAcceleratedHNSWScalarQuantizedCodec >>>");
-        return new LuceneAcceleratedHNSWScalarQuantizedCodec(params);
-      }
+      return new CuVS2510GPUSearchCodec(gpuParams);
+    } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_BINARY)) {
+      log.info("<<< Using LuceneAcceleratedHNSWBinaryQuantizedCodec >>>");
+      return new LuceneAcceleratedHNSWBinaryQuantizedCodec(params);
+    } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_SCALAR)) {
+      log.info("<<< Using LuceneAcceleratedHNSWScalarQuantizedCodec >>>");
+      return new LuceneAcceleratedHNSWScalarQuantizedCodec(params);
     }
+
     return null;
   }
+
+  // ── Inner helpers ─────────────────────────────────────────────────────────
 
   private static class HighDimensionKnnVectorsFormat extends KnnVectorsFormat {
     private final KnnVectorsFormat knnFormat;
