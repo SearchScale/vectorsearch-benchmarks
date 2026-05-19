@@ -109,7 +109,7 @@ SOLR_DIR="solr"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
 SOLR_CUVS_MODULE_BRANCH="main"
 # Must match the distTar basename (no .tgz). Override for Solr 11: export SOLR_ROOT=solr-11.0.0-SNAPSHOT
-SOLR_ROOT=${SOLR_ROOT:-solr-10.0.0-SNAPSHOT}
+SOLR_ROOT=${SOLR_ROOT:-solr-11.0.0-SNAPSHOT}
 JAVABIN_FILES_DIR="${DATASET_FROM_SWEEP}_batches"
 SOLR_URL="http://localhost:8983"
 URL="$SOLR_URL/solr/test/update?commit=true&overwrite=false"

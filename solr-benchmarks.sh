@@ -78,7 +78,7 @@ DATA_DIR="data"
 DATASET_FILENAME="wiki_all_10M.tar"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
 # Must match solr-setup tarball basename. Override: export SOLR_ROOT=solr-11.0.0-SNAPSHOT
-SOLR_ROOT=${SOLR_ROOT:-solr-10.0.0-SNAPSHOT}
+SOLR_ROOT=${SOLR_ROOT:-solr-11.0.0-SNAPSHOT}
 NPARALLEL=${NPARALLEL:-1}
 SIMILARITY_FUNCTION=${SIMILARITY_FUNCTION:-euclidean}
 RAM_BUFFER_SIZE_MB=${RAM_BUFFER_SIZE_MB:-20000}
@@ -146,7 +146,7 @@ if [ "$KNN_ALGORITHM" = "hnsw" ]; then
     cat > temp-configset/solrconfig.xml << EOF
 <?xml version="1.0" ?>
 <config>
-    <luceneMatchVersion>10.0.0</luceneMatchVersion>
+    <luceneMatchVersion>10.4.0</luceneMatchVersion>
     <dataDir>\${solr.data.dir:}</dataDir>
     <directoryFactory name="DirectoryFactory" class="\${solr.directoryFactory:solr.NRTCachingDirectoryFactory}"/>
 
@@ -183,7 +183,7 @@ else
     cat > temp-configset/solrconfig.xml << EOF
 <?xml version="1.0" ?>
 <config>
-    <luceneMatchVersion>10.0.0</luceneMatchVersion>
+    <luceneMatchVersion>10.4.0</luceneMatchVersion>
     <dataDir>\${solr.data.dir:}</dataDir>
     <directoryFactory name="DirectoryFactory" class="\${solr.directoryFactory:solr.NRTCachingDirectoryFactory}"/>
 
@@ -246,40 +246,12 @@ cp modules/cuvs/lib/*.jar server/solr-webapp/webapp/WEB-INF/lib/
 SOLR_SECURITY_MANAGER_ENABLED="${SOLR_SECURITY_MANAGER_ENABLED:-false}"
 export SOLR_SECURITY_MANAGER_ENABLED
 echo "DEBUG: SOLR_SECURITY_MANAGER_ENABLED=$SOLR_SECURITY_MANAGER_ENABLED"
-bin/solr start -m 29G
+SOLR_HEAP_SIZE=${SOLR_HEAP_SIZE:-29G}
+bin/solr start -m "$SOLR_HEAP_SIZE"
 cd "$BENCH_ROOT" || exit 1
 # Create collection with dynamically generated configset
 (cd "$BENCH_ROOT/temp-configset" && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs"
 curl "$SOLR_URL/solr/admin/collections?action=CREATE&name=test&numShards=1&collection.configName=cuvs"
-
-# Create results file with configuration object
-python3 << EOF
-import json
-import os
-
-# Ensure results directory exists
-os.makedirs("$RESULTS_DIR", exist_ok=True)
-
-# Read the config file and put it as-is into the configuration section
-with open("$CONFIG_FILE", "r") as config_file:
-    config_data = json.load(config_file)
-
-# Create initial results file with configuration and metrics
-results = {
-    "configuration": config_data,
-    "metrics": {}
-}
-
-# Read javabin preparation time if available
-javabin_time_file = "$JAVABIN_FILES_DIR" + "_preparation_time.txt"
-if os.path.exists(javabin_time_file):
-    with open(javabin_time_file, "r") as f:
-        javabin_prep_time = int(f.read().strip())
-        results["metrics"]["javabin-preparation-time"] = javabin_prep_time
-
-with open("$RESULTS_DIR/results.json", "w") as f:
-    json.dump(results, f, indent=2)
-EOF
 
 start_time=$(date +%s%N) # Record start time in nanoseconds
 
@@ -348,6 +320,39 @@ echo "Execution time: $duration ms"
 echo "Done!"
 
 fi # End of skipIndexing check
+
+# Write configuration into results.json for all runs (including skip-indexing ones).
+# For skip-indexing runs, run_queries.py will merge query metrics into this file.
+# The backfill in run_sweep.sh will additionally copy indexing-time from the build run.
+python3 << EOF
+import json
+import os
+
+os.makedirs("$RESULTS_DIR", exist_ok=True)
+
+with open("$CONFIG_FILE", "r") as config_file:
+    config_data = json.load(config_file)
+
+# Merge into existing file so we don't overwrite metrics already written by a previous step
+results_path = "$RESULTS_DIR/results.json"
+if os.path.exists(results_path):
+    with open(results_path, "r") as f:
+        results = json.load(f)
+else:
+    results = {}
+
+results["configuration"] = config_data
+if "metrics" not in results:
+    results["metrics"] = {}
+
+javabin_time_file = "$JAVABIN_FILES_DIR" + "_preparation_time.txt"
+if os.path.exists(javabin_time_file):
+    with open(javabin_time_file, "r") as f:
+        results["metrics"]["javabin-preparation-time"] = int(f.read().strip())
+
+with open(results_path, "w") as f:
+    json.dump(results, f, indent=2)
+EOF
 
 # Run query benchmarks (IVF-PQ / large indices: raise QUERY_TIMEOUT_SEC; default 120s)
 QUERY_TIMEOUT_SEC=${QUERY_TIMEOUT_SEC:-120}
