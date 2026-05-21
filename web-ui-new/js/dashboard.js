@@ -196,11 +196,18 @@ class BenchmarkDashboard {
         const metrics = resultsData.metrics;
 
         const pathParts = configPath.split('/');
-        const dataset = pathParts[0];
+        // Use the 'dataset' field written into results.json by generate-combinations.py when
+        // available (new runs). Fall back to the sweep-group directory name for older runs.
+        const dataset = config.dataset
+            ? config.dataset.replace(/-/g, '_')
+            : pathParts[0];
         const algorithmAndId = pathParts[pathParts.length - 1];
         const [algorithm, runId] = algorithmAndId.split('-');
 
         const algoType = config.algoToRun || algorithm;
+        const cagraBuildAlgo = config.cuvsCagraGraphBuildAlgo || 'NN_DESCENT';
+        const isCagra = algoType === 'CAGRA_HNSW' || algoType === 'cagra_hnsw';
+        const isLucene = algoType === 'LUCENE_HNSW' || algoType === 'hnsw';
         let recallKey, indexingTimeKey, indexSizeKey, meanLatencyKey;
 
         if (metrics['recall-accuracy'] !== undefined) {
@@ -208,12 +215,12 @@ class BenchmarkDashboard {
             indexingTimeKey = 'cuvs-indexing-time';
             indexSizeKey = 'cuvs-index-size';
             meanLatencyKey = 'mean-latency';
-        } else if (algoType === 'CAGRA_HNSW' || algoType === 'cagra_hnsw') {
+        } else if (isCagra) {
             recallKey = 'cuvs-recall-accuracy';
             indexingTimeKey = 'cuvs-indexing-time';
             indexSizeKey = 'cuvs-index-size';
             meanLatencyKey = 'hnsw-mean-latency';
-        } else if (algoType === 'LUCENE_HNSW' || algoType === 'hnsw') {
+        } else if (isLucene) {
             recallKey = 'hnsw-recall-accuracy';
             indexingTimeKey = 'hnsw-indexing-time';
             indexSizeKey = 'hnsw-index-size';
@@ -226,15 +233,20 @@ class BenchmarkDashboard {
             meanLatencyKey = metrics['mean-latency'] !== undefined ? 'mean-latency' : 'hnsw-mean-latency';
         }
 
-        let normalizedAlgorithm = algoType;
-        if (algoType === 'cagra_hnsw') {
-            normalizedAlgorithm = 'CAGRA_HNSW';
-        } else if (algoType === 'hnsw') {
+        // Normalize algorithm name. CAGRA runs are distinguished by their graph build algorithm
+        // so they appear as separate series in Pareto plots.
+        let normalizedAlgorithm;
+        if (isCagra) {
+            normalizedAlgorithm = cagraBuildAlgo === 'IVF_PQ' ? 'CAGRA_IVF_PQ' : 'CAGRA_NN_DESCENT';
+        } else if (isLucene) {
             normalizedAlgorithm = 'LUCENE_HNSW';
+        } else {
+            normalizedAlgorithm = algoType;
         }
 
         const extractedRun = {
             run_id: algorithmAndId,
+            sweep_subdir: pathParts[0],  // original sweep group dir, needed for is_pareto path lookups
             dataset: dataset,
             algorithm: normalizedAlgorithm,
             recall: metrics[recallKey] || 0,
@@ -248,7 +260,8 @@ class BenchmarkDashboard {
             hnswBeamWidth: config.hnswBeamWidth,
             efSearch: config.efSearch || config.effectiveEfSearch,
             numDocs: config.numDocs,
-            topK: config.topK
+            topK: config.topK,
+            numQueriesToRun: config.numQueriesToRun
         };
 
         console.log(`Extracted run for ${algoType} -> ${normalizedAlgorithm}:`, {
@@ -418,25 +431,36 @@ class BenchmarkDashboard {
     }
 
     normalizeAlgorithmName(algorithm) {
-        return algorithm.replace('_HNSW', '').replace('cagra_hnsw', 'CAGRA').replace('hnsw', 'LUCENE');
+        if (algorithm === 'CAGRA_NN_DESCENT') return 'CAGRA (NN_DESCENT)';
+        if (algorithm === 'CAGRA_IVF_PQ')    return 'CAGRA (IVF-PQ)';
+        if (algorithm === 'CAGRA_HNSW')      return 'CAGRA';
+        if (algorithm === 'LUCENE_HNSW')     return 'Lucene HNSW';
+        if (algorithm === 'cagra_hnsw')      return 'CAGRA';
+        if (algorithm === 'hnsw')            return 'Lucene HNSW';
+        return algorithm;
     }
 
     createMeaningfulTitle(run) {
-        const algorithm = this.normalizeAlgorithmName(run.algorithm);
+        const displayAlgo = this.normalizeAlgorithmName(run.algorithm);
         const dataset = run.dataset || 'unknown';
+        const isCagra = run.algorithm === 'CAGRA_HNSW' ||
+                        run.algorithm === 'CAGRA_NN_DESCENT' ||
+                        run.algorithm === 'CAGRA_IVF_PQ' ||
+                        run.algorithm === 'cagra_hnsw';
+        const isLucene = run.algorithm === 'LUCENE_HNSW' || run.algorithm === 'hnsw';
 
-        if (algorithm === 'CAGRA') {
+        if (isCagra) {
             const graphDegree = run.cagraGraphDegree || 'N/A';
             const intermediateDegree = run.cagraIntermediateGraphDegree || 'N/A';
             const efSearch = run.efSearch || 'N/A';
-            return `CAGRA ${dataset} (degree: ${graphDegree}, intermediateDegree: ${intermediateDegree}, efSearch: ${efSearch})`;
-        } else if (algorithm === 'LUCENE') {
+            return `${displayAlgo} ${dataset} (degree: ${graphDegree}, intermediateDegree: ${intermediateDegree}, efSearch: ${efSearch})`;
+        } else if (isLucene) {
             const maxConn = run.hnswMaxConn || 'N/A';
             const beamWidth = run.hnswBeamWidth || 'N/A';
             const efSearch = run.efSearch || 'N/A';
-            return `Lucene HNSW ${dataset} (maxConn: ${maxConn}, beamWidth: ${beamWidth}, efSearch: ${efSearch})`;
+            return `${displayAlgo} ${dataset} (maxConn: ${maxConn}, beamWidth: ${beamWidth}, efSearch: ${efSearch})`;
         } else {
-            return `${algorithm} ${dataset} (efSearch: ${run.efSearch || 'N/A'})`;
+            return `${displayAlgo} ${dataset} (efSearch: ${run.efSearch || 'N/A'})`;
         }
     }
 
@@ -619,40 +643,27 @@ class BenchmarkDashboard {
 
     async loadParetoMetadata(sweepId, datasetDir, selectedDataset, chartContainer) {
         try {
-            let metadataPath = 'results/pareto_data/' + sweepId + '/' + datasetDir + '/metadata.json';
-            let response = await fetch(metadataPath);
+            // metadata.json is written by run_pareto_analysis.sh next to the plots directory
+            const metadataPath = 'results/' + sweepId + '/' + datasetDir + '/metadata.json';
+            const response = await fetch(metadataPath);
 
             if (!response.ok) {
-                try {
-                    const datasetsResponse = await fetch('datasets.json');
-                    if (datasetsResponse.ok) {
-                        const datasets = await datasetsResponse.json();
-                        const canonicalName = Object.keys(datasets.datasets).find(name =>
-                            name === datasetDir ||
-                            name.replace(/-/g, '') === datasetDir.replace(/-/g, '') ||
-                            datasetDir.replace(/-/g, '') === name.replace(/-/g, '')
-                        );
-                        if (canonicalName) {
-                            metadataPath = 'results/pareto_data/' + sweepId + '/' + canonicalName + '/metadata.json';
-                            response = await fetch(metadataPath);
-                        }
-                    }
-                } catch (e) {
-                }
-            }
-
-            if (!response.ok) {
-                throw new Error('Metadata not found');
+                throw new Error('Metadata not found at ' + metadataPath);
             }
 
             const metadata = await response.json();
             this.renderParetoPlotsWithMetadata(sweepId, datasetDir, selectedDataset, metadata, chartContainer);
 
         } catch (error) {
-            console.warn('Could not load metadata, using fallback:', error);
+            console.warn('Could not load metadata.json, falling back to run data:', error);
+            // Derive k and n_queries directly from the sweep's run data
+            const matchingRuns = this.currentSweep
+                ? this.currentSweep.runs.filter(r => r.dataset === selectedDataset)
+                : [];
+            const firstRun = matchingRuns[0];
             this.renderParetoPlotsWithMetadata(sweepId, datasetDir, selectedDataset, {
-                k: 100,
-                n_queries: 500
+                k: firstRun ? (firstRun.topK || 100) : 100,
+                n_queries: firstRun ? (firstRun.numQueriesToRun || 100) : 100
             }, chartContainer);
         }
     }
@@ -750,7 +761,9 @@ class BenchmarkDashboard {
 
         for (const run of this.currentSweep.runs) {
             try {
-                const isParetoPath = `../results/${this.currentSweep.id}/${selectedDataset}/${run.run_id}/is_pareto`;
+                // is_pareto files live in the original sweep group subdir, not the combined dataset dir
+                const sweepSubdir = run.sweep_subdir || selectedDataset;
+                const isParetoPath = `../results/${this.currentSweep.id}/${sweepSubdir}/${run.run_id}/is_pareto`;
                 const response = await fetch(isParetoPath);
 
                 if (response.ok) {
@@ -986,7 +999,7 @@ class BenchmarkDashboard {
         const algorithm = run.algorithm;
         const efSearch = run.efSearch || 'N/A';
 
-        if (algorithm === 'CAGRA_HNSW') {
+        if (algorithm === 'CAGRA_HNSW' || algorithm === 'CAGRA_NN_DESCENT' || algorithm === 'CAGRA_IVF_PQ') {
             const graphDegree = run.cagraGraphDegree || 'N/A';
             const intermediateDegree = run.cagraIntermediateGraphDegree || 'N/A';
             return `degree: ${graphDegree}, intermediateDegree: ${intermediateDegree}, efSearch: ${efSearch}`;

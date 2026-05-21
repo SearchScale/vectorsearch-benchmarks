@@ -247,7 +247,7 @@ SOLR_SECURITY_MANAGER_ENABLED="${SOLR_SECURITY_MANAGER_ENABLED:-false}"
 export SOLR_SECURITY_MANAGER_ENABLED
 echo "DEBUG: SOLR_SECURITY_MANAGER_ENABLED=$SOLR_SECURITY_MANAGER_ENABLED"
 SOLR_HEAP_SIZE=${SOLR_HEAP_SIZE:-29G}
-bin/solr start -m "$SOLR_HEAP_SIZE"
+bin/solr start -m "$SOLR_HEAP_SIZE" --force
 cd "$BENCH_ROOT" || exit 1
 # Create collection with dynamically generated configset
 (cd "$BENCH_ROOT/temp-configset" && zip -r - *) | curl -X POST --header "Content-Type:application/octet-stream" --data-binary @- "$SOLR_URL/solr/admin/configs?action=UPLOAD&name=cuvs"

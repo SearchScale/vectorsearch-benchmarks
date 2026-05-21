@@ -21,7 +21,12 @@ for dataset in $(jq -r '.datasets | keys[]' "$DATASETS_FILE"); do
     for file_type in base query ground_truth; do
         file=$(jq -r --arg dataset "$dataset" --arg type "$file_type" '.datasets[$dataset][$type + "_file"]' "$DATASETS_FILE")
         checksum=$(jq -r --arg dataset "$dataset" --arg type "$file_type" '.datasets[$dataset][$type + "_checksum"]' "$DATASETS_FILE")
-        if [ ! -f "$dataset/$file" ] || [ "$(sha256sum "$dataset/$file" | cut -d' ' -f1)" != "$checksum" ]; then
+        if [ ! -f "$dataset/$file" ]; then
+            valid=false
+            break
+        fi
+        # Skip checksum verification when the stored checksum is empty
+        if [ -n "$checksum" ] && [ "$checksum" != "null" ] && [ "$(sha256sum "$dataset/$file" | cut -d' ' -f1)" != "$checksum" ]; then
             valid=false
             break
         fi

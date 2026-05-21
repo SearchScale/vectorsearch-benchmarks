@@ -34,7 +34,8 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
     algorithm = config['algoToRun']
 
     if algorithm in ['cagra_hnsw', 'CAGRA_HNSW']:
-        algorithm = 'CAGRA_HNSW'
+        build_algo = config.get('cuvsCagraGraphBuildAlgo', 'NN_DESCENT')
+        algorithm = 'CAGRA_IVF_PQ' if build_algo == 'IVF_PQ' else 'CAGRA_NN_DESCENT'
     elif algorithm in ['hnsw', 'LUCENE_HNSW']:
         algorithm = 'LUCENE_HNSW'
 
@@ -51,7 +52,10 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
         raise KeyError("No mean-latency metric found")
 
     latency_ms = float(metrics[latency_key])
-    throughput = 1000.0 / latency_ms if latency_ms > 0 else 0
+    import math
+    if math.isnan(latency_ms) or latency_ms <= 0:
+        raise ValueError(f"Invalid latency value ({latency_ms}) in {results_json_path}; skipping this result.")
+    throughput = 1000.0 / latency_ms
 
     benchmark = {
         "name": f"{algorithm}/{index_name}",

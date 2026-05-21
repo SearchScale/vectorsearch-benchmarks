@@ -242,17 +242,35 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
     echo "Generating Pareto analysis plots"
     echo "========================================="
     
-    # Process each dataset found in the results
-    for dataset_dir in $(find "$RESULTS_DIR" -maxdepth 1 -type d ! -name ".*" ! -name "$(basename "$RESULTS_DIR")" | sed 's|.*/||' | sort | uniq); do
-        if [ -d "$RESULTS_DIR/$dataset_dir" ]; then
-            result_count=$(find "$RESULTS_DIR/$dataset_dir" -name "results.json" 2>/dev/null | wc -l)
-            if [ "$result_count" -gt 0 ]; then
-                echo "Processing dataset: $dataset_dir ($result_count results)"
-                if ./run_pareto_analysis.sh "$BENCHMARKID" "$dataset_dir"; then
-                    echo "Pareto analysis completed for $dataset_dir"
-                else
-                    echo "Pareto analysis failed for $dataset_dir"
-                fi
+    # Group sweep subdirs by underlying dataset (from sweeps.json) and run Pareto once per group.
+    # This ensures all algorithms (CAGRA_NN_DESCENT, CAGRA_IVF_PQ, LUCENE_HNSW) for the same
+    # dataset appear together in a single combined plot for proper GPU vs CPU comparison.
+    python3 -c "
+import json, sys
+try:
+    sweeps = json.load(open('${SWEEPS_FILE}'))
+except Exception as e:
+    sys.exit(f'Cannot read sweeps file: {e}')
+groups = {}
+for name, cfg in sweeps.items():
+    ds = cfg.get('dataset', name).replace('-', '_')
+    groups.setdefault(ds, []).append(name)
+for label, names in groups.items():
+    print(label + ' ' + ','.join(names))
+" | while read -r dataset_label sweep_names_csv; do
+        total_results=0
+        for sweep_name in $(echo "$sweep_names_csv" | tr ',' ' '); do
+            if [ -d "$RESULTS_DIR/$sweep_name" ]; then
+                count=$(find "$RESULTS_DIR/$sweep_name" -name "results.json" 2>/dev/null | wc -l)
+                total_results=$((total_results + count))
+            fi
+        done
+        if [ "$total_results" -gt 0 ]; then
+            echo "Pareto analysis: dataset=${dataset_label}, sweeps=${sweep_names_csv}, results=${total_results}"
+            if ./run_pareto_analysis.sh "$BENCHMARKID" "$dataset_label" "$sweep_names_csv"; then
+                echo "Pareto analysis completed for ${dataset_label}"
+            else
+                echo "Pareto analysis failed for ${dataset_label} (continuing)"
             fi
         fi
     done
