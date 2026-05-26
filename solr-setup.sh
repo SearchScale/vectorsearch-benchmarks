@@ -103,11 +103,17 @@ echo "  Algorithm: $ALGORITHM_NAME"
 echo ""
 
 # Additional Variables
+BENCH_ROOT="$(pwd)"
 JFG_DIR="solr-javabin-generator"
 JFG_GITHUB_URL="https://github.com/SearchScale/solr-javabin-generator.git"
-SOLR_DIR="solr"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
 SOLR_CUVS_MODULE_BRANCH="main"
+# Solr source checkout used to build the benchmark tarball.
+# Set this to the Solr repo you want benchmark runs to use, e.g. /home/puneet/code/solr.
+# You can also override it when invoking this script:
+#   SOLR_SOURCE_DIR=/path/to/solr ./solr-setup.sh ...
+SOLR_SOURCE_DIR=${SOLR_SOURCE_DIR:-$BENCH_ROOT/solr}
+SOLR_DIR="$SOLR_SOURCE_DIR"
 # Must match the distTar basename (no .tgz). Override for Solr 11: export SOLR_ROOT=solr-11.0.0-SNAPSHOT
 SOLR_ROOT=${SOLR_ROOT:-solr-11.0.0-SNAPSHOT}
 JAVABIN_FILES_DIR="${DATASET_FROM_SWEEP}_batches"
@@ -132,24 +138,27 @@ if [ ! -d "$JFG_DIR" ]; then
   cd ..
 fi
 
-# Get Solr's PR branch containing the cuvs module if not already existing
-BENCH_ROOT="$(pwd)"
+# Build the Solr dist tarball from the configured Solr checkout.
+echo "Using Solr source directory: $SOLR_DIR"
 if [ ! -d "$SOLR_DIR" ]; then
-  echo "repo '$SOLR_DIR' does not exist."
-  git clone $SOLR_GITHUB_REPO $SOLR_DIR
-  cd $SOLR_DIR
-  git checkout $SOLR_CUVS_MODULE_BRANCH
-  ./gradlew clean distTar
-  mv solr/packaging/build/distributions/$SOLR_ROOT.tgz "$BENCH_ROOT/"
-  cd "$BENCH_ROOT"
-elif [ ! -f "$BENCH_ROOT/$SOLR_ROOT.tgz" ]; then
-  echo "Solr repo '$SOLR_DIR' exists but $SOLR_ROOT.tgz missing in repo root; running distTar..."
-  (cd "$SOLR_DIR" && ./gradlew clean distTar) || { echo "Error: gradlew distTar failed"; exit 1; }
-  mv "$SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz" "$BENCH_ROOT/" || {
+  if [ "$SOLR_DIR" = "$BENCH_ROOT/solr" ]; then
+    echo "repo '$SOLR_DIR' does not exist."
+    git clone $SOLR_GITHUB_REPO "$SOLR_DIR"
+    (cd "$SOLR_DIR" && git checkout $SOLR_CUVS_MODULE_BRANCH)
+  else
+    echo "Error: configured Solr source directory does not exist: $SOLR_DIR"
+    exit 1
+  fi
+fi
+
+echo "Building Solr distTar from: $SOLR_DIR"
+(cd "$SOLR_DIR" && ./gradlew clean distTar) || { echo "Error: gradlew distTar failed"; exit 1; }
+rm -f "$BENCH_ROOT/$SOLR_ROOT.tgz"
+cp "$SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz" "$BENCH_ROOT/" || {
     echo "Error: expected $SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz — adjust SOLR_ROOT if your build uses a different tarball name."
     exit 1
-  }
-fi
+}
+echo "Copied Solr tarball to: $BENCH_ROOT/$SOLR_ROOT.tgz"
 
 # Use the javabin file generator to generate javabin files
 rm -rf $JAVABIN_FILES_DIR
