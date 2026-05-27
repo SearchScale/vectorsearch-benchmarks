@@ -81,9 +81,14 @@ import csv
 import json
 import glob
 
-def create_index_name_from_config(config):
+def create_index_name_from_results(config, metrics):
+    \"\"\"Create index name from config and metrics.
+
+    efSearch is read from metrics (scalar int per search run)
+    rather than config (now a list of values to sweep).
+    \"\"\"
     algorithm = config.get('algoToRun', 'UNKNOWN')
-    ef_search = config.get('efSearch', 0)
+    ef_search = metrics.get('efSearch', 0)
 
     if algorithm in ['LUCENE_HNSW', 'hnsw']:
         beam_width = config.get('hnswBeamWidth', 0)
@@ -144,13 +149,17 @@ for algorithm, pareto_indices in pareto_runs_by_algo.items():
 
     index_to_dir = {}
     for benchmark_dir in benchmark_dirs:
-        results_json_path = os.path.join(benchmark_dir, 'results.json')
-        if os.path.exists(results_json_path):
+        # Walk into subdirectories to find efSearch_* results
+        for root, dirs, files in os.walk(benchmark_dir):
+            if 'results.json' not in files:
+                continue
+            results_json_path = os.path.join(root, 'results.json')
             try:
                 with open(results_json_path, 'r') as f:
                     results_data = json.load(f)
 
                 config = results_data['configuration']
+                metrics = results_data['metrics']
                 algo_to_run = config.get('algoToRun')
 
                 algorithm_match = False
@@ -160,11 +169,11 @@ for algorithm, pareto_indices in pareto_runs_by_algo.items():
                     algorithm_match = True
 
                 if algorithm_match:
-                    index_name = create_index_name_from_config(config)
+                    index_name = create_index_name_from_results(config, metrics)
                     if index_name not in index_to_dir:
-                        index_to_dir[index_name] = benchmark_dir
+                        index_to_dir[index_name] = root
             except Exception as e:
-                print(f'  Error processing {benchmark_dir}: {e}')
+                print(f'  Error processing {root}: {e}')
 
     print(f'Mapped {len(index_to_dir)} configurations')
 
@@ -172,8 +181,8 @@ for algorithm, pareto_indices in pareto_runs_by_algo.items():
     unmatched = 0
     for index_name, pareto_run in pareto_indices.items():
         if index_name in index_to_dir:
-            benchmark_dir = index_to_dir[index_name]
-            is_pareto_file = os.path.join(benchmark_dir, 'is_pareto')
+            result_dir = index_to_dir[index_name]
+            is_pareto_file = os.path.join(result_dir, 'is_pareto')
 
             with open(is_pareto_file, 'w') as f:
                 f.write(f'Pareto optimal run\\n')
@@ -211,10 +220,11 @@ ls -la "${OUTPUT_DIR}/plots"/*.png
 
 echo ""
 echo "Cleaning up intermediate files..."
-rm -rf "${INTERMEDIATE_DIR}"
-echo "Intermediate files cleaned up!"
+# rm -rf "${INTERMEDIATE_DIR}"
+# echo "Intermediate files cleaned up!"
+echo "Intermediate files left intact!"
 echo ""
 echo "Final output:"
 echo "- Pareto optimal runs marked with is_pareto files"
 echo "- Plots: ${OUTPUT_DIR}/plots/"
-echo "- No intermediate files (completely cleaned up)"
+echo "- Yes intermediate files are still present ;)"
