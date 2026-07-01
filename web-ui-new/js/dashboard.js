@@ -265,6 +265,7 @@ class BenchmarkDashboard {
             cuVSIvfPqSearchParamsNProbes: config.cuVSIvfPqSearchParamsNProbes,
             cuVSIvfPqIndexParamsPqBits: config.cuVSIvfPqIndexParamsPqBits,
             efSearch: config.efSearch || config.effectiveEfSearch,
+            skipIndexing: config.skipIndexing === true,
             numDocs: config.numDocs,
             topK: config.topK,
             numQueriesToRun: config.numQueriesToRun
@@ -281,11 +282,29 @@ class BenchmarkDashboard {
         return extractedRun;
     }
 
+    getIndexBuildKey(run) {
+        // Config dirs are "<algo>-<hash>-ef<value>"; only the hash identifies the build.
+        const runId = run.run_id || '';
+        const hashPrefix = runId.replace(/-ef\d+$/, '');
+        return `${run.sweep_subdir || ''}/${hashPrefix}`;
+    }
+
     calculateTotalIndexingTime(sweep) {
-        let totalSeconds = 0;
+        // Each index is built once; efSearch variants reuse it (skipIndexing=true).
+        // Summing all runs counts the same build up to 5x — dedupe by index-hash prefix.
+        const byBuild = new Map();
         sweep.runs.forEach(run => {
-            totalSeconds += parseFloat(run.indexingTime || 0);
+            const t = parseFloat(run.indexingTime || 0);
+            if (t <= 0) return;
+            const key = this.getIndexBuildKey(run);
+            const isBuild = !run.skipIndexing;
+            const prev = byBuild.get(key);
+            if (!prev || (isBuild && !prev.isBuild)) {
+                byBuild.set(key, { time: t, isBuild });
+            }
         });
+        let totalSeconds = 0;
+        byBuild.forEach(({ time }) => { totalSeconds += time; });
         return totalSeconds;
     }
 
