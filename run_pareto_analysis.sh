@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Use the cuvs-solr conda python if available (has numpy/pandas); fall back to system python3
+CUVS_PYTHON="${HOME}/miniforge3/envs/cuvs-solr/bin/python3"
+if [ -x "$CUVS_PYTHON" ]; then
+    PYTHON3="$CUVS_PYTHON"
+else
+    PYTHON3="python3"
+fi
+
 # NVIDIA Pareto Analysis Workflow
 # Converts benchmark results to NVIDIA format, runs Pareto analysis, and generates plots.
 #
@@ -51,7 +59,7 @@ for sweep_subdir in "${SWEEP_SUBDIRS[@]}"; do
         result_count=$(find "$sweep_path" -name "results.json" 2>/dev/null | wc -l)
         if [ "$result_count" -gt 0 ]; then
             echo "  Converting ${sweep_subdir} (${result_count} results)..."
-            python3 convert_to_nvidia_format.py \
+            $PYTHON3 convert_to_nvidia_format.py \
                 --sweep-dir "$sweep_path" \
                 --output-dir "${INTERMEDIATE_DIR}" \
                 --dataset "${DATASET_NAME}"
@@ -64,7 +72,7 @@ for sweep_subdir in "${SWEEP_SUBDIRS[@]}"; do
 done
 
 echo "Generating Pareto frontier CSVs..."
-python3 -c "
+$PYTHON3 -c "
 import sys
 sys.path.append('.')
 from data_export import convert_json_to_csv_search, convert_json_to_csv_build
@@ -95,8 +103,8 @@ if [ -z "$FIRST_RESULTS" ]; then
     exit 1
 fi
 
-K=$(python3 -c "import json; print(json.load(open('${FIRST_RESULTS}'))['configuration']['topK'])")
-N_QUERIES=$(python3 -c "import json; print(json.load(open('${FIRST_RESULTS}'))['configuration']['numQueriesToRun'])")
+K=$($PYTHON3 -c "import json; print(json.load(open('${FIRST_RESULTS}'))['configuration']['topK'])")
+N_QUERIES=$($PYTHON3 -c "import json; print(json.load(open('${FIRST_RESULTS}'))['configuration']['numQueriesToRun'])")
 
 echo "Creating directory structure for plotting..."
 mkdir -p "${INTERMEDIATE_DIR}/${DATASET_NAME}/result/search"
@@ -127,7 +135,7 @@ if [ -d "${INTERMEDIATE_DIR}/${DATASET_NAME}" ]; then
 fi
 
 echo "Generating is_pareto files for Pareto optimal runs..."
-python3 << PYEOF
+$PYTHON3 << PYEOF
 import os
 import csv
 import json
@@ -256,13 +264,13 @@ mkdir -p "${OUTPUT_DIR}/plots"
 echo "{\"k\": ${K}, \"n_queries\": ${N_QUERIES}}" > "${OUTPUT_DIR}/metadata.json"
 
 echo "Generating plots..."
-python3 plot_pareto.py --dataset "${DATASET_NAME}" --dataset-path "${INTERMEDIATE_DIR}" --mode throughput --count "${K}" --n-queries "${N_QUERIES}" --output-filepath "${OUTPUT_DIR}/plots" --search
+$PYTHON3 plot_pareto.py --dataset "${DATASET_NAME}" --dataset-path "${INTERMEDIATE_DIR}" --mode throughput --count "${K}" --n-queries "${N_QUERIES}" --output-filepath "${OUTPUT_DIR}/plots" --search
 mv "${OUTPUT_DIR}/plots/search-${DATASET_NAME}-k${K}-n_queries${N_QUERIES}.png" "${OUTPUT_DIR}/plots/throughput-${DATASET_NAME}-k${K}-n_queries${N_QUERIES}.png"
 
-python3 plot_pareto.py --dataset "${DATASET_NAME}" --dataset-path "${INTERMEDIATE_DIR}" --mode latency --count "${K}" --n-queries "${N_QUERIES}" --output-filepath "${OUTPUT_DIR}/plots" --search
+$PYTHON3 plot_pareto.py --dataset "${DATASET_NAME}" --dataset-path "${INTERMEDIATE_DIR}" --mode latency --count "${K}" --n-queries "${N_QUERIES}" --output-filepath "${OUTPUT_DIR}/plots" --search
 mv "${OUTPUT_DIR}/plots/search-${DATASET_NAME}-k${K}-n_queries${N_QUERIES}.png" "${OUTPUT_DIR}/plots/latency-${DATASET_NAME}-k${K}-n_queries${N_QUERIES}.png"
 
-python3 plot_pareto.py --dataset "${DATASET_NAME}" --dataset-path "${INTERMEDIATE_DIR}" --mode throughput --count "${K}" --n-queries "${N_QUERIES}" --output-filepath "${OUTPUT_DIR}/plots" --build
+$PYTHON3 plot_pareto.py --dataset "${DATASET_NAME}" --dataset-path "${INTERMEDIATE_DIR}" --mode throughput --count "${K}" --n-queries "${N_QUERIES}" --output-filepath "${OUTPUT_DIR}/plots" --build
 
 echo "Complete! Output saved to: ${OUTPUT_DIR}"
 echo "Plots: ${OUTPUT_DIR}/plots/"

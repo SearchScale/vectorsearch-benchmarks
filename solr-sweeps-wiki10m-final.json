@@ -1,0 +1,334 @@
+{
+  "_comment": [
+    "Final wiki-10m benchmark sweep with combinatorial parameter grids per algorithm.",
+    "Array values expand to all valid combinations via generate-combinations.py.",
+    "Configs are trimmed to ~55 index builds x 5 efSearch values = 320 runs total.",
+    "Each algorithm is split into 3 param-grid groups purely to keep run count down",
+    "(not because the group names imply a recall outcome -- they don't; recall buckets",
+    "are determined post-hoc from measured recall by plot_pareto.py).",
+    "Validated against 8RKi1j (GPU) and YprQtp (Lucene); full run = Idg0bb (320/320 OK).",
+    "GPU: uploadParallelism=2, cuvsWriterThreads=16 (NN) / 32 (IVF).",
+    "Lucene: uploadParallelism=8, NoMerge, ramBuffer=20GB. zz_ prefix runs after GPU.",
+    "NN_DESCENT: graph degree has no recall impact at 10M; 5 pairs give Pareto curve density."
+  ],
+  "wiki10m_zz_lucene_hnsw_1": {
+    "dataset": "wiki-10m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 100,
+      "numWarmUpQueries": 10,
+      "batchSize": 50000,
+      "topK": 100,
+      "efSearch": [
+        100,
+        200,
+        400,
+        800,
+        1200
+      ],
+      "vectorColName": "article_vector",
+      "cleanIndexDirectory": true
+    },
+    "algorithms": {
+      "hnsw": {
+        "hnswMaxConn": [
+          12,
+          16
+        ],
+        "hnswBeamWidth": [
+          60,
+          80,
+          100
+        ],
+        "hnswMergePolicy": "NoMerge",
+        "hnswRamBufferSizeMB": 20000,
+        "uploadParallelism": 8
+      }
+    }
+  },
+  "wiki10m_zz_lucene_hnsw_2": {
+    "dataset": "wiki-10m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 100,
+      "numWarmUpQueries": 10,
+      "batchSize": 50000,
+      "topK": 100,
+      "efSearch": [
+        100,
+        200,
+        400,
+        800,
+        1200
+      ],
+      "vectorColName": "article_vector",
+      "cleanIndexDirectory": true
+    },
+    "algorithms": {
+      "hnsw": {
+        "hnswMaxConn": [
+          16,
+          24,
+          32
+        ],
+        "hnswBeamWidth": [
+          80,
+          120,
+          200
+        ],
+        "hnswMergePolicy": "NoMerge",
+        "hnswRamBufferSizeMB": 20000,
+        "uploadParallelism": 8
+      }
+    }
+  },
+  "wiki10m_zz_lucene_hnsw_3": {
+    "dataset": "wiki-10m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 100,
+      "numWarmUpQueries": 10,
+      "batchSize": 50000,
+      "topK": 100,
+      "efSearch": [
+        100,
+        200,
+        400,
+        800,
+        1200
+      ],
+      "vectorColName": "article_vector",
+      "cleanIndexDirectory": true
+    },
+    "algorithms": {
+      "hnsw": {
+        "hnswMaxConn": [
+          32,
+          48,
+          64
+        ],
+        "hnswBeamWidth": [
+          150,
+          200
+        ],
+        "hnswMergePolicy": "NoMerge",
+        "hnswRamBufferSizeMB": 20000,
+        "uploadParallelism": 8
+      }
+    }
+  },
+  "wiki10m_cagra_nn_descent": {
+    "dataset": "wiki-10m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 100,
+      "numWarmUpQueries": 10,
+      "batchSize": 50000,
+      "topK": 100,
+      "efSearch": [
+        100,
+        200,
+        400,
+        800,
+        1200
+      ],
+      "vectorColName": "article_vector",
+      "cleanIndexDirectory": true
+    },
+    "algorithms": {
+      "cagra_hnsw": {
+        "cuvsWriterThreads": 16,
+        "uploadParallelism": 2,
+        "cagraHnswLayers": 1,
+        "cagraGraphDegree": [
+          8,
+          16,
+          24,
+          32,
+          48
+        ],
+        "cagraIntermediateGraphDegree": [
+          16,
+          32,
+          64,
+          96,
+          128
+        ],
+        "cuvsCagraGraphBuildAlgo": "NN_DESCENT"
+      }
+    }
+  },
+  "wiki10m_cagra_ivfpq_1": {
+    "dataset": "wiki-10m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 100,
+      "numWarmUpQueries": 10,
+      "batchSize": 50000,
+      "topK": 100,
+      "efSearch": [
+        100,
+        200,
+        400,
+        800,
+        1200
+      ],
+      "vectorColName": "article_vector",
+      "cleanIndexDirectory": true
+    },
+    "algorithms": {
+      "cagra_hnsw": {
+        "cuvsWriterThreads": 32,
+        "uploadParallelism": 2,
+        "cagraHnswLayers": 1,
+        "cagraGraphDegree": [
+          32
+        ],
+        "cagraIntermediateGraphDegree": [
+          64
+        ],
+        "cuvsCagraGraphBuildAlgo": "IVF_PQ",
+        "cuVSIvfPqIndexParamsNLists": [
+          512,
+          1024,
+          2048
+        ],
+        "cuVSIvfPqIndexParamsPqBits": 4,
+        "cuVSIvfPqSearchParamsNProbes": [
+          2,
+          3
+        ],
+        "cuVSIvfPqParamsRefinementRate": 1.0,
+        "cuVSIvfPqIndexParamsAddDataOnBuild": true,
+        "cuVSIvfPqIndexParamsCodebookKind": "PER_SUBSPACE",
+        "cuVSIvfPqIndexParamsConservativeMemoryAllocation": false,
+        "cuVSIvfPqIndexParamsForceRandomRotation": false,
+        "cuVSIvfPqIndexParamsKmeansNIters": 5,
+        "cuVSIvfPqIndexParamsKmeansTrainsetFraction": 0.2,
+        "cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode": 256,
+        "cuVSIvfPqIndexParamsMetric": "L2Expanded",
+        "cuVSIvfPqIndexParamsMetricArg": 0.0,
+        "cuVSIvfPqIndexParamsPqDim": 0,
+        "cuVSIvfPqSearchParamsInternalDistanceDtype": "CUDA_R_16F",
+        "cuVSIvfPqSearchParamsLutDtype": "CUDA_R_16F",
+        "cuVSIvfPqSearchParamsPreferredShmemCarveout": 1.0
+      }
+    }
+  },
+  "wiki10m_cagra_ivfpq_2": {
+    "dataset": "wiki-10m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 100,
+      "numWarmUpQueries": 10,
+      "batchSize": 50000,
+      "topK": 100,
+      "efSearch": [
+        100,
+        200,
+        400,
+        800,
+        1200
+      ],
+      "vectorColName": "article_vector",
+      "cleanIndexDirectory": true
+    },
+    "algorithms": {
+      "cagra_hnsw": {
+        "cuvsWriterThreads": 32,
+        "uploadParallelism": 2,
+        "cagraHnswLayers": 1,
+        "cagraGraphDegree": [
+          32
+        ],
+        "cagraIntermediateGraphDegree": [
+          64
+        ],
+        "cuvsCagraGraphBuildAlgo": "IVF_PQ",
+        "cuVSIvfPqIndexParamsNLists": [
+          1024,
+          2048
+        ],
+        "cuVSIvfPqIndexParamsPqBits": 4,
+        "cuVSIvfPqSearchParamsNProbes": [
+          5,
+          8,
+          10
+        ],
+        "cuVSIvfPqParamsRefinementRate": 1.0,
+        "cuVSIvfPqIndexParamsAddDataOnBuild": true,
+        "cuVSIvfPqIndexParamsCodebookKind": "PER_SUBSPACE",
+        "cuVSIvfPqIndexParamsConservativeMemoryAllocation": false,
+        "cuVSIvfPqIndexParamsForceRandomRotation": false,
+        "cuVSIvfPqIndexParamsKmeansNIters": 5,
+        "cuVSIvfPqIndexParamsKmeansTrainsetFraction": 0.2,
+        "cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode": 256,
+        "cuVSIvfPqIndexParamsMetric": "L2Expanded",
+        "cuVSIvfPqIndexParamsMetricArg": 0.0,
+        "cuVSIvfPqIndexParamsPqDim": 0,
+        "cuVSIvfPqSearchParamsInternalDistanceDtype": "CUDA_R_16F",
+        "cuVSIvfPqSearchParamsLutDtype": "CUDA_R_16F",
+        "cuVSIvfPqSearchParamsPreferredShmemCarveout": 1.0
+      }
+    }
+  },
+  "wiki10m_cagra_ivfpq_3": {
+    "dataset": "wiki-10m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 100,
+      "numWarmUpQueries": 10,
+      "batchSize": 50000,
+      "topK": 100,
+      "efSearch": [
+        100,
+        200,
+        400,
+        800,
+        1200
+      ],
+      "vectorColName": "article_vector",
+      "cleanIndexDirectory": true
+    },
+    "algorithms": {
+      "cagra_hnsw": {
+        "cuvsWriterThreads": 32,
+        "uploadParallelism": 2,
+        "cagraHnswLayers": 1,
+        "cagraGraphDegree": [
+          32
+        ],
+        "cagraIntermediateGraphDegree": [
+          64
+        ],
+        "cuvsCagraGraphBuildAlgo": "IVF_PQ",
+        "cuVSIvfPqIndexParamsNLists": [
+          2048,
+          4096
+        ],
+        "cuVSIvfPqIndexParamsPqBits": 4,
+        "cuVSIvfPqSearchParamsNProbes": [
+          10,
+          15,
+          20,
+          35,
+          50
+        ],
+        "cuVSIvfPqParamsRefinementRate": 1.0,
+        "cuVSIvfPqIndexParamsAddDataOnBuild": true,
+        "cuVSIvfPqIndexParamsCodebookKind": "PER_SUBSPACE",
+        "cuVSIvfPqIndexParamsConservativeMemoryAllocation": false,
+        "cuVSIvfPqIndexParamsForceRandomRotation": false,
+        "cuVSIvfPqIndexParamsKmeansNIters": 5,
+        "cuVSIvfPqIndexParamsKmeansTrainsetFraction": 0.2,
+        "cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode": 256,
+        "cuVSIvfPqIndexParamsMetric": "L2Expanded",
+        "cuVSIvfPqIndexParamsMetricArg": 0.0,
+        "cuVSIvfPqIndexParamsPqDim": 0,
+        "cuVSIvfPqSearchParamsInternalDistanceDtype": "CUDA_R_16F",
+        "cuVSIvfPqSearchParamsLutDtype": "CUDA_R_16F",
+        "cuVSIvfPqSearchParamsPreferredShmemCarveout": 1.0
+      }
+    }
+  }
+}

@@ -177,46 +177,6 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                             echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
                         fi
                     fi
-                        
-                        # Backfill indexing metrics if needed for this specific run
-                        results_file="$CONFIG_RESULTS_DIR/results.json"
-                        config_file="$CONFIG_RESULTS_DIR/config.json"
-                        if [ -f "$results_file" ] && [ -f "$config_file" ] && grep -q '"skipIndexing": true' "$config_file"; then
-                            index_hash=$(echo "$CONFIG_NAME" | sed -E 's/.*-([a-f0-9]{8})(-.+)?$/\1/')
-                            if [ ${#index_hash} -eq 8 ]; then
-                                algo=$(jq -r '.algoToRun' "$config_file")
-                                if [ "$algo" = "LUCENE_HNSW" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
-                                    metric_type="cuvs"
-                                elif [ "$algo" = "CAGRA_HNSW" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
-                                    metric_type="cuvs"
-                                elif [ "$algo" = "hnsw" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
-                                    metric_type="cuvs"
-                                elif [ "$algo" = "cagra_hnsw" ] && ! jq -e '.metrics["cuvs-indexing-time"]' "$results_file" >/dev/null 2>&1; then
-                                    metric_type="cuvs"
-                                else
-                                    metric_type=""
-                                fi
-                                
-                                if [ -n "$metric_type" ]; then
-                                    source_file=""
-                                    for candidate_dir in $(find "$RESULTS_DIR" -name "*$index_hash*" -type d); do
-                                        if [ -f "$candidate_dir/results.json" ] && [ -f "$candidate_dir/config.json" ] && ! grep -q '"skipIndexing": true' "$candidate_dir/config.json" && grep -q "${metric_type}-indexing-time" "$candidate_dir/results.json"; then
-                                            source_file="$candidate_dir/results.json"
-                                            break
-                                        fi
-                                    done
-                                    if [ -n "$source_file" ]; then
-                                        indexing_time=$(jq -r ".metrics[\"${metric_type}-indexing-time\"]" "$source_file")
-                                        index_size=$(jq -r ".metrics[\"${metric_type}-index-size\"]" "$source_file")
-                                        javabin_prep_time=$(jq -r ".metrics[\"javabin-preparation-time\"]" "$source_file")
-                                        jq --argjson time "$indexing_time" --argjson size "$index_size" --argjson javabin_time "$javabin_prep_time" --slurpfile config "$config_file" \
-                                           ".metrics[\"${metric_type}-indexing-time\"] = \$time | .metrics[\"${metric_type}-index-size\"] = \$size | .metrics[\"javabin-preparation-time\"] = \$javabin_time | .configuration = \$config[0]" \
-                                           "$results_file" > "${results_file}.tmp" && mv "${results_file}.tmp" "$results_file"
-                                        echo "  Backfilled $CONFIG_NAME ($metric_type) from $(basename $(dirname "$source_file"))"
-                                    fi
-                                fi
-                            fi
-                        fi
                     else
                         echo "✗ Benchmark failed (check log for details)"
                         echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
@@ -253,6 +213,8 @@ except Exception as e:
     sys.exit(f'Cannot read sweeps file: {e}')
 groups = {}
 for name, cfg in sweeps.items():
+    if name.startswith('_') or not isinstance(cfg, dict):
+        continue
     ds = cfg.get('dataset', name).replace('-', '_')
     groups.setdefault(ds, []).append(name)
 for label, names in groups.items():

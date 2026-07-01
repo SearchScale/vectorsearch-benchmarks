@@ -258,6 +258,12 @@ class BenchmarkDashboard {
             cagraIntermediateGraphDegree: config.cagraIntermediateGraphDegree,
             hnswMaxConn: config.hnswMaxConn,
             hnswBeamWidth: config.hnswBeamWidth,
+            hnswMergePolicy: config.hnswMergePolicy,
+            hnswRamBufferSizeMB: config.hnswRamBufferSizeMB,
+            solrRamBufferSizeMB: config.solrRamBufferSizeMB,
+            cuVSIvfPqIndexParamsNLists: config.cuVSIvfPqIndexParamsNLists,
+            cuVSIvfPqSearchParamsNProbes: config.cuVSIvfPqSearchParamsNProbes,
+            cuVSIvfPqIndexParamsPqBits: config.cuVSIvfPqIndexParamsPqBits,
             efSearch: config.efSearch || config.effectiveEfSearch,
             numDocs: config.numDocs,
             topK: config.topK,
@@ -457,8 +463,10 @@ class BenchmarkDashboard {
         } else if (isLucene) {
             const maxConn = run.hnswMaxConn || 'N/A';
             const beamWidth = run.hnswBeamWidth || 'N/A';
+            const mergePolicy = run.hnswMergePolicy || 'NoMerge';
+            const ramBufferMB = this.getRamBufferSizeMB(run);
             const efSearch = run.efSearch || 'N/A';
-            return `${displayAlgo} ${dataset} (maxConn: ${maxConn}, beamWidth: ${beamWidth}, efSearch: ${efSearch})`;
+            return `${displayAlgo} ${dataset} (maxConn: ${maxConn}, beamWidth: ${beamWidth}, ramBuffer: ${ramBufferMB}MB, merge: ${mergePolicy}, efSearch: ${efSearch})`;
         } else {
             return `${displayAlgo} ${dataset} (efSearch: ${run.efSearch || 'N/A'})`;
         }
@@ -825,13 +833,14 @@ class BenchmarkDashboard {
                 row.style.backgroundColor = '#f8d7da'; // Light red for < 85% (with tolerance)
             }
 
+            const paramsText = this.formatParameters(run);
             row.innerHTML = `
                 <td>${run.run_id || 'N/A'}</td>
                 <td>${run.dataset || 'N/A'}</td>
                 <td>${this.normalizeAlgorithmName(run.algorithm)}</td>
                 <td>${recall.toFixed(2)}</td>
                 <td>${parseFloat(run.indexingTime || 0).toFixed(2)}</td>
-                <td>${this.formatParameters(run)}</td>
+                <td class="params-cell" title="${paramsText.replace(/"/g, '&quot;')}">${paramsText}</td>
                 <td>${parseFloat(run.meanLatency || 0).toFixed(2)}</td>
                 <td>${optimalRunIds.has(run.run_id) ? '<span class="pareto-badge">★</span>' : '<span class="non-pareto">-</span>'}</td>
                 <td>
@@ -995,6 +1004,53 @@ class BenchmarkDashboard {
         return runId;
     }
 
+    getRamBufferSizeMB(run) {
+        if (run.hnswRamBufferSizeMB != null && run.hnswRamBufferSizeMB !== '') {
+            return run.hnswRamBufferSizeMB;
+        }
+        if (run.solrRamBufferSizeMB != null && run.solrRamBufferSizeMB !== '') {
+            return run.solrRamBufferSizeMB;
+        }
+        const algo = run.algorithm;
+        const isLucene = algo === 'LUCENE_HNSW' || algo === 'hnsw';
+        const isCagra = algo === 'CAGRA_HNSW' || algo === 'CAGRA_NN_DESCENT' || algo === 'CAGRA_IVF_PQ';
+        if (isLucene || isCagra) {
+            return 20000;
+        }
+        return null;
+    }
+
+    formatConfigSummary(config) {
+        if (!config) return 'No configuration available';
+
+        const lines = [];
+        const algo = config.algoToRun || 'unknown';
+        lines.push(`algoToRun: ${algo}`);
+
+        if (algo === 'hnsw' || algo === 'LUCENE_HNSW') {
+            lines.push(`hnswMaxConn: ${config.hnswMaxConn ?? 'N/A'}`);
+            lines.push(`hnswBeamWidth: ${config.hnswBeamWidth ?? 'N/A'}`);
+            lines.push(`hnswMergePolicy: ${config.hnswMergePolicy || 'NoMerge'}`);
+            lines.push(`hnswRamBufferSizeMB: ${config.hnswRamBufferSizeMB ?? 20000}`);
+        } else if (algo === 'cagra_hnsw' || algo === 'CAGRA_HNSW') {
+            lines.push(`cuvsCagraGraphBuildAlgo: ${config.cuvsCagraGraphBuildAlgo || 'NN_DESCENT'}`);
+            lines.push(`cagraGraphDegree: ${config.cagraGraphDegree ?? 'N/A'}`);
+            lines.push(`cagraIntermediateGraphDegree: ${config.cagraIntermediateGraphDegree ?? 'N/A'}`);
+            if (config.cuvsCagraGraphBuildAlgo === 'IVF_PQ') {
+                lines.push(`cuVSIvfPqIndexParamsNLists: ${config.cuVSIvfPqIndexParamsNLists ?? 'N/A'}`);
+                lines.push(`cuVSIvfPqSearchParamsNProbes: ${config.cuVSIvfPqSearchParamsNProbes ?? 'N/A'}`);
+                lines.push(`cuVSIvfPqIndexParamsPqBits: ${config.cuVSIvfPqIndexParamsPqBits ?? 'N/A'}`);
+            }
+            lines.push(`solrRamBufferSizeMB: ${config.solrRamBufferSizeMB ?? 20000}`);
+        }
+
+        if (config.efSearch != null) lines.push(`efSearch: ${config.efSearch}`);
+        if (config.skipIndexing != null) lines.push(`skipIndexing: ${config.skipIndexing}`);
+        if (config.numDocs != null) lines.push(`numDocs: ${config.numDocs}`);
+
+        return lines.join('\n');
+    }
+
     formatParameters(run) {
         const algorithm = run.algorithm;
         const efSearch = run.efSearch || 'N/A';
@@ -1002,11 +1058,21 @@ class BenchmarkDashboard {
         if (algorithm === 'CAGRA_HNSW' || algorithm === 'CAGRA_NN_DESCENT' || algorithm === 'CAGRA_IVF_PQ') {
             const graphDegree = run.cagraGraphDegree || 'N/A';
             const intermediateDegree = run.cagraIntermediateGraphDegree || 'N/A';
-            return `degree: ${graphDegree}, intermediateDegree: ${intermediateDegree}, efSearch: ${efSearch}`;
-        } else if (algorithm === 'LUCENE_HNSW') {
+            const ramBufferMB = this.getRamBufferSizeMB(run);
+            const ramPart = ramBufferMB != null ? `, ramBuffer: ${ramBufferMB}MB` : '';
+            if (algorithm === 'CAGRA_IVF_PQ') {
+                const nLists = run.cuVSIvfPqIndexParamsNLists ?? 'N/A';
+                const nProbes = run.cuVSIvfPqSearchParamsNProbes ?? 'N/A';
+                const pqBits = run.cuVSIvfPqIndexParamsPqBits ?? 'N/A';
+                return `degree: ${graphDegree}, intermediateDegree: ${intermediateDegree}, nLists: ${nLists}, nProbes: ${nProbes}, pqBits: ${pqBits}${ramPart}, efSearch: ${efSearch}`;
+            }
+            return `degree: ${graphDegree}, intermediateDegree: ${intermediateDegree}${ramPart}, efSearch: ${efSearch}`;
+        } else if (algorithm === 'LUCENE_HNSW' || algorithm === 'hnsw') {
             const maxConn = run.hnswMaxConn || 'N/A';
             const beamWidth = run.hnswBeamWidth || 'N/A';
-            return `maxConn: ${maxConn}, beamWidth: ${beamWidth}, efSearch: ${efSearch}`;
+            const mergePolicy = run.hnswMergePolicy || 'NoMerge';
+            const ramBufferMB = this.getRamBufferSizeMB(run);
+            return `maxConn: ${maxConn}, beamWidth: ${beamWidth}, ramBuffer: ${ramBufferMB}MB, merge: ${mergePolicy}, efSearch: ${efSearch}`;
         } else {
             return `efSearch: ${efSearch}`;
         }
@@ -1014,14 +1080,14 @@ class BenchmarkDashboard {
 
     async showMetrics(runId) {
         try {
-            // Find the dataset for this run
+            // Use original sweep subdir for file paths in combined sweeps.
             const run = this.currentSweep.runs.find(r => r.run_id === runId);
-            const dataset = run ? run.dataset : '';
+            const runSubdir = run ? (run.sweep_subdir || run.dataset) : '';
 
-            const memoryResponse = await fetch(`/results/${this.currentSweep.id}/${dataset}/${runId}/memory_metrics.json`);
+            const memoryResponse = await fetch(`/results/${this.currentSweep.id}/${runSubdir}/${runId}/memory_metrics.json`);
             const memoryData = memoryResponse.ok ? await memoryResponse.json() : null;
 
-            const cpuResponse = await fetch(`/results/${this.currentSweep.id}/${dataset}/${runId}/cpu_metrics.json`);
+            const cpuResponse = await fetch(`/results/${this.currentSweep.id}/${runSubdir}/${runId}/cpu_metrics.json`);
             const cpuData = cpuResponse.ok ? await cpuResponse.json() : null;
 
             document.getElementById('metrics-title').textContent = `Metrics for Run ${runId}`;
@@ -1159,11 +1225,12 @@ class BenchmarkDashboard {
 
     async showResults(runId) {
         try {
-            // Find the dataset for this run
+            // Use original sweep subdir for file paths in combined sweeps.
+            // `dataset` is logical grouping (e.g. wiki_10m) and may not map to folder names.
             const run = this.currentSweep.runs.find(r => r.run_id === runId);
-            const dataset = run ? run.dataset : '';
+            const runSubdir = run ? (run.sweep_subdir || run.dataset) : '';
 
-            const response = await fetch(`/results/${this.currentSweep.id}/${dataset}/${runId}/results.json`);
+            const response = await fetch(`/results/${this.currentSweep.id}/${runSubdir}/${runId}/results.json`);
             if (!response.ok) {
                 throw new Error('Failed to load detailed results');
             }
@@ -1171,6 +1238,8 @@ class BenchmarkDashboard {
             const results = await response.json();
 
             document.getElementById('results-title').textContent = `Detailed Results for Run ${runId}`;
+            document.getElementById('config-summary').textContent =
+                this.formatConfigSummary(results.configuration);
             document.getElementById('json-viewer').textContent = JSON.stringify(results, null, 2);
             document.getElementById('results-modal').style.display = 'block';
         } catch (error) {
@@ -1180,13 +1249,13 @@ class BenchmarkDashboard {
 
     downloadLogs(runId) {
         const sweepId = this.currentSweep.id;
-        // Find the dataset for this run
+        // Use original sweep subdir for file paths in combined sweeps.
         const run = this.currentSweep.runs.find(r => r.run_id === runId);
-        const dataset = run ? run.dataset : '';
+        const runSubdir = run ? (run.sweep_subdir || run.dataset) : '';
 
         // Download benchmark log
         const logLink = document.createElement('a');
-        logLink.href = `/results/${sweepId}/${dataset}/${runId}/benchmark.log`;
+        logLink.href = `/results/${sweepId}/${runSubdir}/${runId}/benchmark.log`;
         logLink.download = `${runId}_benchmark.log`;
         logLink.click();
     }

@@ -16,6 +16,14 @@ URL="$3"
 RESULTS_DIR="$4"
 BENCH_ROOT="$(pwd)"
 
+# Use the cuvs-solr conda python if available (has numpy/pandas); fall back to system python3
+CUVS_PYTHON="${HOME}/miniforge3/envs/cuvs-solr/bin/python3"
+if [ -x "$CUVS_PYTHON" ]; then
+    PYTHON3="$CUVS_PYTHON"
+else
+    PYTHON3="python3"
+fi
+
 # Check if config file exists
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "Error: Config file '$CONFIG_FILE' not found"
@@ -43,12 +51,28 @@ QUERY_FILE=$(jq -r '.queryFile' "$CONFIG_FILE")
 GROUND_TRUTH_FILE=$(jq -r '.groundTruthFile' "$CONFIG_FILE")
 VECTOR_COL_NAME=$(jq -r '.vectorColName' "$CONFIG_FILE")
 TOP_K=$(jq -r '.topK' "$CONFIG_FILE")
-CUVS_WRITER_THREADS=$(jq -r 'if .cuvsWriterThreads == null or .cuvsWriterThreads == "null" then "8" else .cuvsWriterThreads end' "$CONFIG_FILE")
+CUVS_WRITER_THREADS=$(jq -r 'if .cuvsWriterThreads != null and .cuvsWriterThreads != "null" then .cuvsWriterThreads else 8 end' "$CONFIG_FILE")
 INT_GRAPH_DEGREE=$(jq -r 'if .cagraIntermediateGraphDegree == null or .cagraIntermediateGraphDegree == "null" then "64" else .cagraIntermediateGraphDegree end' "$CONFIG_FILE")
 GRAPH_DEGREE=$(jq -r 'if .cagraGraphDegree == null or .cagraGraphDegree == "null" then "32" else .cagraGraphDegree end' "$CONFIG_FILE")
 HNSW_LAYERS=$(jq -r 'if .cagraHnswLayers == null or .cagraHnswLayers == "null" then "1" else .cagraHnswLayers end' "$CONFIG_FILE")
 MAX_CONN=$(jq -r 'if .hnswMaxConn == null or .hnswMaxConn == "null" then "16" else .hnswMaxConn end' "$CONFIG_FILE")
 BEAM_WIDTH=$(jq -r 'if .hnswBeamWidth == null or .hnswBeamWidth == "null" then "100" else .hnswBeamWidth end' "$CONFIG_FILE")
+# hnswMergePolicy: "NoMerge" (default, fastest batch load) or "TieredMerge" (production-realistic, slower but fewer segments)
+HNSW_MERGE_POLICY=$(jq -r 'if .hnswMergePolicy then .hnswMergePolicy else "NoMerge" end' "$CONFIG_FILE")
+# hnswRamBufferSizeMB: controls flush frequency; 20000 (default) = ~1-2 large segments for 10M 768-dim; lower = more segments = lower recall
+HNSW_RAM_BUFFER_MB=$(jq -r 'if .hnswRamBufferSizeMB then .hnswRamBufferSizeMB else 20000 end' "$CONFIG_FILE")
+# hnswMergeSchedulerThreads: if set to N>0 → explicit ConcurrentMergeScheduler with N maxThreadCount; 0 = SerialMergeScheduler; unset = Solr default
+HNSW_MERGE_SCHEDULER_THREADS=$(jq -r 'if .hnswMergeSchedulerThreads != null then .hnswMergeSchedulerThreads else "default" end' "$CONFIG_FILE")
+# uploadParallelism controls client-side parallel HTTP batch uploads.
+# If not set explicitly, falls back to NPARALLEL env var (default 1).
+# GPU configs at 10M scale should use upload=1 (safe); higher values can cause cuVS instability.
+CONFIG_UPLOAD_PARALLELISM=$(jq -r '
+  if .uploadParallelism != null then
+    .uploadParallelism
+  else
+    "env"
+  end
+' "$CONFIG_FILE")
 CLEAN_INDEX_DIRECTORY=$(jq -r 'if has("cleanIndexDirectory") then .cleanIndexDirectory else true end' "$CONFIG_FILE")
 SKIP_INDEXING=$(jq -r 'if has("skipIndexing") then .skipIndexing else false end' "$CONFIG_FILE")
 CAGRA_GRAPH_BUILD_ALGO=$(jq -r 'if has("cuvsCagraGraphBuildAlgo") then .cuvsCagraGraphBuildAlgo else "NN_DESCENT" end' "$CONFIG_FILE")
@@ -79,7 +103,12 @@ DATASET_FILENAME="wiki_all_10M.tar"
 SOLR_GITHUB_REPO="https://github.com/apache/solr.git"
 # Must match solr-setup tarball basename. Override: export SOLR_ROOT=solr-11.0.0-SNAPSHOT
 SOLR_ROOT=${SOLR_ROOT:-solr-11.0.0-SNAPSHOT}
-NPARALLEL=${NPARALLEL:-1}
+# uploadParallelism in the config JSON takes precedence over the NPARALLEL env var.
+if [ "$CONFIG_UPLOAD_PARALLELISM" != "env" ]; then
+    NPARALLEL="$CONFIG_UPLOAD_PARALLELISM"
+else
+    NPARALLEL=${NPARALLEL:-1}
+fi
 SIMILARITY_FUNCTION=${SIMILARITY_FUNCTION:-euclidean}
 RAM_BUFFER_SIZE_MB=${RAM_BUFFER_SIZE_MB:-20000}
 
@@ -141,6 +170,33 @@ EOF
 fi
 
 # Generate solrconfig.xml
+# Build merge policy XML fragment based on hnswMergePolicy config param
+if [ "$HNSW_MERGE_POLICY" = "TieredMerge" ]; then
+    MERGE_POLICY_XML='<mergePolicyFactory class="org.apache.solr.index.TieredMergePolicyFactory">
+                <int name="maxMergeAtOnce">4</int>
+                <int name="segmentsPerTier">4</int>
+                <double name="maxMergedSegmentMB">100000</double>
+            </mergePolicyFactory>'
+else
+    MERGE_POLICY_XML='<mergePolicyFactory class="org.apache.solr.index.NoMergePolicyFactory" />'
+fi
+
+# Build merge scheduler XML fragment:
+#   "default" → no explicit tag (Solr default = untuned ConcurrentMergeScheduler)
+#   0         → SerialMergeScheduler (single-threaded merges)
+#   N > 0     → ConcurrentMergeScheduler with maxThreadCount=N, maxMergeCount=N+2
+if [ "$HNSW_MERGE_SCHEDULER_THREADS" = "default" ]; then
+    MERGE_SCHEDULER_XML=""
+elif [ "$HNSW_MERGE_SCHEDULER_THREADS" = "0" ]; then
+    MERGE_SCHEDULER_XML='<mergeScheduler class="org.apache.lucene.index.SerialMergeScheduler"/>'
+else
+    MERGE_MAX_COUNT=$(( HNSW_MERGE_SCHEDULER_THREADS + 2 ))
+    MERGE_SCHEDULER_XML="<mergeScheduler class=\"org.apache.lucene.index.ConcurrentMergeScheduler\">
+                <int name=\"maxThreadCount\">$HNSW_MERGE_SCHEDULER_THREADS</int>
+                <int name=\"maxMergeCount\">$MERGE_MAX_COUNT</int>
+            </mergeScheduler>"
+fi
+
 if [ "$KNN_ALGORITHM" = "hnsw" ]; then
     # For HNSW: Remove codecFactory altogether
     cat > temp-configset/solrconfig.xml << EOF
@@ -151,11 +207,12 @@ if [ "$KNN_ALGORITHM" = "hnsw" ]; then
     <directoryFactory name="DirectoryFactory" class="\${solr.directoryFactory:solr.NRTCachingDirectoryFactory}"/>
 
     <indexConfig>
-            <ramBufferSizeMB>$RAM_BUFFER_SIZE_MB</ramBufferSizeMB>
+            <ramBufferSizeMB>$HNSW_RAM_BUFFER_MB</ramBufferSizeMB>
             <maxBufferedDocs>-1</maxBufferedDocs>
             <useCompoundFile>false</useCompoundFile>
-            <mergePolicyFactory class="org.apache.solr.index.NoMergePolicyFactory" />
-            <infoStream>true</infoStream>
+            $MERGE_POLICY_XML
+            $MERGE_SCHEDULER_XML
+            <infoStream>false</infoStream>
     </indexConfig>
 
     <updateHandler class="solr.DirectUpdateHandler2">
@@ -192,7 +249,7 @@ else
             <maxBufferedDocs>-1</maxBufferedDocs>
             <useCompoundFile>false</useCompoundFile>
             <mergePolicyFactory class="org.apache.solr.index.NoMergePolicyFactory" />
-            <infoStream>true</infoStream>
+            <infoStream>false</infoStream>
     </indexConfig>
 
     <updateHandler class="solr.DirectUpdateHandler2">
@@ -259,7 +316,7 @@ start_time=$(date +%s%N) # Record start time in nanoseconds
 echo "Indexing javabin: vector field=$VECTOR_COL_NAME dim=$VECTOR_DIMENSION workers=$NPARALLEL bulk=$SOLR_BULK_UPDATE_URL"
 CURL_CONNECT_TIMEOUT="${CURL_CONNECT_TIMEOUT:-600}"
 CURL_MAX_TIME="${CURL_MAX_TIME:-0}"
-python3 << EOF || { echo "ERROR: Solr javabin batch upload failed. See Solr response body above (HTTP 400: schema/vectors; HTTP 500: cuVS/RAFT or IndexWriter closed—try NPARALLEL=1 and no per-batch commits)." >&2; exit 1; }
+$PYTHON3 << EOF || { echo "ERROR: Solr javabin batch upload failed. See Solr response body above (HTTP 400: schema/vectors; HTTP 500: cuVS/RAFT or IndexWriter closed—try NPARALLEL=1 and no per-batch commits)." >&2; exit 1; }
 import os
 import subprocess
 import tempfile
@@ -324,7 +381,7 @@ fi # End of skipIndexing check
 # Write configuration into results.json for all runs (including skip-indexing ones).
 # For skip-indexing runs, run_queries.py will merge query metrics into this file.
 # The backfill in run_sweep.sh will additionally copy indexing-time from the build run.
-python3 << EOF
+$PYTHON3 << EOF
 import json
 import os
 
@@ -332,6 +389,27 @@ os.makedirs("$RESULTS_DIR", exist_ok=True)
 
 with open("$CONFIG_FILE", "r") as config_file:
     config_data = json.load(config_file)
+
+# Record effective Solr index RAM buffer in results so the web UI can display it.
+# Lucene HNSW uses hnswRamBufferSizeMB; CAGRA/GPU runs use solrRamBufferSizeMB.
+hnsw_ram_buffer_mb = int("$HNSW_RAM_BUFFER_MB")
+solr_ram_buffer_mb = int("$RAM_BUFFER_SIZE_MB")
+algo = config_data.get("algoToRun")
+if algo == "hnsw":
+    config_data.setdefault("hnswMergePolicy", "NoMerge")
+    config_data.setdefault("hnswRamBufferSizeMB", hnsw_ram_buffer_mb)
+    sched_threads = "$HNSW_MERGE_SCHEDULER_THREADS"
+    if sched_threads != "default":
+        config_data.setdefault("hnswMergeSchedulerThreads", int(sched_threads))
+    upload_par = "$CONFIG_UPLOAD_PARALLELISM"
+    if upload_par != "env":
+        config_data.setdefault("uploadParallelism", int(upload_par))
+elif algo == "cagra_hnsw":
+    config_data.setdefault("solrRamBufferSizeMB", solr_ram_buffer_mb)
+    config_data.setdefault("cuvsWriterThreads", int("$CUVS_WRITER_THREADS"))
+    upload_par = "$CONFIG_UPLOAD_PARALLELISM"
+    if upload_par != "env":
+        config_data.setdefault("uploadParallelism", int(upload_par))
 
 # Merge into existing file so we don't overwrite metrics already written by a previous step
 results_path = "$RESULTS_DIR/results.json"
@@ -357,7 +435,7 @@ EOF
 # Run query benchmarks (IVF-PQ / large indices: raise QUERY_TIMEOUT_SEC; default 120s)
 QUERY_TIMEOUT_SEC=${QUERY_TIMEOUT_SEC:-120}
 echo "Running query benchmarks..."
-python3 run_queries.py \
+$PYTHON3 run_queries.py \
     --ef-search $EF_SEARCH \
     --warmup-queries $WARMUP_QUERIES \
     --num-queries $TOTAL_QUERIES \
@@ -370,9 +448,17 @@ python3 run_queries.py \
     --timeout "$QUERY_TIMEOUT_SEC" \
     --output-file "$RESULTS_DIR/results.json"
 
-# Add indexing time to results.json only if indexing was performed
+# Add indexing time to results.json.
+# - For the build run (skipIndexing=false): write the measured duration directly.
+# - For skip runs (skipIndexing=true): copy the build time from the sibling ef=<lowest>
+#   result that shares the SAME index-hash prefix (i.e. same build params, only efSearch
+#   differs). Config dirs are named "<algo>-<hash>-ef<value>", so the hash prefix is
+#   derived by stripping the trailing "-ef<value>" from this run's own directory name.
+#   Matching on the hash prefix (not just "first build found in the sweep group dir")
+#   prevents contamination across different maxConn/beamWidth/nLists/etc. combos that
+#   happen to live in the same sweep group directory.
 if [ "$SKIP_INDEXING" = "false" ]; then
-    python3 -c "
+    $PYTHON3 -c "
 import json
 with open('$RESULTS_DIR/results.json', 'r+') as f:
     results = json.load(f)
@@ -383,6 +469,62 @@ with open('$RESULTS_DIR/results.json', 'r+') as f:
     json.dump(results, f, indent=2)
     f.truncate()
 "
+else
+    # Locate the build run's results.json within the same sweep group directory,
+    # restricted to siblings sharing this run's index-hash prefix.
+    SWEEP_GROUP_DIR=$(dirname "$RESULTS_DIR")
+    CONFIG_DIRNAME=$(basename "$RESULTS_DIR")
+    HASH_PREFIX="${CONFIG_DIRNAME%-ef*}"
+    $PYTHON3 - "$SWEEP_GROUP_DIR" "$RESULTS_DIR/results.json" "$HASH_PREFIX" <<'PYEOF'
+import json, os, sys
+
+sweep_group_dir = sys.argv[1]
+target_results  = sys.argv[2]
+hash_prefix     = sys.argv[3]
+
+source_file = None
+for entry in sorted(os.listdir(sweep_group_dir)):
+    # Only consider siblings that share this run's index-hash prefix
+    # (i.e. same build params; only efSearch differs).
+    if entry != hash_prefix and not entry.startswith(hash_prefix + "-ef"):
+        continue
+    candidate = os.path.join(sweep_group_dir, entry, "results.json")
+    config_candidate = os.path.join(sweep_group_dir, entry, "config.json")
+    if not os.path.exists(candidate) or not os.path.exists(config_candidate):
+        continue
+    with open(config_candidate) as f:
+        cfg = json.load(f)
+    if cfg.get("skipIndexing"):
+        continue
+    with open(candidate) as f:
+        data = json.load(f)
+    if data.get("metrics", {}).get("cuvs-indexing-time") is not None:
+        source_file = candidate
+        source_data = data
+        break
+
+if source_file is None:
+    print(f"WARNING: no build-run result found for hash prefix {hash_prefix} in {sweep_group_dir}; indexing time not backfilled")
+    sys.exit(0)
+
+indexing_time = source_data["metrics"]["cuvs-indexing-time"]
+index_size    = source_data["metrics"].get("cuvs-index-size")
+javabin_time  = source_data["metrics"].get("javabin-preparation-time")
+
+with open(target_results, "r+") as f:
+    results = json.load(f)
+    results.setdefault("metrics", {})
+    results["metrics"]["cuvs-indexing-time"] = indexing_time
+    if index_size is not None:
+        results["metrics"]["cuvs-index-size"] = index_size
+    if javabin_time is not None:
+        results["metrics"]["javabin-preparation-time"] = javabin_time
+    f.seek(0)
+    json.dump(results, f, indent=2)
+    f.truncate()
+
+print(f"  Backfilled indexing time ({indexing_time} ms) from {os.path.basename(os.path.dirname(source_file))}")
+PYEOF
 fi
 
 # Cleanup

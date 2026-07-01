@@ -42,8 +42,8 @@ if [ ! -d "$DATA_DIR" ]; then
     exit 1
 fi
 
-# Extract dataset name from sweep file (assuming first key in the sweep file)
-DATASET_NAME=$(jq -r 'keys[0]' "$SWEEP_FILE")
+# Extract dataset name from sweep file (first non-metadata key, skipping keys starting with '_')
+DATASET_NAME=$(jq -r '[keys[] | select(startswith("_") | not)][0]' "$SWEEP_FILE")
 if [ "$DATASET_NAME" = "null" ] || [ -z "$DATASET_NAME" ]; then
     echo "Error: Could not extract dataset name from sweep file"
     exit 1

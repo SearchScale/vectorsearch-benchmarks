@@ -29,6 +29,9 @@ if os.path.exists(args.configs_dir):
     shutil.rmtree(args.configs_dir)
 
 for sweep in sweeps:
+    # Skip metadata/comment keys (keys starting with '_')
+    if sweep.startswith("_"):
+        continue
     # Get dataset information for this sweep
     dataset_name = sweeps[sweep]["dataset"]
     dataset_info = datasets["datasets"][dataset_name]
@@ -85,10 +88,11 @@ for sweep in sweeps:
                         current_variants = other_variants.copy()
                         current_variants['efSearch'] = ef_value
                         
-                        # Skip if cagraIntermediateDegree < cagraGraphDegree
-                        if 'cagraIntermediateDegree' in current_variants and 'cagraGraphDegree' in current_variants:
-                            if current_variants['cagraIntermediateDegree'] < current_variants['cagraGraphDegree']:
-                                print(f"\t\tSkipping combination: cagraIntermediateDegree ({current_variants['cagraIntermediateDegree']}) < cagraGraphDegree ({current_variants['cagraGraphDegree']})")
+                        # Skip if cagraIntermediateGraphDegree < cagraGraphDegree
+                        int_deg_key = 'cagraIntermediateGraphDegree' if 'cagraIntermediateGraphDegree' in current_variants else 'cagraIntermediateDegree'
+                        if int_deg_key in current_variants and 'cagraGraphDegree' in current_variants:
+                            if current_variants[int_deg_key] < current_variants['cagraGraphDegree']:
+                                print(f"\t\tSkipping combination: {int_deg_key} ({current_variants[int_deg_key]}) < cagraGraphDegree ({current_variants['cagraGraphDegree']})")
                                 continue
                         
                         # Skip if hnswMaxConn > hnswBeamWidth
@@ -172,10 +176,11 @@ for sweep in sweeps:
                 for combination in itertools.product(*variant_values):
                     current_variants = dict(zip(variant_keys, combination))
                     
-                    # Skip if cagraIntermediateDegree < cagraGraphDegree
-                    if 'cagraIntermediateDegree' in current_variants and 'cagraGraphDegree' in current_variants:
-                        if current_variants['cagraIntermediateDegree'] < current_variants['cagraGraphDegree']:
-                            print(f"\t\tSkipping combination: cagraIntermediateDegree ({current_variants['cagraIntermediateDegree']}) < cagraGraphDegree ({current_variants['cagraGraphDegree']})")
+                    # Skip if cagraIntermediateGraphDegree < cagraGraphDegree
+                    int_deg_key = 'cagraIntermediateGraphDegree' if 'cagraIntermediateGraphDegree' in current_variants else 'cagraIntermediateDegree'
+                    if int_deg_key in current_variants and 'cagraGraphDegree' in current_variants:
+                        if current_variants[int_deg_key] < current_variants['cagraGraphDegree']:
+                            print(f"\t\tSkipping combination: {int_deg_key} ({current_variants[int_deg_key]}) < cagraGraphDegree ({current_variants['cagraGraphDegree']})")
                             continue
                     
                     # Skip if hnswMaxConn > hnswBeamWidth
