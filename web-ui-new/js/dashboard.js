@@ -1,3 +1,11 @@
+const BENCHMARK_UI_DEBUG = false;
+
+function uiDebug(...args) {
+    if (BENCHMARK_UI_DEBUG) {
+        console.log(...args);
+    }
+}
+
 class BenchmarkDashboard {
     constructor() {
         this.sweeps = [];
@@ -14,6 +22,32 @@ class BenchmarkDashboard {
         this.init();
     }
 
+    // CAGRA is one algorithm family (legacy algoToRun: cagra_hnsw). Build modes: NN_DESCENT vs IVF_PQ.
+    isCagraAlgoToRun(algoType) {
+        return algoType === 'cagra_hnsw' || algoType === 'CAGRA_HNSW';
+    }
+
+    isCagraAlgorithm(algorithm) {
+        return algorithm === 'CAGRA_NN_DESCENT'
+            || algorithm === 'CAGRA_IVF_PQ'
+            || algorithm === 'CAGRA_HNSW'
+            || algorithm === 'cagra_hnsw';
+    }
+
+    normalizeLegacyCagraLabel(algorithm) {
+        if (algorithm === 'CAGRA_HNSW' || algorithm === 'cagra_hnsw') {
+            return 'CAGRA_NN_DESCENT';
+        }
+        return algorithm;
+    }
+
+    algorithmFilterMatch(runAlgorithm, selectedFilter) {
+        if (selectedFilter === 'all') {
+            return true;
+        }
+        return this.normalizeLegacyCagraLabel(runAlgorithm) === selectedFilter;
+    }
+
     async init() {
         try {
             await this.loadSweeps();
@@ -27,20 +61,20 @@ class BenchmarkDashboard {
 
     async loadSweeps() {
         try {
-            console.log('Loading sweeps list...');
+            uiDebug('Loading sweeps list...');
             const response = await fetch(`results/sweeps-list.json?t=${Date.now()}`);
             if (!response.ok) {
                 throw new Error(`Failed to load sweeps list: ${response.status}`);
             }
 
             const sweepsData = await response.json();
-            console.log('Sweeps data:', sweepsData);
+            uiDebug('Sweeps data:', sweepsData);
             const sweepIds = sweepsData.sweeps || [];
 
             this.sweeps = [];
             for (const sweepId of sweepIds) {
                 try {
-                    console.log(`Loading sweep ${sweepId}...`);
+                    uiDebug(`Loading sweep ${sweepId}...`);
                     const sweepData = await this.loadSweepData(sweepId);
                     this.sweeps.push(sweepData);
                 } catch (error) {
@@ -95,7 +129,7 @@ class BenchmarkDashboard {
         const filteredSweeps = this.sweeps.map(sweep => {
             const filteredRuns = sweep.runs.filter(run => {
                 const datasetMatch = selectedDataset === 'all' || run.dataset === selectedDataset;
-                const algorithmMatch = selectedAlgorithm === 'all' || run.algorithm === selectedAlgorithm;
+                const algorithmMatch = this.algorithmFilterMatch(run.algorithm, selectedAlgorithm);
                 return datasetMatch && algorithmMatch;
             });
 
@@ -114,25 +148,21 @@ class BenchmarkDashboard {
     }
 
     async loadSweepData(sweepId) {
-        console.log(`Fetching summary for ${sweepId}...`);
+        uiDebug(`Fetching summary for ${sweepId}...`);
         const summaryResponse = await fetch(`/results/${sweepId}/summary.txt?t=${Date.now()}`);
         if (!summaryResponse.ok) {
             throw new Error(`Failed to load summary for sweep ${sweepId}`);
         }
 
         const summaryText = await summaryResponse.text();
-        console.log(`Summary text for ${sweepId}:`, summaryText);
+        uiDebug(`Summary text for ${sweepId}:`, summaryText);
         const configs = this.parseConfigsFromSummary(summaryText);
-        console.log(`Configs found for ${sweepId}:`, configs);
+        uiDebug(`Configs found for ${sweepId}:`, configs);
 
         const runs = [];
         for (const config of configs) {
             try {
-                let resultsResponse = await fetch(`/results/${sweepId}/${config}/results.json`);
-
-                if (!resultsResponse.ok) {
-                    resultsResponse = await fetch(`/results/${sweepId}/${config}/results.json`);
-                }
+                const resultsResponse = await fetch(`/results/${sweepId}/${config}/results.json?t=${Date.now()}`);
 
                 if (!resultsResponse.ok) {
                     console.warn(`Failed to load results for ${config}`);
@@ -206,7 +236,7 @@ class BenchmarkDashboard {
 
         const algoType = config.algoToRun || algorithm;
         const cagraBuildAlgo = config.cuvsCagraGraphBuildAlgo || 'NN_DESCENT';
-        const isCagra = algoType === 'CAGRA_HNSW' || algoType === 'cagra_hnsw';
+        const isCagra = this.isCagraAlgoToRun(algoType);
         const isLucene = algoType === 'LUCENE_HNSW' || algoType === 'hnsw';
         let recallKey, indexingTimeKey, indexSizeKey, meanLatencyKey;
 
@@ -271,7 +301,7 @@ class BenchmarkDashboard {
             numQueriesToRun: config.numQueriesToRun
         };
 
-        console.log(`Extracted run for ${algoType} -> ${normalizedAlgorithm}:`, {
+        uiDebug(`Extracted run for ${algoType} -> ${normalizedAlgorithm}:`, {
             recallKey, indexingTimeKey, indexSizeKey, meanLatencyKey,
             recall: extractedRun.recall,
             indexingTime: extractedRun.indexingTime,
@@ -451,27 +481,23 @@ class BenchmarkDashboard {
         });
 
         const combinations = Array.from(runGroups.values());
-        console.log(`DEBUG: Found ${combinations.length} parameter combinations:`, combinations.map(c => c.title));
+        uiDebug(`DEBUG: Found ${combinations.length} parameter combinations:`, combinations.map(c => c.title));
         return combinations;
     }
 
     normalizeAlgorithmName(algorithm) {
         if (algorithm === 'CAGRA_NN_DESCENT') return 'CAGRA (NN_DESCENT)';
-        if (algorithm === 'CAGRA_IVF_PQ')    return 'CAGRA (IVF-PQ)';
-        if (algorithm === 'CAGRA_HNSW')      return 'CAGRA';
-        if (algorithm === 'LUCENE_HNSW')     return 'Lucene HNSW';
-        if (algorithm === 'cagra_hnsw')      return 'CAGRA';
-        if (algorithm === 'hnsw')            return 'Lucene HNSW';
+        if (algorithm === 'CAGRA_IVF_PQ') return 'CAGRA (IVF-PQ)';
+        if (algorithm === 'CAGRA_HNSW' || algorithm === 'cagra_hnsw') return 'CAGRA (NN_DESCENT)';
+        if (algorithm === 'LUCENE_HNSW') return 'Lucene HNSW';
+        if (algorithm === 'hnsw') return 'Lucene HNSW';
         return algorithm;
     }
 
     createMeaningfulTitle(run) {
         const displayAlgo = this.normalizeAlgorithmName(run.algorithm);
         const dataset = run.dataset || 'unknown';
-        const isCagra = run.algorithm === 'CAGRA_HNSW' ||
-                        run.algorithm === 'CAGRA_NN_DESCENT' ||
-                        run.algorithm === 'CAGRA_IVF_PQ' ||
-                        run.algorithm === 'cagra_hnsw';
+        const isCagra = this.isCagraAlgorithm(run.algorithm);
         const isLucene = run.algorithm === 'LUCENE_HNSW' || run.algorithm === 'hnsw';
 
         if (isCagra) {
@@ -495,7 +521,7 @@ class BenchmarkDashboard {
         const ctx = canvas.getContext('2d');
 
         const sweepLabels = [...new Set(combo.data.map(d => d.sweep))];
-        console.log(`Creating chart for ${combo.runId}:`, combo.data, 'sweepLabels:', sweepLabels);
+        uiDebug(`Creating chart for ${combo.runId}:`, combo.data, 'sweepLabels:', sweepLabels);
 
         const datasets = [
             {
@@ -616,7 +642,7 @@ class BenchmarkDashboard {
 
         let filteredRuns = this.currentSweep.runs.filter(run => {
             const datasetMatch = run.dataset === selectedDataset;
-            const algorithmMatch = selectedAlgorithm === 'all' || run.algorithm === selectedAlgorithm;
+            const algorithmMatch = this.algorithmFilterMatch(run.algorithm, selectedAlgorithm);
             return datasetMatch && algorithmMatch;
         });
 
@@ -741,7 +767,7 @@ class BenchmarkDashboard {
         const optimalRunIds = new Set();
 
         const fileOptimalRunIds = await this.loadParetoOptimalRunsFromFiles();
-        console.log(`Loaded ${fileOptimalRunIds.size} Pareto optimal runs from is_pareto files`);
+        uiDebug(`Loaded ${fileOptimalRunIds.size} Pareto optimal runs from is_pareto files`);
         fileOptimalRunIds.forEach(runId => optimalRunIds.add(runId));
 
         recallLevels.forEach(level => {
@@ -795,14 +821,14 @@ class BenchmarkDashboard {
 
                 if (response.ok) {
                     optimalRunIds.add(run.run_id);
-                    console.log(`Found Pareto optimal run: ${run.run_id}`);
+                    uiDebug(`Found Pareto optimal run: ${run.run_id}`);
                 }
             } catch (error) {
                 // Not all runs have is_pareto files
             }
         }
 
-        console.log(`Found ${optimalRunIds.size} Pareto optimal runs using is_pareto files`);
+        uiDebug(`Found ${optimalRunIds.size} Pareto optimal runs using is_pareto files`);
         return optimalRunIds;
     }
 
@@ -813,11 +839,11 @@ class BenchmarkDashboard {
         const selectedAlgorithm = algorithmFilter ? algorithmFilter.value : 'all';
 
         if (selectedAlgorithm !== 'all') {
-            console.log('Hiding pareto analysis: algorithm filter is not "all"');
+            uiDebug('Hiding pareto analysis: algorithm filter is not "all"');
             return false;
         }
 
-        console.log('Showing pareto analysis: specific dataset selected and all algorithms');
+        uiDebug('Showing pareto analysis: specific dataset selected and all algorithms');
         return true;
     }
 
@@ -912,7 +938,7 @@ class BenchmarkDashboard {
 
             let filteredRuns = this.currentSweep.runs.filter(run => {
                 const datasetMatch = run.dataset === selectedDataset;
-                const algorithmMatch = selectedAlgorithm === 'all' || run.algorithm === selectedAlgorithm;
+                const algorithmMatch = this.algorithmFilterMatch(run.algorithm, selectedAlgorithm);
                 return datasetMatch && algorithmMatch;
             });
 
@@ -1032,7 +1058,7 @@ class BenchmarkDashboard {
         }
         const algo = run.algorithm;
         const isLucene = algo === 'LUCENE_HNSW' || algo === 'hnsw';
-        const isCagra = algo === 'CAGRA_HNSW' || algo === 'CAGRA_NN_DESCENT' || algo === 'CAGRA_IVF_PQ';
+        const isCagra = this.isCagraAlgorithm(algo);
         if (isLucene || isCagra) {
             return 20000;
         }
@@ -1051,7 +1077,7 @@ class BenchmarkDashboard {
             lines.push(`hnswBeamWidth: ${config.hnswBeamWidth ?? 'N/A'}`);
             lines.push(`hnswMergePolicy: ${config.hnswMergePolicy || 'NoMerge'}`);
             lines.push(`hnswRamBufferSizeMB: ${config.hnswRamBufferSizeMB ?? 20000}`);
-        } else if (algo === 'cagra_hnsw' || algo === 'CAGRA_HNSW') {
+        } else if (this.isCagraAlgoToRun(algo)) {
             lines.push(`cuvsCagraGraphBuildAlgo: ${config.cuvsCagraGraphBuildAlgo || 'NN_DESCENT'}`);
             lines.push(`cagraGraphDegree: ${config.cagraGraphDegree ?? 'N/A'}`);
             lines.push(`cagraIntermediateGraphDegree: ${config.cagraIntermediateGraphDegree ?? 'N/A'}`);
@@ -1074,7 +1100,7 @@ class BenchmarkDashboard {
         const algorithm = run.algorithm;
         const efSearch = run.efSearch || 'N/A';
 
-        if (algorithm === 'CAGRA_HNSW' || algorithm === 'CAGRA_NN_DESCENT' || algorithm === 'CAGRA_IVF_PQ') {
+        if (this.isCagraAlgorithm(algorithm)) {
             const graphDegree = run.cagraGraphDegree || 'N/A';
             const intermediateDegree = run.cagraIntermediateGraphDegree || 'N/A';
             const ramBufferMB = this.getRamBufferSizeMB(run);

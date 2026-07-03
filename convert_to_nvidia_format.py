@@ -1,27 +1,13 @@
 #!/usr/bin/env python3
 
 import json
+import math
 import os
 from pathlib import Path
 import argparse
 from typing import List, Dict, Optional, Tuple
 
-
-def create_index_name(config: Dict) -> str:
-    """Create index name from configuration parameters"""
-    algorithm = config.get('algoToRun', 'UNKNOWN')
-    ef_search = config.get('efSearch', 0)
-
-    if algorithm in ['LUCENE_HNSW', 'hnsw']:
-        beam_width = config.get('hnswBeamWidth', 0)
-        max_conn = config.get('hnswMaxConn', 0)
-        return f"beam{beam_width}-conn{max_conn}-ef{ef_search}"
-    elif algorithm in ['CAGRA_HNSW', 'cagra_hnsw']:
-        graph_degree = config.get('cagraGraphDegree', 0)
-        intermediate_degree = config.get('cagraIntermediateGraphDegree', 0)
-        return f"ef{ef_search}-deg{graph_degree}-ideg{intermediate_degree}"
-    else:
-        return f"ef{ef_search}"
+from algo_labels import create_index_name, get_algorithm_label
 
 
 def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, dataset_name: str = None) -> Tuple[str, Optional[str]]:
@@ -31,13 +17,7 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
 
     config = results_data['configuration']
     metrics = results_data['metrics']
-    algorithm = config['algoToRun']
-
-    if algorithm in ['cagra_hnsw', 'CAGRA_HNSW']:
-        build_algo = config.get('cuvsCagraGraphBuildAlgo', 'NN_DESCENT')
-        algorithm = 'CAGRA_IVF_PQ' if build_algo == 'IVF_PQ' else 'CAGRA_NN_DESCENT'
-    elif algorithm in ['hnsw', 'LUCENE_HNSW']:
-        algorithm = 'LUCENE_HNSW'
+    algorithm = get_algorithm_label(config)
 
     index_name = create_index_name(config)
 
@@ -52,7 +32,6 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
         raise KeyError("No mean-latency metric found")
 
     latency_ms = float(metrics[latency_key])
-    import math
     if math.isnan(latency_ms) or latency_ms <= 0:
         raise ValueError(f"Invalid latency value ({latency_ms}) in {results_json_path}; skipping this result.")
     throughput = 1000.0 / latency_ms

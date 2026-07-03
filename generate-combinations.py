@@ -14,6 +14,33 @@ parser.add_argument('--configs-dir', required=True, help='Configs output directo
 
 args = parser.parse_args()
 
+
+def skip_invalid_combination(current_variants):
+    """Return True when parameter combo should be skipped."""
+    int_deg_key = (
+        'cagraIntermediateGraphDegree'
+        if 'cagraIntermediateGraphDegree' in current_variants
+        else 'cagraIntermediateDegree'
+    )
+    if int_deg_key in current_variants and 'cagraGraphDegree' in current_variants:
+        if current_variants[int_deg_key] < current_variants['cagraGraphDegree']:
+            print(
+                f"\t\tSkipping combination: {int_deg_key} ({current_variants[int_deg_key]}) "
+                f"< cagraGraphDegree ({current_variants['cagraGraphDegree']})"
+            )
+            return True
+
+    if 'hnswMaxConn' in current_variants and 'hnswBeamWidth' in current_variants:
+        if current_variants['hnswMaxConn'] > current_variants['hnswBeamWidth']:
+            print(
+                f"\t\tSkipping combination: hnswMaxConn ({current_variants['hnswMaxConn']}) "
+                f"> hnswBeamWidth ({current_variants['hnswBeamWidth']})"
+            )
+            return True
+
+    return False
+
+
 print("Arguments captured:")
 print(f"data-dir: {args.data_dir}")
 print(f"datasets: {args.datasets}")
@@ -87,20 +114,10 @@ for sweep in sweeps:
                     for ef_index, ef_value in enumerate(efSearch_values):
                         current_variants = other_variants.copy()
                         current_variants['efSearch'] = ef_value
-                        
-                        # Skip if cagraIntermediateGraphDegree < cagraGraphDegree
-                        int_deg_key = 'cagraIntermediateGraphDegree' if 'cagraIntermediateGraphDegree' in current_variants else 'cagraIntermediateDegree'
-                        if int_deg_key in current_variants and 'cagraGraphDegree' in current_variants:
-                            if current_variants[int_deg_key] < current_variants['cagraGraphDegree']:
-                                print(f"\t\tSkipping combination: {int_deg_key} ({current_variants[int_deg_key]}) < cagraGraphDegree ({current_variants['cagraGraphDegree']})")
-                                continue
-                        
-                        # Skip if hnswMaxConn > hnswBeamWidth
-                        if 'hnswMaxConn' in current_variants and 'hnswBeamWidth' in current_variants:
-                            if current_variants['hnswMaxConn'] > current_variants['hnswBeamWidth']:
-                                print(f"\t\tSkipping combination: hnswMaxConn ({current_variants['hnswMaxConn']}) > hnswBeamWidth ({current_variants['hnswBeamWidth']})")
-                                continue
-                        
+
+                        if skip_invalid_combination(current_variants):
+                            continue
+
                         # Generate hash only from other_variants (excluding efSearch)
                         base_hash = hashlib.md5(json.dumps(other_variants, sort_keys=True).encode()).hexdigest()[:8]
                         hash_id = f"{base_hash}-ef{ef_value}"
@@ -175,20 +192,10 @@ for sweep in sweeps:
                 variant_values = list(algo_variants.values())
                 for combination in itertools.product(*variant_values):
                     current_variants = dict(zip(variant_keys, combination))
-                    
-                    # Skip if cagraIntermediateGraphDegree < cagraGraphDegree
-                    int_deg_key = 'cagraIntermediateGraphDegree' if 'cagraIntermediateGraphDegree' in current_variants else 'cagraIntermediateDegree'
-                    if int_deg_key in current_variants and 'cagraGraphDegree' in current_variants:
-                        if current_variants[int_deg_key] < current_variants['cagraGraphDegree']:
-                            print(f"\t\tSkipping combination: {int_deg_key} ({current_variants[int_deg_key]}) < cagraGraphDegree ({current_variants['cagraGraphDegree']})")
-                            continue
-                    
-                    # Skip if hnswMaxConn > hnswBeamWidth
-                    if 'hnswMaxConn' in current_variants and 'hnswBeamWidth' in current_variants:
-                        if current_variants['hnswMaxConn'] > current_variants['hnswBeamWidth']:
-                            print(f"\t\tSkipping combination: hnswMaxConn ({current_variants['hnswMaxConn']}) > hnswBeamWidth ({current_variants['hnswBeamWidth']})")
-                            continue
-                    
+
+                    if skip_invalid_combination(current_variants):
+                        continue
+
                     hash_id = hashlib.md5(json.dumps(current_variants, sort_keys=True).encode()).hexdigest()[:8]
                     
                     config = algo_invariants.copy()

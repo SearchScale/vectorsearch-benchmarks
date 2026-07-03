@@ -151,25 +151,30 @@ if [ ! -d "$SOLR_DIR" ]; then
   fi
 fi
 
-echo "Building Solr distTar from: $SOLR_DIR"
-(cd "$SOLR_DIR" && ./gradlew clean distTar) || { echo "Error: gradlew distTar failed"; exit 1; }
-rm -f "$BENCH_ROOT/$SOLR_ROOT.tgz"
-cp "$SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz" "$BENCH_ROOT/" || {
-    echo "Error: expected $SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz — adjust SOLR_ROOT if your build uses a different tarball name."
-    exit 1
-}
-echo "Copied Solr tarball to: $BENCH_ROOT/$SOLR_ROOT.tgz"
+if [ -f "$BENCH_ROOT/$SOLR_ROOT.tgz" ]; then
+  echo "Solr tarball already exists at $BENCH_ROOT/$SOLR_ROOT.tgz — skipping build."
+else
+  echo "Building Solr distTar from: $SOLR_DIR"
+  (cd "$SOLR_DIR" && ./gradlew clean distTar) || { echo "Error: gradlew distTar failed"; exit 1; }
+  cp "$SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz" "$BENCH_ROOT/" || {
+      echo "Error: expected $SOLR_DIR/solr/packaging/build/distributions/$SOLR_ROOT.tgz — adjust SOLR_ROOT if your build uses a different tarball name."
+      exit 1
+  }
+  echo "Copied Solr tarball to: $BENCH_ROOT/$SOLR_ROOT.tgz"
+fi
 
 # Use the javabin file generator to generate javabin files
-rm -rf $JAVABIN_FILES_DIR
-if [ ! -d "$JAVABIN_FILES_DIR" ]; then
-	  javabin_start_time=$(date +%s%N) # Record start time in nanoseconds
-	  java -jar $JFG_DIR/target/javabin-generator-1.0-SNAPSHOT-jar-with-dependencies.jar data_file=$DATASET_FILE output_dir=$JAVABIN_FILES_DIR batch_size=$BATCH_SIZE docs_count=$DOCS_COUNT threads=all
-	  javabin_end_time=$(date +%s%N)   # Record end time in nanoseconds
-	  javabin_duration=$(( (javabin_end_time - javabin_start_time) / 1000000 )) # Calculate duration in milliseconds
-	  echo "JavaBin preparation time: $javabin_duration ms"
-	  # Store the timing in a file for the benchmark script to read
-	  echo "$javabin_duration" > ${JAVABIN_FILES_DIR}_preparation_time.txt
+if [ -d "$JAVABIN_FILES_DIR" ] && [ "$(ls -A "$JAVABIN_FILES_DIR" 2>/dev/null | head -1)" ]; then
+  echo "Javabin batches already exist at $JAVABIN_FILES_DIR — skipping generation."
+else
+  rm -rf "$JAVABIN_FILES_DIR"
+  javabin_start_time=$(date +%s%N) # Record start time in nanoseconds
+  java -jar $JFG_DIR/target/javabin-generator-1.0-SNAPSHOT-jar-with-dependencies.jar data_file=$DATASET_FILE output_dir=$JAVABIN_FILES_DIR batch_size=$BATCH_SIZE docs_count=$DOCS_COUNT threads=all
+  javabin_end_time=$(date +%s%N)   # Record end time in nanoseconds
+  javabin_duration=$(( (javabin_end_time - javabin_start_time) / 1000000 )) # Calculate duration in milliseconds
+  echo "JavaBin preparation time: $javabin_duration ms"
+  # Store the timing in a file for the benchmark script to read
+  echo "$javabin_duration" > ${JAVABIN_FILES_DIR}_preparation_time.txt
 fi
 
 echo "************** Setup complete: $SOLR_URL **************"

@@ -177,12 +177,9 @@ if [ "$RUN_BENCHMARKS" = "true" ]; then
                             echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
                         fi
                     fi
-                    else
-                        echo "✗ Benchmark failed (check log for details)"
-                        echo "$SWEEP_NAME/$CONFIG_NAME: FAILED" >> "$SUMMARY_FILE"
-                    fi
-                    
+
                     echo "Log saved to: $LOG_FILE"
+                fi
             done
         fi
     done

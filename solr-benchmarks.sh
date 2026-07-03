@@ -15,14 +15,12 @@ JAVABIN_FILES_DIR="$2"
 URL="$3"
 RESULTS_DIR="$4"
 BENCH_ROOT="$(pwd)"
+# shellcheck source=scripts/env-python.sh
+source "$BENCH_ROOT/scripts/env-python.sh"
 
-# Use the cuvs-solr conda python if available (has numpy/pandas); fall back to system python3
-CUVS_PYTHON="${HOME}/miniforge3/envs/cuvs-solr/bin/python3"
-if [ -x "$CUVS_PYTHON" ]; then
-    PYTHON3="$CUVS_PYTHON"
-else
-    PYTHON3="python3"
-fi
+bench_debug() {
+    [ "${BENCHMARK_DEBUG:-}" = "1" ] && echo "DEBUG: $*"
+}
 
 # Check if config file exists
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -86,8 +84,8 @@ IVF_PQ_SCHEMA_ATTRS=$(jq -r '
   | join("\n")
 ' "$CONFIG_FILE")
 
-echo "DEBUG: CLEAN_INDEX_DIRECTORY=$CLEAN_INDEX_DIRECTORY"
-echo "DEBUG: SKIP_INDEXING=$SKIP_INDEXING"
+bench_debug "CLEAN_INDEX_DIRECTORY=$CLEAN_INDEX_DIRECTORY"
+bench_debug "SKIP_INDEXING=$SKIP_INDEXING"
 
 # Extract Solr URL from the update URL parameter
 SOLR_URL=$(echo "$URL" | sed 's|/solr/.*||')
@@ -146,7 +144,7 @@ if [ "$KNN_ALGORITHM" = "hnsw" ]; then
 </schema>
 EOF
 else
-    # For CAGRA_HNSW: graph build algo + optional IVF-PQ params from generated config JSON.
+    # CAGRA (algoToRun cagra_hnsw): graph build algo + optional IVF-PQ params from config JSON.
     cat > temp-configset/managed-schema << EOF
 <?xml version="1.0" ?>
 <schema name="schema-densevector" version="1.7">
@@ -236,7 +234,7 @@ if [ "$KNN_ALGORITHM" = "hnsw" ]; then
 </config>
 EOF
 else
-    # For CAGRA_HNSW: Keep codecFactory as before
+    # CAGRA (algoToRun cagra_hnsw): keep codecFactory as before.
     cat > temp-configset/solrconfig.xml << EOF
 <?xml version="1.0" ?>
 <config>
@@ -302,7 +300,7 @@ cp modules/cuvs/lib/*.jar server/solr-webapp/webapp/WEB-INF/lib/
 # Default off for this GPU benchmark; set SOLR_SECURITY_MANAGER_ENABLED=true only if you extend server/etc/security.policy.
 SOLR_SECURITY_MANAGER_ENABLED="${SOLR_SECURITY_MANAGER_ENABLED:-false}"
 export SOLR_SECURITY_MANAGER_ENABLED
-echo "DEBUG: SOLR_SECURITY_MANAGER_ENABLED=$SOLR_SECURITY_MANAGER_ENABLED"
+bench_debug "SOLR_SECURITY_MANAGER_ENABLED=$SOLR_SECURITY_MANAGER_ENABLED"
 SOLR_HEAP_SIZE=${SOLR_HEAP_SIZE:-29G}
 bin/solr start -m "$SOLR_HEAP_SIZE" --force
 cd "$BENCH_ROOT" || exit 1
@@ -380,7 +378,8 @@ fi # End of skipIndexing check
 
 # Write configuration into results.json for all runs (including skip-indexing ones).
 # For skip-indexing runs, run_queries.py will merge query metrics into this file.
-# The backfill in run_sweep.sh will additionally copy indexing-time from the build run.
+# Indexing-time backfill for skip runs happens below; repair older runs with:
+#   python3 fix_backfill_indexing_times.py <run_id>
 $PYTHON3 << EOF
 import json
 import os
@@ -530,16 +529,16 @@ fi
 # Cleanup
 rm -rf "$BENCH_ROOT/temp-configset"
 
-echo "DEBUG: About to check CLEAN_INDEX_DIRECTORY condition: '$CLEAN_INDEX_DIRECTORY'"
+bench_debug "About to check CLEAN_INDEX_DIRECTORY condition: '$CLEAN_INDEX_DIRECTORY'"
 if [ "$CLEAN_INDEX_DIRECTORY" = "true" ]; then
-    echo "DEBUG: CLEAN_INDEX_DIRECTORY is true, stopping and cleaning Solr"
+    bench_debug "CLEAN_INDEX_DIRECTORY is true, stopping and cleaning Solr"
     cd "$BENCH_ROOT/$SOLR_ROOT" || exit 1
     bin/solr stop -p 8983
     cd "$BENCH_ROOT" || exit 1
     rm -rf "$BENCH_ROOT/$SOLR_ROOT"
     echo "Stopped Solr and cleaned it up..."
 else
-    echo "DEBUG: CLEAN_INDEX_DIRECTORY is false, preserving Solr for reuse"
+    bench_debug "CLEAN_INDEX_DIRECTORY is false, preserving Solr for reuse"
 fi
 
 wait

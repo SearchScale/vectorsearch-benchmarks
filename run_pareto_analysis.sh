@@ -1,12 +1,7 @@
 #!/bin/bash
 
-# Use the cuvs-solr conda python if available (has numpy/pandas); fall back to system python3
-CUVS_PYTHON="${HOME}/miniforge3/envs/cuvs-solr/bin/python3"
-if [ -x "$CUVS_PYTHON" ]; then
-    PYTHON3="$CUVS_PYTHON"
-else
-    PYTHON3="python3"
-fi
+# shellcheck source=scripts/env-python.sh
+source "$(cd "$(dirname "$0")" && pwd)/scripts/env-python.sh"
 
 # NVIDIA Pareto Analysis Workflow
 # Converts benchmark results to NVIDIA format, runs Pareto analysis, and generates plots.
@@ -141,29 +136,7 @@ import csv
 import json
 import glob
 
-def get_algorithm_label(config):
-    """Return the same algorithm label that convert_to_nvidia_format.py produces."""
-    algo = config.get('algoToRun', 'UNKNOWN')
-    if algo in ['cagra_hnsw', 'CAGRA_HNSW']:
-        build_algo = config.get('cuvsCagraGraphBuildAlgo', 'NN_DESCENT')
-        return 'CAGRA_IVF_PQ' if build_algo == 'IVF_PQ' else 'CAGRA_NN_DESCENT'
-    elif algo in ['hnsw', 'LUCENE_HNSW']:
-        return 'LUCENE_HNSW'
-    return algo
-
-def create_index_name_from_config(config):
-    algorithm = config.get('algoToRun', 'UNKNOWN')
-    ef_search = config.get('efSearch', 0)
-    if algorithm in ['LUCENE_HNSW', 'hnsw']:
-        beam_width = config.get('hnswBeamWidth', 0)
-        max_conn = config.get('hnswMaxConn', 0)
-        return f'beam{beam_width}-conn{max_conn}-ef{ef_search}'
-    elif algorithm in ['CAGRA_HNSW', 'cagra_hnsw']:
-        graph_degree = config.get('cagraGraphDegree', 0)
-        intermediate_degree = config.get('cagraIntermediateGraphDegree', 0)
-        return f'ef{ef_search}-deg{graph_degree}-ideg{intermediate_degree}'
-    else:
-        return f'ef{ef_search}'
+from algo_labels import create_index_name, get_algorithm_label, is_cagra_label
 
 intermediate_dir = '${INTERMEDIATE_DIR}/${DATASET_NAME}'
 base_results_dir = '${RESULTS_DIR}/${SWEEP_ID}'
@@ -205,11 +178,8 @@ for algorithm, pareto_indices in pareto_runs_by_algo.items():
             continue
         for variant in [algorithm, algorithm.upper(), algorithm.lower()]:
             benchmark_dirs.extend(glob.glob(f'{results_dir}/{variant}-*'))
-        if algorithm == 'CAGRA_NN_DESCENT':
-            benchmark_dirs.extend(glob.glob(f'{results_dir}/cagra_hnsw-*'))
-        elif algorithm == 'CAGRA_IVF_PQ':
-            benchmark_dirs.extend(glob.glob(f'{results_dir}/cagra_hnsw-*'))
-        elif algorithm == 'CAGRA_HNSW':
+        if is_cagra_label(algorithm):
+            # Result dirs still use legacy cagra_hnsw-* prefix regardless of build mode.
             benchmark_dirs.extend(glob.glob(f'{results_dir}/cagra_hnsw-*'))
         elif algorithm == 'LUCENE_HNSW':
             benchmark_dirs.extend(glob.glob(f'{results_dir}/hnsw-*'))
@@ -226,7 +196,7 @@ for algorithm, pareto_indices in pareto_runs_by_algo.items():
                     results_data = json.load(f)
                 config = results_data['configuration']
                 if get_algorithm_label(config) == algorithm:
-                    index_name = create_index_name_from_config(config)
+                    index_name = create_index_name(config)
                     if index_name not in index_to_dir:
                         index_to_dir[index_name] = benchmark_dir
             except Exception as e:
