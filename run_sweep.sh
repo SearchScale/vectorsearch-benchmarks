@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export MAVEN_OPTS="-Xmx80g -Xms8g \
+export MAVEN_OPTS="-Xmx256g -Xms64g \
   -XX:+UseG1GC \
   -XX:MinHeapFreeRatio=5 \
   -XX:MaxHeapFreeRatio=15 \
