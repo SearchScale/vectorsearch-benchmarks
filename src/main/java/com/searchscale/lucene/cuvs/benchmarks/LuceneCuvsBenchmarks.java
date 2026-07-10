@@ -2,9 +2,6 @@ package com.searchscale.lucene.cuvs.benchmarks;
 
 import static org.apache.lucene.index.VectorSimilarityFunction.EUCLIDEAN;
 
-import com.nvidia.cuvs.CuVSIvfPqIndexParams;
-import com.nvidia.cuvs.CuVSIvfPqParams;
-import com.nvidia.cuvs.CuVSIvfPqSearchParams;
 import com.nvidia.cuvs.lucene.AcceleratedHNSWParams;
 import com.nvidia.cuvs.lucene.CuVS2510GPUSearchCodec;
 import com.nvidia.cuvs.lucene.GPUKnnFloatVectorQuery;
@@ -89,16 +86,22 @@ public class LuceneCuvsBenchmarks {
    */
   private static void setPerThreadRAMLimit(IndexWriterConfig config, int limitMB) {
     try {
+      // First, try to find the field in IndexWriterConfig
       java.lang.reflect.Field field = null;
       Class<?> clazz = config.getClass();
+
+      // Try to find the field in the class hierarchy
       while (clazz != null && field == null) {
         try {
           field = clazz.getDeclaredField("perThreadHardLimitMB");
         } catch (NoSuchFieldException e) {
+          // Try superclass
           clazz = clazz.getSuperclass();
         }
       }
+
       if (field == null) {
+        // If not found in IndexWriterConfig, try LiveIndexWriterConfig
         clazz = config.getClass().getSuperclass();
         while (clazz != null && field == null) {
           try {
@@ -108,6 +111,7 @@ public class LuceneCuvsBenchmarks {
           }
         }
       }
+
       if (field != null) {
         field.setAccessible(true);
         field.setInt(config, limitMB);
@@ -171,67 +175,6 @@ public class LuceneCuvsBenchmarks {
     log.info("Index pre-warm completed in {} ms", System.currentTimeMillis() - start);
   }
 
-  // ── Writer-config helpers ──────────────────────────────────────────────────
-
-  /**
-   * Builds an {@link IndexWriterConfig} for the flush phase.
-   * Uses {@link NoMergePolicy} unless {@code enableTieredMerge} is set,
-   * in which case background auto-merges are allowed during indexing.
-   * forceMerge is never triggered here — that is the responsibility of
-   * the separate merge writer created in {@code main()}.
-   */
-  private static IndexWriterConfig buildFlushWriterConfig(
-      BenchmarkConfiguration config, Codec codec) {
-    IndexWriterConfig iwc = new IndexWriterConfig(new StandardAnalyzer());
-    iwc.setCodec(codec);
-    iwc.setMaxBufferedDocs(config.flushFreq);
-    iwc.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
-    if (config.enableTieredMerge) {
-      iwc.setMergePolicy(new TieredMergePolicy());
-    } else {
-      iwc.setMergePolicy(NoMergePolicy.INSTANCE);
-    }
-    setPerThreadRAMLimit(iwc, 10240); // 10 GB per thread
-    if (config.enableIndexWriterInfoStream) {
-      iwc.setInfoStream(new PrintStreamInfoStream(System.out));
-    }
-    log.info(
-        "Configured flush writer — MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit: {}"
-            + " MB",
-        iwc.getMaxBufferedDocs(),
-        iwc.getRAMBufferSizeMB(),
-        iwc.getRAMPerThreadHardLimitMB());
-    return iwc;
-  }
-
-  /**
-   * Builds an {@link IndexWriterConfig} for the forceMerge phase.
-   * Always uses a {@link TieredMergePolicy} tuned so that the policy ceiling
-   * never silently caps a single-segment merge of a large index.
-   */
-  private static IndexWriterConfig buildMergeWriterConfig(
-      BenchmarkConfiguration config, Codec mergeCodec) {
-    IndexWriterConfig iwc = new IndexWriterConfig(new StandardAnalyzer());
-    iwc.setCodec(mergeCodec);
-    TieredMergePolicy tmp = new TieredMergePolicy();
-    if (config.forceMerge == 1) {
-      // With 10M x 1536-dim vectors the full index is ~60+ GiB.
-      // Raise the ceiling above the full index size so the policy never
-      // silently caps forceMerge(1) at ~6 segments.
-      tmp.setMaxMergedSegmentMB(150 * 1024); // 150 GiB in MB
-      tmp.setSegmentsPerTier(2);
-      tmp.setMaxMergeAtOnce(500); // merge all segments in one round
-    }
-    iwc.setMergePolicy(tmp);
-    setPerThreadRAMLimit(iwc, 10240);
-    if (config.enableIndexWriterInfoStream) {
-      iwc.setInfoStream(new PrintStreamInfoStream(System.out));
-    }
-    return iwc;
-  }
-
-  // ── Main ──────────────────────────────────────────────────────────────────
-
   public static void main(String[] args) throws Throwable {
 
     if (args.length < 1 || args.length > 3) {
@@ -242,13 +185,15 @@ public class LuceneCuvsBenchmarks {
     BenchmarkConfiguration config =
         Util.newObjectMapper().readValue(new File(args[0]), BenchmarkConfiguration.class);
 
+    // Override benchmarkID if provided as command line argument
     if (args.length >= 2) {
       config.benchmarkID = args[1];
     }
+
+    // Override resultsDirectory if provided as command line argument
     if (args.length >= 3) {
       config.resultsDirectory = args[2];
     }
-
     Map<String, Object> metrics = new LinkedHashMap<String, Object>();
     List<QueryResult> queryResults = Collections.synchronizedList(new ArrayList<QueryResult>());
     config.debugPrintArguments();
@@ -264,17 +209,21 @@ public class LuceneCuvsBenchmarks {
 
     long parseStartTime = System.currentTimeMillis();
 
+    // Check if dataset is .fvecs or .fbin format and handle it directly
     if (config.datasetFile.contains("fvecs") || config.datasetFile.contains("fbin")) {
       log.info("Detected .fvecs or .fbin file format. Loading directly without MapDB...");
+
       if (config.loadVectorsInMemory) {
         log.info("Loading all vectors in memory (loadVectorsInMemory is enabled)");
         long start = System.currentTimeMillis();
         List<float[]> loadedVectors = new ArrayList<float[]>();
+
         if (config.datasetFile.contains("fbin")) {
           FBIvecsReader.readFbin(config.datasetFile, config.numDocs, loadedVectors);
         } else {
           FBIvecsReader.readFvecs(config.datasetFile, config.numDocs, loadedVectors);
         }
+
         vectorProvider = new MemoryVectorProvider(loadedVectors);
         log.info(
             "Time taken to load {} vectors in-memory: {} ms",
@@ -284,10 +233,13 @@ public class LuceneCuvsBenchmarks {
         log.info("Creating streaming vector provider (loadVectorsInMemory is disabled)");
         vectorProvider = new StreamingVectorProvider(config.datasetFile, config.numDocs);
       }
+
       titles.add(config.vectorColName);
     } else {
+      // Use MapDB for non-.fvecs files (CSV, bvecs, etc.)
       DB db;
       IndexTreeList<float[]> vectors;
+
       if (new File(datasetMapdbFile).exists() == false) {
         log.info("Mapdb file not found for dataset. Preparing one ...");
         db = DBMaker.fileDB(datasetMapdbFile).make();
@@ -304,6 +256,7 @@ public class LuceneCuvsBenchmarks {
         vectors = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
         log.info("{} vectors available from the mapdb file", vectors.size());
       }
+
       if (config.loadVectorsInMemory) {
         log.info(
             "Mapdb loaded. Now loading all vectors in memory (loadVectorsInMemory is enabled)");
@@ -326,85 +279,74 @@ public class LuceneCuvsBenchmarks {
         (System.currentTimeMillis() - parseStartTime));
 
     try {
-      // [2] Benchmarking setup — indexing
+      // [2] Benchmarking setup
       if (!config.skipIndexing) {
+        IndexWriter writer;
 
-        // ── Phase 1: flush (no forceMerge) ────────────────────────────────────
-        // Build the flush writer with the flush-time codec. The merge policy is
-        // NoMergePolicy (or TieredMergePolicy if enableTieredMerge), but forceMerge
-        // is never called on this writer. That happens in Phase 2 below, using a
-        // separate writer that carries the merge-time nLists/nProbes.
-        Codec flushCodec = getCodec(config, false);
-        IndexWriterConfig flushWriterConfig = buildFlushWriterConfig(config, flushCodec);
+        // HNSW Writer:
+        IndexWriterConfig indexWriterConfig = new IndexWriterConfig(new StandardAnalyzer());
+        indexWriterConfig.setCodec(getCodec(config));
+        indexWriterConfig.setMaxBufferedDocs(config.flushFreq);
+        indexWriterConfig.setRAMBufferSizeMB(IndexWriterConfig.DISABLE_AUTO_FLUSH);
 
-        Directory indexDirectory;
-        if (!config.createIndexInMemory) {
-          indexDirectory = FSDirectory.open(Path.of(config.indexDirPath));
+        if (config.forceMerge > 0 || config.enableTieredMerge) {
+          TieredMergePolicy tmp = new TieredMergePolicy();
+          if (config.forceMerge >= 1) {
+            // With 10M x 1536-dim vectors the full index is ~60+ GiB.
+            // Raise the ceiling above the full index size so the policy never
+            // silently caps a forceMerge to the requested segment count.
+            tmp.setMaxMergedSegmentMB(150 * 1024); // 150 GiB in MB
+            tmp.setSegmentsPerTier(2);
+            tmp.setMaxMergeAtOnce(500); // merge all segments in one round
+          }
+          indexWriterConfig.setMergePolicy(tmp);
         } else {
-          indexDirectory = new ByteBuffersDirectory();
+          indexWriterConfig.setMergePolicy(NoMergePolicy.INSTANCE);
         }
 
-        IndexWriter flushWriter = new IndexWriter(indexDirectory, flushWriterConfig);
-        var formatName = flushWriter.getConfig().getCodec().knnVectorsFormat().getName();
+        // Use reflection to bypass the 2048MB per-thread limit and set it to 60GB
+        setPerThreadRAMLimit(indexWriterConfig, 61440); // 60GB per thread
+        log.info(
+            "Configured HNSW writer - MaxBufferedDocs: {}, RAMBufferSizeMB: {}, PerThreadRAMLimit:"
+                + " {} MB",
+            config.flushFreq,
+            indexWriterConfig.getRAMBufferSizeMB(),
+            indexWriterConfig.getRAMPerThreadHardLimitMB());
+
+        if (!config.createIndexInMemory) {
+          Path hnswIndex = Path.of(config.indexDirPath);
+          writer = new IndexWriter(FSDirectory.open(hnswIndex), indexWriterConfig);
+        } else {
+          writer = new IndexWriter(new ByteBuffersDirectory(), indexWriterConfig);
+        }
+
+        if (config.enableIndexWriterInfoStream) {
+          indexWriterConfig.setInfoStream(new PrintStreamInfoStream(System.out));
+        }
+
+        var formatName = writer.getConfig().getCodec().knnVectorsFormat().getName();
+
         log.info("Indexing documents using {} ...", formatName);
-
-        long totalBuildStartTime = System.currentTimeMillis();
-
         long indexStartTime = System.currentTimeMillis();
-        indexDocuments(flushWriter, config, titles, vectorProvider);
+        indexDocuments(writer, config, titles, vectorProvider);
         long indexTimeTaken = System.currentTimeMillis() - indexStartTime;
+
         metrics.put(config.algoToRun + "-indexing-time", indexTimeTaken);
-        log.info("Time taken for flush phase: {} ms", indexTimeTaken);
 
-        // ── Phase 2: forceMerge with merge-time codec ──────────────────────────
-        // Opens a fresh IndexWriter on the same directory so the codec — and
-        // therefore nLists/nProbes — can differ from the flush writer above.
-        // Only runs when forceMerge > 0.
-        if (config.forceMerge > 0) {
-          int effectiveNLists =
-              config.cuVSIvfPqIndexParamsForceMergeNLists > 0
-                  ? config.cuVSIvfPqIndexParamsForceMergeNLists
-                  : config.cuVSIvfPqIndexParamsNLists;
-          int effectiveNProbes =
-              config.cuVSIvfPqSearchParamsForceMergeNProbes > 0
-                  ? config.cuVSIvfPqSearchParamsForceMergeNProbes
-                  : config.cuVSIvfPqSearchParamsNProbes;
-          log.info(
-              "Starting forceMerge phase — target segments: {}, nLists: {} (flush was: {}),"
-                  + " nProbes: {} (flush was: {})",
-              config.forceMerge,
-              effectiveNLists,
-              config.cuVSIvfPqIndexParamsNLists,
-              effectiveNProbes,
-              config.cuVSIvfPqSearchParamsNProbes);
+        log.info("Time taken for index building (end to end): {} ms", indexTimeTaken);
 
-          Codec mergeCodec = getCodec(config, true);
-          IndexWriterConfig mergeWriterConfig = buildMergeWriterConfig(config, mergeCodec);
-          IndexWriter mergeWriter = new IndexWriter(indexDirectory, mergeWriterConfig);
-          long mergeStart = System.currentTimeMillis();
-          mergeWriter.forceMerge(config.forceMerge);
-          mergeWriter.commit();
-          mergeWriter.close();
-          long mergeTimeTaken = System.currentTimeMillis() - mergeStart;
-          metrics.put(config.algoToRun + "-forceMerge-time", mergeTimeTaken);
-          log.info("forceMerge completed in {} ms", mergeTimeTaken);
-        }
-
-        long totalBuildTimeTaken = System.currentTimeMillis() - totalBuildStartTime;
-        metrics.put(config.algoToRun + "-indexing-time-total", totalBuildTimeTaken);
-        log.info("Total index build time (flush + forceMerge): {} ms", totalBuildTimeTaken);
-
-        // ── Index size reporting ───────────────────────────────────────────────
         try {
-          if (indexDirectory instanceof FSDirectory) {
+          if (writer.getDirectory() instanceof FSDirectory) {
             Path indexPath = Paths.get(config.indexDirPath);
             long directorySize;
             try (var stream = Files.walk(indexPath, FileVisitOption.FOLLOW_LINKS)) {
               directorySize =
                   stream.filter(p -> p.toFile().isFile()).mapToLong(p -> p.toFile().length()).sum();
             }
+
             double directorySizeGB = directorySize / 1_073_741_824.0;
             metrics.put(config.algoToRun + "-index-size", directorySizeGB);
+
             log.info("Size of {}: {} GB", indexPath.toString(), directorySizeGB);
           }
         } catch (IOException e) {
@@ -424,15 +366,20 @@ public class LuceneCuvsBenchmarks {
           Runtime.getRuntime().totalMemory() / (1024 * 1024),
           (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024));
 
-      // [3] Search — one run per efSearch value
+      // Resolve the list of efSearch values to iterate over.
+      // The index is built once above; we search it once per efSearch value.
       List<Integer> efSearchValues = config.getEfSearchValues();
       log.info(
           "Will run search with {} efSearch value(s): {}", efSearchValues.size(), efSearchValues);
 
+      // Read ground truth once (shared across all efSearch runs)
       List<int[]> groundTruth = Util.readGroundTruthFile(config.groundTruthFile);
+
       Directory indexDir = MMapDirectory.open(Path.of(config.indexDirPath));
       log.info("Index directory is: {} (using memory-mapped files)", indexDir);
 
+      // Snapshot indexing-only metrics before the loop so that each efSearch run
+      // starts from the same base and doesn't inherit results from prior runs.
       Map<String, Object> indexingMetrics = new LinkedHashMap<>(metrics);
 
       for (int efSearch : efSearchValues) {
@@ -442,9 +389,12 @@ public class LuceneCuvsBenchmarks {
         dropPageCache();
         prewarmIndex(config.indexDirPath);
 
+        // Fresh collections for this efSearch run
         List<QueryResult> efSearchQueryResults =
             Collections.synchronizedList(new ArrayList<QueryResult>());
         Map<String, Object> efSearchMetrics = new LinkedHashMap<String, Object>();
+
+        // Copy over indexing metrics (only) so they appear in every result file
         efSearchMetrics.putAll(indexingMetrics);
         efSearchMetrics.put("efSearch", efSearch);
 
@@ -459,19 +409,28 @@ public class LuceneCuvsBenchmarks {
                 .writeValueAsString(Map.of("configuration", config, "metrics", efSearchMetrics));
 
         if (config.saveResultsOnDisk) {
+          // Use the resultsDirectory directly if provided
           String resultsDir = config.resultsDirectory != null ? config.resultsDirectory : "results";
+
+          // When there are multiple efSearch values, create a subdirectory per value
           if (efSearchValues.size() > 1) {
             resultsDir = resultsDir + "/efSearch_" + efSearch;
           }
+
           File results = new File(resultsDir);
           if (!results.exists()) {
             results.mkdirs();
           }
+
+          // Save results.json directly to the specified directory
           FileUtils.write(
               new File(results.toString() + "/results.json"),
               resultsJson,
               Charset.forName("UTF-8"));
+
+          // Save CSV with neighbors data
           Util.writeCSV(efSearchQueryResults, results.toString() + "/neighbors.csv");
+
           log.info("Results for efSearch={} saved to directory: {}", efSearch, resultsDir);
         }
 
@@ -481,6 +440,7 @@ public class LuceneCuvsBenchmarks {
             efSearchMetrics,
             resultsJson);
 
+        // Accumulate per-efSearch metrics into the top-level metrics map
         for (Map.Entry<String, Object> entry : efSearchMetrics.entrySet()) {
           if (efSearchValues.size() > 1) {
             metrics.put("efSearch_" + efSearch + "/" + entry.getKey(), entry.getValue());
@@ -491,10 +451,14 @@ public class LuceneCuvsBenchmarks {
       }
 
       log.info("\n-----\nOverall metrics: {}\n-----", metrics);
+
+      // Close the index directory before cleaning
       indexDir.close();
 
+      // Clean index directory after benchmarks complete if requested
       if (config.cleanIndexDirectory && !config.createIndexInMemory) {
         Path indexPath = Path.of(config.indexDirPath);
+
         if (indexPath != null) {
           try {
             log.info("Cleaning index directory: {}", indexPath);
@@ -510,24 +474,15 @@ public class LuceneCuvsBenchmarks {
         vectorProvider.close();
       }
     }
-
     if (executorService != null && !executorService.isShutdown()) {
       executorService.shutdown();
       executorService.close();
-      // Temporary fix: prevents process getting stuck on LUCENE_HNSW with multiple merge threads
+      // Need the following as a temporary fix for now as the process gets stuck in case of
+      // LUCENE_HNSW when using multiple merge threads
       System.exit(0);
     }
   }
 
-  // ── Indexing (flush only — forceMerge intentionally removed) ──────────────
-
-  /**
-   * Indexes all documents into the given writer, commits, and closes it.
-   *
-   * <p>forceMerge is intentionally <b>not</b> called here. It is handled in
-   * {@code main()} by a separate {@link IndexWriter} that carries different
-   * IVF-PQ parameters (nLists / nProbes) via the merge codec.
-   */
   private static void indexDocuments(
       IndexWriter writer,
       BenchmarkConfiguration config,
@@ -551,7 +506,7 @@ public class LuceneCuvsBenchmarks {
             while (true) {
               int id = numDocsIndexed.getAndIncrement();
               if (id >= numDocsToIndex) {
-                break;
+                break; // done
               }
               float[] vector;
               try {
@@ -570,6 +525,7 @@ public class LuceneCuvsBenchmarks {
                       (id + 1),
                       writer.getPendingNumDocs());
                 }
+                // Log when we expect a flush
                 if ((id + 1) == config.flushFreq || (id + 1) == 2 * config.flushFreq) {
                   log.info("Expected flush point reached at {} documents", (id + 1));
                 }
@@ -582,12 +538,15 @@ public class LuceneCuvsBenchmarks {
     pool.shutdown();
     pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
+    if (config.forceMerge > 0) {
+      log.info("Force merge is enabled, force merging into " + config.forceMerge + " segments");
+      writer.forceMerge(config.forceMerge);
+    }
+
     log.info("Calling commit.");
     writer.commit();
     writer.close();
   }
-
-  // ── Search ────────────────────────────────────────────────────────────────
 
   /**
    * Runs search queries against the given index directory using the specified efSearch value.
@@ -618,6 +577,7 @@ public class LuceneCuvsBenchmarks {
         log.info("No mapdb file found for queries. Reading source files to build one ...");
         db = DBMaker.fileDB(queryMapdbFile).make();
         queries = db.indexTreeList("vectors", SERIALIZER.FLOAT_ARRAY).createOrOpen();
+
         if (config.queryFile.endsWith(".csv")) {
           for (String line :
               FileUtils.readFileToString(new File(config.queryFile), "UTF-8").split("\n")) {
@@ -657,6 +617,7 @@ public class LuceneCuvsBenchmarks {
                 }
                 try {
                   KnnFloatVectorQuery query;
+
                   if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
                     query =
                         new GPUKnnFloatVectorQuery(
@@ -682,11 +643,12 @@ public class LuceneCuvsBenchmarks {
                     throw new RuntimeException("Problem during executing a query: ", e);
                   }
                   double searchTimeTakenMs = (System.nanoTime() - searchStartTime) / 1_000_000.0;
-
                   if (currentQueryId >= config.numWarmUpQueries) {
                     queryLatencies.put(currentQueryId, searchTimeTakenMs);
                   }
                   int finishedCount = queriesFinished.incrementAndGet();
+
+                  // Log progress every 1000 queries
                   if (finishedCount % 1000 == 0 || finishedCount == config.numQueriesToRun) {
                     log.info(
                         "Done querying "
@@ -700,6 +662,7 @@ public class LuceneCuvsBenchmarks {
                   List<Integer> neighbors = new ArrayList<>();
                   List<Float> scores = new ArrayList<>();
 
+                  // Debug: Log search results for first query
                   if (queryId.get() == 0) {
                     log.info(
                         "Debug: First query returned "
@@ -730,6 +693,7 @@ public class LuceneCuvsBenchmarks {
                     retrievalLatencies.put(currentQueryId, retrievalTimeTakenMs);
                   }
 
+                  // Debug: Log results for all queries
                   log.debug(
                       "Query "
                           + currentQueryId
@@ -776,6 +740,7 @@ public class LuceneCuvsBenchmarks {
 
       pool.shutdown();
       pool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
+
       long endTime = System.currentTimeMillis();
 
       metrics.put(config.algoToRun + "-query-time", (endTime - startTime));
@@ -794,9 +759,11 @@ public class LuceneCuvsBenchmarks {
               ? 0.0
               : new ArrayList<>(retrievalLatencies.values()).stream().reduce(0.0, Double::sum)
                   / retrievalLatencies.size();
+
       metrics.put(config.algoToRun + "-mean-latency", avgLatency);
       metrics.put(config.algoToRun + "-mean-retrieval-latency", avgRetLatency);
 
+      // Log warning if no queries completed successfully
       if (queryLatencies.isEmpty()) {
         log.error(
             "WARNING: Zero queries completed successfully! "
@@ -819,19 +786,7 @@ public class LuceneCuvsBenchmarks {
     }
   }
 
-  // ── Codec factory ─────────────────────────────────────────────────────────
-
-  /**
-   * Builds the Lucene {@link Codec} for the given phase.
-   *
-   * @param config   benchmark configuration
-   * @param forMerge {@code true}  → substitute
-   *                 {@link BenchmarkConfiguration#cuVSIvfPqIndexParamsForceMergeNLists} and
-   *                 {@link BenchmarkConfiguration#cuVSIvfPqSearchParamsForceMergeNProbes}
-   *                 when non-zero (merge-time codec);
-   *                 {@code false} → always use the flush-time values.
-   */
-  private static Codec getCodec(BenchmarkConfiguration config, boolean forMerge) throws Exception {
+  private static Codec getCodec(BenchmarkConfiguration config) throws Exception {
     if (config.algoToRun.equals(Codex.LUCENE_HNSW)) {
       log.info("<<< Using Lucene101Codec >>>");
       return new Lucene101Codec(Mode.BEST_SPEED) {
@@ -852,97 +807,51 @@ public class LuceneCuvsBenchmarks {
           return new HighDimensionKnnVectorsFormat(knnFormat, config.vectorDimension);
         }
       };
-    }
-
-    // ── Resolve effective nLists / nProbes ─────────────────────────────────
-    int effectiveNLists =
-        (forMerge && config.cuVSIvfPqIndexParamsForceMergeNLists > 0)
-            ? config.cuVSIvfPqIndexParamsForceMergeNLists
-            : config.cuVSIvfPqIndexParamsNLists;
-
-    int effectiveNProbes =
-        (forMerge && config.cuVSIvfPqSearchParamsForceMergeNProbes > 0)
-            ? config.cuVSIvfPqSearchParamsForceMergeNProbes
-            : config.cuVSIvfPqSearchParamsNProbes;
-
-    if (forMerge) {
-      log.info(
-          "<<< Merge codec — nLists: {} (flush: {}), nProbes: {} (flush: {}) >>>",
-          effectiveNLists,
-          config.cuVSIvfPqIndexParamsNLists,
-          effectiveNProbes,
-          config.cuVSIvfPqSearchParamsNProbes);
-    }
-
-    CuVSIvfPqIndexParams ciip =
-        new CuVSIvfPqIndexParams.Builder()
-            .withAddDataOnBuild(config.cuVSIvfPqIndexParamsAddDataOnBuild)
-            .withCodebookKind(config.cuVSIvfPqIndexParamsCodebookKind)
-            .withConservativeMemoryAllocation(
-                config.cuVSIvfPqIndexParamsConservativeMemoryAllocation)
-            .withForceRandomRotation(config.cuVSIvfPqIndexParamsForceRandomRotation)
-            .withKmeansNIters(config.cuVSIvfPqIndexParamsKmeansNIters)
-            .withKmeansTrainsetFraction(config.cuVSIvfPqIndexParamsKmeansTrainsetFraction)
-            .withMaxTrainPointsPerPqCode(config.cuVSIvfPqIndexParamsMaxTrainPointsPerPqCode)
-            .withMetric(config.cuVSIvfPqIndexParamsMetric)
-            .withMetricArg(config.cuVSIvfPqIndexParamsMetricArg)
-            .withNLists(effectiveNLists) // ← flush or merge value
-            .withPqBits(config.cuVSIvfPqIndexParamsPqBits)
-            .withPqDim(config.cuVSIvfPqIndexParamsPqDim)
-            .build();
-
-    CuVSIvfPqSearchParams cisp =
-        new CuVSIvfPqSearchParams.Builder()
-            .withInternalDistanceDtype(config.cuVSIvfPqSearchParamsInternalDistanceDtype)
-            .withLutDtype(config.cuVSIvfPqSearchParamsLutDtype)
-            .withNProbes(effectiveNProbes) // ← flush or merge value
-            .withPreferredShmemCarveout(config.cuVSIvfPqSearchParamsPreferredShmemCarveout)
-            .build();
-
-    CuVSIvfPqParams cip =
-        new CuVSIvfPqParams.Builder()
-            .withCuVSIvfPqIndexParams(ciip)
-            .withCuVSIvfPqSearchParams(cisp)
-            .withRefinementRate(config.cuVSIvfPqParamsRefinementRate)
-            .build();
-
-    AcceleratedHNSWParams params =
-        new AcceleratedHNSWParams.Builder()
-            .withWriterThreads(config.cuvsWriterThreads)
-            .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
-            .withGraphDegree(config.cagraGraphDegree)
-            .withHNSWLayer(config.cagraHnswLayers)
-            .withMaxConn(config.hnswMaxConn)
-            .withBeamWidth(config.hnswBeamWidth)
-            .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
-            .withCuVSIvfPqParams(cip)
-            .build();
-
-    if (config.algoToRun.equals(Codex.CAGRA_HNSW)) {
-      log.info("<<< Using Lucene101AcceleratedHNSWCodec >>>");
-      return new Lucene101AcceleratedHNSWCodec(params);
-    } else if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
-      log.info("<<< Using CuVS2510GPUSearchCodec >>>");
-      GPUSearchParams gpuParams =
-          new GPUSearchParams.Builder()
-              .withCagraGraphBuildAlgo(config.cagraGraphBuildAlgo)
+    } else {
+      // Delegate IVF-PQ parameter selection to CagraIndexParamsFactory by using HEURISTIC mode.
+      // The codec calls CagraIndexParamsFactory.create(params, rows, dimension) internally and
+      // auto-picks NN_DESCENT (<5M rows) or IVF_PQ (>=5M rows), auto-computing the
+      // IVF-PQ params from the actual row count and vector dimension at index-build time.
+      //
+      // In HEURISTIC mode, the factory ignores any explicit CuVSIvfPqParams or
+      // CagraGraphBuildAlgo set on the params object, so we no longer pass those.
+      // The following BenchmarkConfiguration fields become dead in this mode:
+      //   cuVSIvfPqIndexParams*, cuVSIvfPqSearchParams*, cuVSIvfPqParamsRefinementRate,
+      //   cagraGraphBuildAlgo
+      AcceleratedHNSWParams params =
+          new AcceleratedHNSWParams.Builder()
+              .withStrategy(AcceleratedHNSWParams.Strategy.HEURISTIC)
               .withWriterThreads(config.cuvsWriterThreads)
               .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
               .withGraphDegree(config.cagraGraphDegree)
+              .withHNSWLayer(config.cagraHnswLayers)
+              .withMaxConn(config.hnswMaxConn)
+              .withBeamWidth(config.hnswBeamWidth)
               .build();
-      return new CuVS2510GPUSearchCodec(gpuParams);
-    } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_BINARY)) {
-      log.info("<<< Using LuceneAcceleratedHNSWBinaryQuantizedCodec >>>");
-      return new LuceneAcceleratedHNSWBinaryQuantizedCodec(params);
-    } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_SCALAR)) {
-      log.info("<<< Using LuceneAcceleratedHNSWScalarQuantizedCodec >>>");
-      return new LuceneAcceleratedHNSWScalarQuantizedCodec(params);
-    }
 
+      if (config.algoToRun.equals(Codex.CAGRA_HNSW)) {
+        log.info("<<< Using Lucene101AcceleratedHNSWCodec (HEURISTIC strategy) >>>");
+        return new Lucene101AcceleratedHNSWCodec(params);
+      } else if (config.algoToRun.equals(Codex.CAGRA_SEARCH)) {
+        log.info("<<< Using CuVS2510GPUSearchCodec (HEURISTIC strategy) >>>");
+        GPUSearchParams gpuParams =
+            new GPUSearchParams.Builder()
+                .withStrategy(GPUSearchParams.Strategy.HEURISTIC)
+                .withWriterThreads(config.cuvsWriterThreads)
+                .withIntermediateGraphDegree(config.cagraIntermediateGraphDegree)
+                .withGraphDegree(config.cagraGraphDegree)
+                .build();
+        return new CuVS2510GPUSearchCodec(gpuParams);
+      } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_BINARY)) {
+        log.info("<<< Using LuceneAcceleratedHNSWBinaryQuantizedCodec (HEURISTIC strategy) >>>");
+        return new LuceneAcceleratedHNSWBinaryQuantizedCodec(params);
+      } else if (config.algoToRun.equals(Codex.CAGRA_HNSW_SCALAR)) {
+        log.info("<<< Using LuceneAcceleratedHNSWScalarQuantizedCodec (HEURISTIC strategy) >>>");
+        return new LuceneAcceleratedHNSWScalarQuantizedCodec(params);
+      }
+    }
     return null;
   }
-
-  // ── Inner helpers ─────────────────────────────────────────────────────────
 
   private static class HighDimensionKnnVectorsFormat extends KnnVectorsFormat {
     private final KnnVectorsFormat knnFormat;
