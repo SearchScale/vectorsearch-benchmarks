@@ -20,24 +20,24 @@
       {
         "name": "CAGRA_HNSW",
         "cuvsIndexDirPath": "cuvsIndex",
-        "cagraGraphDegree": [8, 16],
-        "cagraIntermediateGraphDegree": [32],
+        "cagraGraphDegree": [32],
+        "cagraIntermediateGraphDegree": [48, 64],
         "cuvsWriterThreads": 32,
         "numIndexThreads": 32
       },
       {
         "name": "CAGRA_HNSW",
         "cuvsIndexDirPath": "cuvsIndex",
-        "cagraGraphDegree": [16, 32],
-        "cagraIntermediateGraphDegree": [64],
+        "cagraGraphDegree": [40],
+        "cagraIntermediateGraphDegree": [60, 80],
         "cuvsWriterThreads": 32,
         "numIndexThreads": 32
       },
       {
         "name": "CAGRA_HNSW",
         "cuvsIndexDirPath": "cuvsIndex",
-        "cagraGraphDegree": [32, 64],
-        "cagraIntermediateGraphDegree": [128],
+        "cagraGraphDegree": [56],
+        "cagraIntermediateGraphDegree": [84, 112],
         "cuvsWriterThreads": 32,
         "numIndexThreads": 32
       }
