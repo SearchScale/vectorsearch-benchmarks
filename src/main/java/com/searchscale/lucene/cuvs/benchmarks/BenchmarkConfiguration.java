@@ -5,6 +5,7 @@ import com.nvidia.cuvs.CagraIndexParams.CodebookGen;
 import com.nvidia.cuvs.CagraIndexParams.CudaDataType;
 import com.nvidia.cuvs.CagraIndexParams.CuvsDistanceType;
 import com.searchscale.lucene.cuvs.benchmarks.LuceneCuvsBenchmarks.Codex;
+import java.util.List;
 
 public class BenchmarkConfiguration {
 
@@ -47,7 +48,7 @@ public class BenchmarkConfiguration {
   public int cagraITopK;
   public int cagraSearchWidth;
   public int cagraHnswLayers; // layers in CAGRA->HNSW conversion
-  public int efSearch;
+  public List<Integer> efSearch; // e.g. [64] or [64, 128, 256]
   public CagraGraphBuildAlgo cagraGraphBuildAlgo;
 
   // CAGRA IVF_PQ parameters
@@ -69,6 +70,32 @@ public class BenchmarkConfiguration {
   public int cuVSIvfPqSearchParamsNProbes = 20;
   public double cuVSIvfPqSearchParamsPreferredShmemCarveout = 1.0;
 
+  // ── IVF-PQ overrides for the forceMerge phase ──────────────────────────────
+  /**
+   * nLists to use when building the CAGRA graph during {@code forceMerge}.
+   *
+   * <p>During flush, segments are small so {@link #cuVSIvfPqIndexParamsNLists} is
+   * sized accordingly.  A force-merged segment can be 4-8x larger; using the flush
+   * value here leaves too few vectors per cluster, degrading graph quality.
+   *
+   * <p>Per the NVIDIA cuVS documentation, {@code n_rows / n_lists} should fall in
+   * the range 1,000–10,000.  Set this to match your merged segment size, e.g.
+   * 10 M vectors / 5,000 nLists ≈ 2,000 vectors/cluster.
+   *
+   * <p>{@code 0} (default) = use {@link #cuVSIvfPqIndexParamsNLists} unchanged.
+   */
+  public int cuVSIvfPqIndexParamsForceMergeNLists = 0;
+
+  /**
+   * nProbes to use when searching the IVF-PQ index during {@code forceMerge}.
+   *
+   * <p>With a larger nLists at merge time, nProbes should be scaled proportionally
+   * to maintain the same recall during CAGRA graph construction.
+   *
+   * <p>{@code 0} (default) = use {@link #cuVSIvfPqSearchParamsNProbes} unchanged.
+   */
+  public int cuVSIvfPqSearchParamsForceMergeNProbes = 0;
+
   public boolean isLucene() {
     return Codex.LUCENE_HNSW.equals(algoToRun);
   }
@@ -89,11 +116,22 @@ public class BenchmarkConfiguration {
     return Codex.CAGRA_HNSW_SCALAR.equals(algoToRun);
   }
 
-  public int getEffectiveEfSearch() {
-    if (efSearch > 0) {
+  /**
+   * Returns the list of efSearch values to use during search.
+   *
+   * <p>If {@code efSearch} is set in the config JSON (e.g. [64, 128, 256]),
+   * those values are returned directly. Otherwise, falls back to a single-element
+   * list containing a default derived from topK.
+   *
+   * <p>The benchmark runner iterates over these values and runs search once per value
+   * against the <b>same</b> index — no rebuild is needed.
+   */
+  public List<Integer> getEfSearchValues() {
+    if (efSearch != null && !efSearch.isEmpty()) {
       return efSearch;
     }
-    return Math.max(topK, (int) Math.ceil(topK * 1.5));
+    // Default: 1.5x topK, but at least topK
+    return List.of(Math.max(topK, (int) Math.ceil(topK * 1.5)));
   }
 
   public String prettyString() {
@@ -128,6 +166,17 @@ public class BenchmarkConfiguration {
     sb.append("Enable TieredMerge: ").append(enableTieredMerge).append('\n');
     sb.append("Num HNSW merge threads: ").append(hnswMergeThreads).append('\n');
     sb.append("enableIndexWriterInfoStream: ").append(enableIndexWriterInfoStream).append('\n');
+    sb.append("efSearch: ").append(getEfSearchValues()).append('\n');
+    sb.append("nLists (flush):            ").append(cuVSIvfPqIndexParamsNLists).append('\n');
+    sb.append("nLists (forceMerge):       ")
+        .append(cuVSIvfPqIndexParamsForceMergeNLists)
+        .append(cuVSIvfPqIndexParamsForceMergeNLists == 0 ? "  (same as flush)" : "")
+        .append('\n');
+    sb.append("nProbes (flush):           ").append(cuVSIvfPqSearchParamsNProbes).append('\n');
+    sb.append("nProbes (forceMerge):      ")
+        .append(cuVSIvfPqSearchParamsForceMergeNProbes)
+        .append(cuVSIvfPqSearchParamsForceMergeNProbes == 0 ? "  (same as flush)" : "")
+        .append('\n');
 
     sb.append("------- algo parameters ------\n");
     if (isLucene()) {

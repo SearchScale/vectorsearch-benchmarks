@@ -1,5 +1,11 @@
 #!/bin/bash
 
+export MAVEN_OPTS="-Xmx256g -Xms64g \
+  -XX:+UseG1GC \
+  -XX:MinHeapFreeRatio=5 \
+  -XX:MaxHeapFreeRatio=15 \
+  -XX:G1PeriodicGCInterval=5000"
+
 # Parse command-line arguments
 while getopts ":-:" opt; do
     case $OPTARG in

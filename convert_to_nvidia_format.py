@@ -7,10 +7,14 @@ import argparse
 from typing import List, Dict, Optional, Tuple
 
 
-def create_index_name(config: Dict) -> str:
-    """Create index name from configuration parameters"""
+def create_index_name(config: Dict, metrics: Dict) -> str:
+    """Create index name from configuration and metrics.
+
+    efSearch is read from metrics (where it's a scalar int per search run)
+    rather than config (where it's now a list of values to sweep).
+    """
     algorithm = config.get('algoToRun', 'UNKNOWN')
-    ef_search = config.get('efSearch', 0)
+    ef_search = metrics.get('efSearch', 0)
 
     if algorithm in ['LUCENE_HNSW', 'hnsw']:
         beam_width = config.get('hnswBeamWidth', 0)
@@ -38,7 +42,7 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
     elif algorithm in ['hnsw', 'LUCENE_HNSW']:
         algorithm = 'LUCENE_HNSW'
 
-    index_name = create_index_name(config)
+    index_name = create_index_name(config, metrics)
 
     recall_key = next((key for key in metrics.keys() if 'recall-accuracy' in key.lower()), None)
     if not recall_key:
@@ -93,16 +97,17 @@ def convert_results_to_nvidia_format(results_json_path: str, output_dir: str, da
         json.dump(data, f, indent=2)
 
     build_filepath = None
-    build_time_key = next((key for key in metrics.keys() if 'indexing-time' in key.lower()), None)
+    build_time_key = next((key for key in metrics.keys() if 'indexing-time-total' in key.lower()), None)
 
     if build_time_key:
         build_time_ms = float(metrics[build_time_key])
+        build_time_s = build_time_ms / 1000.0
 
         build_benchmark = {
             "name": f"{algorithm}/{index_name}",
-            "real_time": build_time_ms,
+            "real_time": build_time_s,
             "iterations": 1,
-            "time_unit": "ms",
+            "time_unit": "s",
             "run_name": "run_1",
             "run_type": "iteration",
             "repetitions": 1,

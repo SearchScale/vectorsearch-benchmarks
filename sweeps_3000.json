@@ -1,0 +1,46 @@
+{
+  "wiki10m": {
+    "dataset": "wiki-10m",
+    "common-params": {
+      "numDocs": 10000000,
+      "numQueriesToRun": 500,
+      "numWarmUpQueries": 20,
+      "flushFreq": 500000,
+      "topK": 100,
+      "efSearch": 150,
+      "queryThreads": 1,
+      "vectorColName": "vector",
+      "createIndexInMemory": false,
+      "cleanIndexDirectory": true,
+      "saveResultsOnDisk": true,
+      "forceMerge": 0,
+      "enableTieredMerge": true
+    },
+    "algorithms": [
+      {
+        "name": "CAGRA_HNSW",
+        "cuvsIndexDirPath": "cuvsIndex",
+        "cagraGraphDegree": [32],
+        "cagraIntermediateGraphDegree": [48, 64],
+        "cuvsWriterThreads": 32,
+        "numIndexThreads": 32
+      },
+      {
+        "name": "CAGRA_HNSW",
+        "cuvsIndexDirPath": "cuvsIndex",
+        "cagraGraphDegree": [40],
+        "cagraIntermediateGraphDegree": [60, 80],
+        "cuvsWriterThreads": 32,
+        "numIndexThreads": 32
+      },
+      {
+        "name": "CAGRA_HNSW",
+        "cuvsIndexDirPath": "cuvsIndex",
+        "cagraGraphDegree": [56],
+        "cagraIntermediateGraphDegree": [84, 112],
+        "cuvsWriterThreads": 32,
+        "numIndexThreads": 32
+      }
+    ]
+  }
+}
